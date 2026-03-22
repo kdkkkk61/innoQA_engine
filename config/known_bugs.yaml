@@ -1,0 +1,22 @@
+# 확인된 제품 버그 목록
+# UIScanner가 이 항목과 매칭되면 status = "known_bug" (fail 카운트 제외)
+#
+# 추가 형식:
+#   - selector:      "CSS selector"  ← 정확히 일치해야 함
+#     pattern:       "toggle_checkbox | tag_input | ..."
+#     test_name:     "toggle_dependent_fields | ..."  ← scanner 내부 test_name과 매칭
+#     reason:        "버그 설명"
+#     reported_date: "YYYY-MM-DD"
+#     ticket:        "JIRA-123"  ← 없으면 빈 문자열
+#     page_id:       "page_id 문자열"
+#
+# 버그 수정 확인: selector + test_name 조합으로 추적
+# 수정 확인되면 이 목록에서 제거한다
+
+- selector:      "input#isAuthorizationPassword"
+  pattern:       "toggle_checkbox"
+  test_name:     "toggle_dependent_fields"
+  reason:        "토글 OFF 상태에서도 종속 필드(authorizationPassword, authorizationPasswordConfirm)가 활성화 유지됨"
+  reported_date: "2026-03-12"
+  ticket:        ""
+  page_id:       "ransom_detect_policy"

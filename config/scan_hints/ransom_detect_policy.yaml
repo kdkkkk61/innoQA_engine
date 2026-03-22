@@ -1,0 +1,239 @@
+# ransom_detect_policy 페이지 스캔 힌트
+# DOM 검증 완료 (2026-03-20) — Chrome Claude 직접 확인
+# 휴리스틱보다 이 파일이 항상 우선 적용됨
+#
+# [구조 특이사항]
+# - 이 모달은 Bootstrap tab-pane 미사용 (tabPanes=[])
+# - 탭 전환은 AngularJS ng-show 방식 — 전체 DL이 DOM에 항상 존재
+# - 두 번째 탭(예외처리 리스트)은 정책 등록 후 수정 모달에서만 UI 접근 가능
+#   (추가 모달에서 탭 클릭 시 "정책 정보를 먼저 등록" 검증 다이얼로그 노출)
+# - UIScanner는 count() 기반 검사 → DOM 존재 확인 가능 (visibility 무관)
+#
+# [order 규칙]
+# - 실제 UI 상단→하단 시각적 위치 기준 (10단위 간격, 추가 여유 확보)
+# - 정책정보 탭:  10~199
+# - 예외처리 탭: 200~299
+# - 제출 검증:   9999 (항상 마지막)
+#
+# [동작 테스트 필드]
+# - radio_groups.default     : 모달 최초 열릴 때 기본 선택값 (앱 확인 필요 — 추정값)
+# - toggle_checkboxes.default: 모달 최초 열릴 때 ON/OFF 기본 상태 (앱 확인 필요 — 추정값)
+# - tag_input.test_value     : 태그 추가/삭제 동작 테스트에 사용할 임시 입력값
+
+page_id: "ransom_detect_policy"
+modal_id: "addItemModal"
+
+# 모달 진입점 — AngularJS ng-click 방식, data-toggle 없음
+modal_trigger:
+  add:    "button#addItemBtn"
+  modify: "button#modifyItemBtn"
+
+# 모달 내부 탭 구조 — 스캔 전 탭 순서대로 활성화 필요
+# data_tab 값: a[data-tab="..."] 로 탭 링크 식별 (Bootstrap 비표준, AngularJS 커스텀)
+modal_tabs:
+  - tab_id:     "ransomCruncherDetectPolicyInfo"
+    data_tab:   "ransomCruncherDetectPolicyInfo"
+    label:      "정책 정보"
+    start_order: 0           # order 0 ~ 199 항목은 이 탭 구간으로 출력
+
+  - tab_id:     "ransomCruncherDetectPolicyExceptList"
+    data_tab:   "ransomCruncherDetectPolicyExceptList"
+    label:      "예외처리 리스트"
+    start_order: 200         # order 200 ~ 항목은 이 탭 구간으로 출력
+    # 추가 모달에서 이 탭 클릭 시 검증 다이얼로그 노출 (정책 저장 필요)
+    # UIScanner는 count() 기반이므로 DOM 존재는 확인 가능
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 텍스트 입력 (속성 + 동작 검증 대상)
+# ──────────────────────────────────────────────────────────────────────────────
+text_inputs:
+  - selector:  "input#rcDetectPolicyName"
+    label:     "정책 이름"
+    maxlength: 20
+    required:  true
+    tab:       "ransomCruncherDetectPolicyInfo"
+    order:     10                              # UI 최상단 첫 번째 입력 필드
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 태그 입력 패턴
+# protectExtensionList: DIV 컨테이너 (class="attachBox protectExtensionList")
+# except_* 리스트: UL 컨테이너
+# except_* 는 두 번째 탭에 위치 (DOM에는 항상 존재, AngularJS ng-show로 가시성 제어)
+# test_value: 추가/삭제 동작 테스트용 임시 입력값
+# remove_btn: 생략 시 컨테이너 내 자동 탐지 (공통 삭제 버튼 패턴으로 시도)
+# ──────────────────────────────────────────────────────────────────────────────
+tag_input:
+  - id:         "extension_input"
+    label:      "보호할 확장자"
+    input:      "input#protectExtension"
+    add_btn:    "button#extensionAttachBtn"
+    container:  "div#protectExtensionList"
+    tab:        "ransomCruncherDetectPolicyInfo"
+    required:   true                           # dt에 빨간 별표(*) 마커 존재
+    test_value: "txt"                          # 확장자 형식 테스트값
+    order:      20                             # 정책 이름 바로 아래
+
+  # 예외처리 탭 항목 — order 200번대 (탭 2 영역)
+  - id:         "except_file_path"
+    label:      "파일경로 예외처리"
+    input:      "input#exceptFilePath"
+    add_btn:    "button#addExceptFilePath"
+    container:  "ul#exceptFilePathList"
+    tab:        "ransomCruncherDetectPolicyExceptList"
+    test_value: "C:\\scan_test_path"
+    order:      200
+
+  - id:         "except_process_path"
+    label:      "프로세스경로 예외처리"
+    input:      "input#exceptProcessPath"
+    add_btn:    "button#addExceptProcessPath"
+    container:  "ul#exceptProcessPathList"
+    tab:        "ransomCruncherDetectPolicyExceptList"
+    test_value: "scan_test.exe"
+    order:      210
+
+  - id:         "except_digital_sign"
+    label:      "전자서명 예외처리"
+    input:      "input#exceptDigitalSign"
+    add_btn:    "button#addExceptDigitalSign"
+    container:  "ul#exceptDigitalSignList"
+    tab:        "ransomCruncherDetectPolicyExceptList"
+    test_value: "scan_test_sign"
+    order:      220
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 일반 체크박스 (toggle="" 없음, 독립 동작)
+# ──────────────────────────────────────────────────────────────────────────────
+plain_checkboxes:
+  - selector: "input#isSoftwareCertificate"
+    label:    "소프트웨어 인증 사용"
+    order:    30                               # 보호할 확장자 아래
+
+  - selector: "input#isMssqlRemoteBlock"
+    label:    "MS-SQL 원격 차단 해제"
+    order:    50                               # 행위기반 탐지등급 옆/아래
+
+  - selector: "input#isMsiFileTrustCheck"
+    label:    "MSI 파일 신뢰성 검사 해제"
+    order:    60
+
+  - selector: "input#isHideTrayIcon"
+    label:    "트레이아이콘 숨김"
+    order:    130                              # 인증 암호 토글 아래 마지막 체크박스
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 라디오 버튼 그룹
+# default: 모달 최초 열릴 때 기본 선택값 — 앱에서 확인 필요 (추정: NONE)
+# ──────────────────────────────────────────────────────────────────────────────
+radio_groups:
+  - name:    "behaviorDetectLevelType"
+    label:   "행위기반 탐지등급 설정"
+    order:   40                                # 소프트웨어 인증 아래
+    # default: "NONE"                          # 기본 선택값 — 앱 확인 후 주석 해제
+    options:
+      - selector: "input#detectLevelTypeNone"
+        value:    "NONE"
+        label:    "사용안함"
+      - selector: "input#detectLevelTypeLow"
+        value:    "LOW"
+        label:    "낮음"
+      - selector: "input#detectLevelTypeMedium"
+        value:    "MEDIUM"
+        label:    "중간"
+      - selector: "input#detectLevelTypeHigh"
+        value:    "HIGH"
+        label:    "높음"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 토글 체크박스 — toggle="" 속성으로 일반 체크박스와 구분
+# default: 모달 최초 열릴 때 ON/OFF 기본 상태 — 앱에서 확인 필요 (추정: 모두 false)
+# dependent_fields: 이 토글이 ON일 때 활성화되는 필드 목록
+# ──────────────────────────────────────────────────────────────────────────────
+toggle_checkboxes:
+  - selector: "input#isExceptDetect"
+    label:    "탐지 제외사항"
+    order:    70
+    # default: false                           # 기본값 — 앱 확인 후 주석 해제
+    dependent_fields:
+      - "input#isFilePathExcept"
+      - "input#isProcessPathExcept"
+      - "input#isDigitalSignExcept"
+    dependent_labels:
+      - "파일경로 예외처리"
+      - "프로세스경로 예외처리"
+      - "전자서명 예외처리"
+    dependent_types:
+      - "plain_checkbox"
+      - "plain_checkbox"
+      - "plain_checkbox"
+
+  - selector: "input#isRollbackUse"
+    label:    "롤백 기능 사용"
+    order:    80
+    # default: false                           # 기본값 — 앱 확인 후 주석 해제
+    dependent_fields:
+      - "input#rollbackFileMaxSize"
+      - "input#blockRollbackWaitMinute"
+    dependent_labels:
+      - "롤백 파일 최대 크기"
+      - "롤백 대기 시간(분)"
+    dependent_types:
+      - "number_input"
+      - "number_input"
+
+  - selector: "input#isBlockProcessIsolation"
+    label:    "프로세스 격리기능"
+    order:    90
+    # default: false                           # 기본값 — 앱 확인 후 주석 해제
+    dependent_fields:
+      - "input#isRemoveIsolatedProcess"
+    dependent_labels:
+      - "격리된 프로세스 제거"
+    dependent_types:
+      - "plain_checkbox"
+
+  - selector: "input#isExceptProcessCollectPeriod"
+    label:    "예외 프로세스 수집 기간"
+    order:    100
+    # default: false                           # 기본값 — 앱 확인 후 주석 해제
+    dependent_fields:
+      - "input#exceptProcessCollectPeriod"
+    dependent_labels:
+      - "수집 기간(일)"
+    dependent_types:
+      - "number_input"
+
+  - selector: "input#isPolicyUpdateIntervalMinute"
+    label:    "정책 갱신주기"
+    order:    110
+    # default: false                           # 기본값 — 앱 확인 후 주석 해제
+    dependent_fields:
+      - "input#policyUpdateIntervalMinute"
+    dependent_labels:
+      - "갱신 주기(분)"
+    dependent_types:
+      - "number_input"
+
+  - selector: "input#isAuthorizationPassword"
+    label:    "인증 암호"
+    order:    120
+    # default: false                           # 기본값 — 앱 확인 후 주석 해제
+    dependent_fields:
+      - "input#authorizationPassword"        # type=password, maxlength=21
+      - "input#authorizationPasswordConfirm" # type=password, maxlength=21, onpaste=false
+    dependent_labels:
+      - "인증 암호"
+      - "인증 암호 확인"
+    dependent_types:
+      - "text_input"
+      - "text_input"
+    # known_bugs.yaml 참조 — OFF해도 종속 필드 활성화 유지 버그 (disabled 속성 없음)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 모달 액션 버튼
+# ──────────────────────────────────────────────────────────────────────────────
+modal_actions:
+  submit_add:    "button[add-btn]"
+  submit_modify: "button[modify-btn]"
+  close:         "button[data-dismiss='modal'], .btn:has-text('닫기')"
+  # required_submit 검증 order는 코드에서 9999 고정 (항상 마지막 출력)

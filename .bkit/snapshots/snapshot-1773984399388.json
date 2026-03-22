@@ -1,0 +1,409 @@
+{
+  "timestamp": "2026-03-20T05:26:39.382Z",
+  "reason": "compaction",
+  "status": {
+    "version": "2.0",
+    "lastUpdated": "2026-03-20T05:22:13.122Z",
+    "activeFeatures": [
+      "inno_test_tool",
+      "tests",
+      "core"
+    ],
+    "primaryFeature": "inno_test_tool",
+    "features": {
+      "inno_test_tool": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-03-19T05:51:42.758Z",
+          "lastUpdated": "2026-03-19T08:05:15.598Z"
+        },
+        "lastFile": "C:\\Users\\D.K.Kim\\cl\\inno_test_tool\\pages\\ransom_detect_policy_page.py"
+      },
+      "tests": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-03-19T06:11:04.283Z",
+          "lastUpdated": "2026-03-20T02:37:51.798Z"
+        },
+        "lastFile": "C:\\Users\\D.K.Kim\\cl\\inno_test_tool\\tests\\test_ui_scan.py"
+      },
+      "core": {
+        "phase": "do",
+        "phaseNumber": 3,
+        "matchRate": null,
+        "iterationCount": 0,
+        "requirements": [],
+        "documents": {},
+        "timestamps": {
+          "started": "2026-03-20T01:52:53.726Z",
+          "lastUpdated": "2026-03-20T05:22:13.122Z"
+        },
+        "lastFile": "C:\\Users\\D.K.Kim\\cl\\inno_test_tool\\core\\ui_scanner.py"
+      }
+    },
+    "pipeline": {
+      "currentPhase": 1,
+      "level": "Dynamic",
+      "phaseHistory": []
+    },
+    "session": {
+      "startedAt": "2026-03-19T05:09:44.773Z",
+      "onboardingCompleted": false,
+      "lastActivity": "2026-03-20T05:22:13.122Z"
+    },
+    "history": [
+      {
+        "timestamp": "2026-03-19T05:51:42.758Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T05:54:47.781Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T05:58:57.647Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T06:03:37.850Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T06:06:23.465Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T06:11:04.283Z",
+        "feature": "tests",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T06:11:14.784Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T06:13:13.715Z",
+        "feature": "tests",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T06:25:57.801Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T06:36:19.582Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T06:36:33.780Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T06:41:36.264Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T06:41:45.830Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:06:01.845Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:06:11.081Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:06:17.849Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:06:23.396Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:16:49.579Z",
+        "feature": "tests",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:17:01.808Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:17:09.996Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:19:26.463Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:19:42.766Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:19:49.446Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:19:56.564Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:20:02.448Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:38:06.133Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:38:10.864Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:38:40.832Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:39:13.688Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:39:21.581Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T07:43:04.230Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:02:05.331Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:02:25.250Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:02:41.715Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:02:50.714Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:03:14.782Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:03:22.116Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:03:45.631Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:03:49.698Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:03:56.116Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:03:59.199Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:04:23.053Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:04:27.040Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:04:31.053Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:04:36.266Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:04:39.984Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:04:43.699Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:05:07.981Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-19T08:05:15.598Z",
+        "feature": "inno_test_tool",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-20T01:52:53.726Z",
+        "feature": "core",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-20T01:53:58.915Z",
+        "feature": "core",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-20T02:36:46.949Z",
+        "feature": "core",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-20T02:37:21.716Z",
+        "feature": "tests",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-20T02:37:51.798Z",
+        "feature": "tests",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-20T05:21:38.069Z",
+        "feature": "core",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-20T05:22:04.211Z",
+        "feature": "core",
+        "phase": "do",
+        "action": "updated"
+      },
+      {
+        "timestamp": "2026-03-20T05:22:13.122Z",
+        "feature": "core",
+        "phase": "do",
+        "action": "updated"
+      }
+    ]
+  }
+}

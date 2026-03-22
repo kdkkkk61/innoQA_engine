@@ -1,0 +1,131 @@
+# ransom_detect_policy 페이지 스캔 힌트
+# HTML 직접 확인 기준 (2026-03-20)
+# 휴리스틱보다 이 파일이 항상 우선 적용됨
+
+page_id: "ransom_detect_policy"
+modal_id: "addItemModal"
+
+# 모달 진입점 — AngularJS ng-click 방식, data-toggle 없음
+modal_trigger:
+  add: "button#addItemBtn"
+  modify: "button#modifyItemBtn"   # 수정 버튼 (목록에서 동적 생성)
+
+# 모달 내부 탭 구조 — 스캔 전 탭 순서대로 활성화 필요
+modal_tabs:
+  - tab_id: "ransomCruncherDetectPolicyInfo"
+    data_tab: "ransomCruncherDetectPolicyInfo"
+    label: "정책 정보"
+  - tab_id: "ransomCruncherDetectPolicyExceptList"
+    data_tab: "ransomCruncherDetectPolicyExceptList"
+    label: "예외처리 리스트"
+
+# 태그 입력 패턴 — protectExtensionList는 클래스 없음, ID로만 식별
+tag_input:
+  - id: "extension_input"
+    label: "보호할 확장자"
+    input: "input#protectExtension"
+    add_btn: "button#extensionAttachBtn"
+    container: "div#protectExtensionList"
+    tab: "ransomCruncherDetectPolicyInfo"
+
+  - id: "except_file_path"
+    label: "파일경로 예외처리"
+    input: "input#exceptFilePath"
+    add_btn: "button#addExceptFilePath"
+    container: "ul#exceptFilePathList"
+    tab: "ransomCruncherDetectPolicyExceptList"
+
+  - id: "except_process_path"
+    label: "프로세스경로 예외처리"
+    input: "input#exceptProcessPath"
+    add_btn: "button#addExceptProcessPath"
+    container: "ul#exceptProcessPathList"
+    tab: "ransomCruncherDetectPolicyExceptList"
+
+  - id: "except_digital_sign"
+    label: "전자서명 예외처리"
+    input: "input#exceptDigitalSign"
+    add_btn: "button#addExceptDigitalSign"
+    container: "ul#exceptDigitalSignList"
+    tab: "ransomCruncherDetectPolicyExceptList"
+
+# 토글 체크박스 — toggle="" 속성으로 일반 체크박스와 구분
+# dependent_fields: 이 토글이 ON일 때 활성화되는 필드 목록 (HTML disabled="" 기반)
+toggle_checkboxes:
+  - selector: "input#isExceptDetect"
+    label: "탐지 제외사항"
+    dependent_fields:
+      - "input#isFilePathExcept"
+      - "input#isProcessPathExcept"
+      - "input#isDigitalSignExcept"
+
+  - selector: "input#isRollbackUse"
+    label: "롤백 기능 사용"
+    dependent_fields:
+      - "input#rollbackFileMaxSize"
+      - "input#blockRollbackWaitMinute"
+
+  - selector: "input#isBlockProcessIsolation"
+    label: "프로세스 격리기능"
+    dependent_fields:
+      - "input#isRemoveIsolatedProcess"
+
+  - selector: "input#isExceptProcessCollectPeriod"
+    label: "예외 프로세스 수집 기간"
+    dependent_fields:
+      - "input#exceptProcessCollectPeriod"
+
+  - selector: "input#isPolicyUpdateIntervalMinute"
+    label: "정책 갱신주기"
+    dependent_fields:
+      - "input#policyUpdateIntervalMinute"
+
+  - selector: "input#isAuthorizationPassword"
+    label: "인증 암호"
+    dependent_fields:
+      - "input#authorizationPassword"
+      - "input#authorizationPasswordConfirm"
+    # known_bugs.yaml 참조 — OFF해도 종속 필드 활성화 유지 버그
+
+# 일반 체크박스 (toggle="" 없음, 독립 동작)
+plain_checkboxes:
+  - selector: "input#isSoftwareCertificate"
+    label: "소프트웨어 인증 사용"
+  - selector: "input#isMssqlRemoteBlock"
+    label: "MS-SQL 원격 차단 해제"
+  - selector: "input#isMsiFileTrustCheck"
+    label: "MSI 파일 신뢰성 검사 해제"
+  - selector: "input#isHideTrayIcon"
+    label: "트레이아이콘 숨김"
+
+# 라디오 버튼 그룹
+radio_groups:
+  - name: "behaviorDetectLevelType"
+    label: "행위기반 탐지등급 설정"
+    options:
+      - selector: "input#detectLevelTypeNone"
+        value: "NONE"
+        label: "사용안함"
+      - selector: "input#detectLevelTypeLow"
+        value: "LOW"
+        label: "낮음"
+      - selector: "input#detectLevelTypeMedium"
+        value: "MEDIUM"
+        label: "중간"
+      - selector: "input#detectLevelTypeHigh"
+        value: "HIGH"
+        label: "높음"
+
+# 텍스트 입력 (단순 필드)
+text_inputs:
+  - selector: "input#rcDetectPolicyName"
+    label: "정책 이름"
+    maxlength: 20
+    required: true
+    tab: "ransomCruncherDetectPolicyInfo"
+
+# 모달 액션 버튼
+modal_actions:
+  submit_add:    "button[add-btn]"
+  submit_modify: "button[modify-btn]"
+  close:         "button.btn-default"   # 닫기 버튼

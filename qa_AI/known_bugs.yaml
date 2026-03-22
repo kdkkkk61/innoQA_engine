@@ -1,0 +1,11 @@
+# 확인된 제품 버그 목록
+# scanner가 이 항목과 매칭되면 status = "known_bug" (fail 카운트 제외)
+# 버그 수정 확인: selector + test_name 조합으로 추적
+
+- selector: "input#isAuthorizationPassword"
+  pattern: "toggle_checkbox"
+  test_name: "toggle_dependent_fields"
+  reason: "토글 OFF 상태에서도 종속 필드(authorizationPassword, authorizationPasswordConfirm)가 활성화 유지됨"
+  reported_date: "2026-03-12"
+  ticket: ""
+  page_id: "ransom_detect_policy"
