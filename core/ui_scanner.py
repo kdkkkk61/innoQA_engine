@@ -16,12 +16,14 @@ core/ui_scanner.py — 통합 UI 스캐너
 """
 from __future__ import annotations
 
+import traceback
 import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 from playwright.sync_api import Page
+from utils.scan_logger import make_scan_logger
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -126,6 +128,7 @@ class UIScanner:
         self._known_bugs: list[dict] = self._load_yaml(
             self._config_dir / "known_bugs.yaml"
         ) or []
+        self._log = make_scan_logger()
 
     # ── 공개 API ──────────────────────────────────────────────────────────────
 
@@ -161,12 +164,13 @@ class UIScanner:
                 modal_opened = True
             except Exception as e:
                 trigger_sel = (hints or {}).get("modal_trigger", {}).get("add", "")
+                self._log.error(f"[modal_open] 모달 열기 실패:\n{traceback.format_exc()}")
                 report.results.append(ScanResult(
                     pattern="modal_open",
                     selector=trigger_sel,
                     label="모달 열기",
                     status="error",
-                    detail=str(e),
+                    detail=traceback.format_exc(),
                 ))
                 return report
 
@@ -348,6 +352,7 @@ class UIScanner:
                     (다이얼로그는 자동으로 닫고 반환)
         """
         data_tab = tab.get("data_tab", "")
+        self._log.debug(f"[tab] 활성화 시도: data_tab={data_tab!r}")
         try:
             tab_link = self.page.locator(f'a[data-tab="{data_tab}"]')
             if tab_link.count() > 0:
@@ -355,9 +360,13 @@ class UIScanner:
                 self.page.wait_for_timeout(self._TAB_SETTLE_MS)
                 # 경고 다이얼로그 감지 (예: "정책 정보를 먼저 등록 하셔야 합니다.")
                 if self._dismiss_warning_dialog():
+                    self._log.debug(f"[tab] 경고 다이얼로그로 차단됨: {data_tab!r}")
                     return False  # 탭 전환 차단됨
+            else:
+                self._log.debug(f"[tab] 탭 링크 없음: a[data-tab={data_tab!r}]")
         except Exception:
-            pass
+            self._log.debug(f"[tab] 예외 발생:\n{traceback.format_exc()}")
+        self._log.debug(f"[tab] 활성화 완료: {data_tab!r}")
         return True
 
     # 앱 공통 경고 다이얼로그 selector (login_page.py SEL_ERROR_MODAL과 동일)
@@ -382,14 +391,18 @@ class UIScanner:
             warn_modal = self.page.locator(self._SEL_WARN_MODAL)
             if warn_modal.count() == 0:
                 return False
+            self._log.debug(f"[warn_dialog] 경고 모달 감지됨 ({self._SEL_WARN_MODAL})")
             # 확인 버튼 클릭 (내부 첫 번째 버튼 — data-dismiss 또는 텍스트 버튼)
             confirm = warn_modal.locator("button")
             if confirm.count() > 0:
+                self._log.debug("[warn_dialog] 확인 버튼 클릭")
                 confirm.first.evaluate("el => el.click()")
                 self.page.wait_for_timeout(300)
                 return True
+            else:
+                self._log.debug("[warn_dialog] 버튼 없음 — 닫기 불가")
         except Exception:
-            pass
+            self._log.debug(f"[warn_dialog] 예외 발생:\n{traceback.format_exc()}")
         return False
 
     # ── 탭 처리 (자동 탐지 폴백) ──────────────────────────────────────────────
@@ -449,12 +462,16 @@ class UIScanner:
                 })
                 report.results.append(result)
             except Exception as e:
+                self._log.error(
+                    f"[toggle_checkbox] {label!r} ({selector}) 예외 발생:\n"
+                    f"{traceback.format_exc()}"
+                )
                 report.results.append(ScanResult(
                     pattern="toggle_checkbox",
                     selector=selector,
                     label=label,
                     status="error",
-                    detail=str(e),
+                    detail=traceback.format_exc(),
                 ))
 
     def _check_toggle_with_deps(
@@ -629,6 +646,7 @@ class UIScanner:
             selector = cb["selector"]
             label    = cb.get("label", selector)
             order    = cb.get("order")
+            self._log.debug(f"[plain_checkbox] 스캔 시작: {label!r} ({selector})")
             try:
                 loc = self.page.locator(selector)
                 if loc.count() == 0:
@@ -656,16 +674,20 @@ class UIScanner:
                         label_loc = self.page.locator(f"label:has({selector})")
 
                 if label_loc.count() > 0:
+                    self._log.debug(f"[plain_checkbox] {label!r} → is_checked() 호출")
                     before = loc.is_checked()
+                    self._log.debug(f"[plain_checkbox] {label!r} → 라벨 클릭 (before={before})")
                     label_loc.first.evaluate("el => el.click()")
                     self.page.wait_for_timeout(300)
                     after = loc.is_checked()
+                    self._log.debug(f"[plain_checkbox] {label!r} → 클릭 후 after={after}")
 
                     if after == before:
                         failures.append("라벨 클릭 무반응 (체크 상태 변화 없음)")
                     else:
                         checks.append("라벨 클릭 동작 확인")
                         # 원래 상태로 복원
+                        self._log.debug(f"[plain_checkbox] {label!r} → 상태 복원")
                         loc.evaluate("el => el.click()")
                         self.page.wait_for_timeout(200)
                 else:
@@ -673,6 +695,7 @@ class UIScanner:
 
                 status = "fail" if failures else "pass"
                 detail = "; ".join(failures) if failures else " + ".join(checks)
+                self._log.debug(f"[plain_checkbox] {label!r} → {status}: {detail}")
                 report.results.append(ScanResult(
                     pattern="plain_checkbox",
                     selector=selector,
@@ -682,12 +705,16 @@ class UIScanner:
                     order=order,
                 ))
             except Exception as e:
+                self._log.error(
+                    f"[plain_checkbox] {label!r} ({selector}) 예외 발생:\n"
+                    f"{traceback.format_exc()}"
+                )
                 report.results.append(ScanResult(
                     pattern="plain_checkbox",
                     selector=selector,
                     label=label,
                     status="error",
-                    detail=str(e),
+                    detail=traceback.format_exc(),
                     order=order,
                 ))
 
@@ -709,6 +736,7 @@ class UIScanner:
             order         = group.get("order")
             default_value = group.get("default")  # YAML에 정의된 기본 선택값
 
+            self._log.debug(f"[radio_group] 스캔 시작: {label!r} (name={name})")
             try:
                 # ① 모든 옵션 존재 확인
                 missing = [
@@ -744,16 +772,19 @@ class UIScanner:
 
                 # ③ 클릭 변경 동작 테스트
                 # 현재 선택 옵션 파악
+                self._log.debug(f"[radio_group] {label!r} → 현재 선택 옵션 파악")
                 current_opt = next(
                     (o for o in options
                      if self.page.locator(o["selector"]).is_checked()),
                     None,
                 )
+                self._log.debug(f"[radio_group] {label!r} → current={current_opt and current_opt.get('value')!r}")
                 # 현재 선택과 다른 옵션 선택
                 alt_opt = next(
                     (o for o in options if o != current_opt), None
                 )
                 if alt_opt:
+                    self._log.debug(f"[radio_group] {label!r} → alt 클릭: {alt_opt.get('value')!r}")
                     alt_loc = self.page.locator(alt_opt["selector"])
                     alt_loc.evaluate("el => el.click()")
                     self.page.wait_for_timeout(300)
@@ -761,6 +792,7 @@ class UIScanner:
                         checks.append("클릭 변경 동작 확인")
                         # 원래 옵션으로 복원
                         if current_opt:
+                            self._log.debug(f"[radio_group] {label!r} → 복원: {current_opt.get('value')!r}")
                             self.page.locator(current_opt["selector"]).evaluate(
                                 "el => el.click()"
                             )
@@ -770,6 +802,7 @@ class UIScanner:
 
                 status = "fail" if failures else "pass"
                 detail = "; ".join(failures) if failures else " + ".join(checks)
+                self._log.debug(f"[radio_group] {label!r} → {status}: {detail}")
                 report.results.append(ScanResult(
                     pattern="radio_group",
                     selector=f"[name={name}]",
@@ -780,6 +813,10 @@ class UIScanner:
                 ))
 
             except Exception as e:
+                self._log.error(
+                    f"[radio_group] {label!r} (name={name}) 예외 발생:\n"
+                    f"{traceback.format_exc()}"
+                )
                 report.results.append(ScanResult(
                     pattern="radio_group",
                     selector=f"[name={name}]",
@@ -810,6 +847,7 @@ class UIScanner:
             required  = inp.get("required", False)
             order     = inp.get("order")
 
+            self._log.debug(f"[text_input] 스캔 시작: {label!r} ({selector})")
             # 탭 전환 필요 시
             tab = inp.get("tab")
             if tab:
@@ -843,6 +881,7 @@ class UIScanner:
                     else:
                         # ② maxlength 실제 동작 테스트
                         test_str = "x" * (maxlength + 5)
+                        self._log.debug(f"[text_input] {label!r} → fill({len(test_str)}자)")
                         loc.fill(test_str)
                         actual_len = len(loc.input_value())
                         if actual_len > maxlength:
@@ -882,6 +921,7 @@ class UIScanner:
 
                 status = "fail" if failures else "pass"
                 detail = "; ".join(failures) if failures else " + ".join(checks)
+                self._log.debug(f"[text_input] {label!r} → {status}: {detail}")
                 report.results.append(ScanResult(
                     pattern="text_input",
                     selector=selector,
@@ -892,12 +932,16 @@ class UIScanner:
                 ))
 
             except Exception as e:
+                self._log.error(
+                    f"[text_input] {label!r} ({selector}) 예외 발생:\n"
+                    f"{traceback.format_exc()}"
+                )
                 report.results.append(ScanResult(
                     pattern="text_input",
                     selector=selector,
                     label=label,
                     status="error",
-                    detail=str(e),
+                    detail=traceback.format_exc(),
                     order=order,
                 ))
 
@@ -933,12 +977,14 @@ class UIScanner:
             test_value     = tag.get("test_value", "scan_test")
             remove_btn_sel = tag.get("remove_btn")  # 명시적 selector (선택)
 
+            self._log.debug(f"[tag_input] 스캔 시작: {label!r} (id={tag_id})")
             # 탭 전환 필요 시
             # tab_activated=False → 경고 다이얼로그로 차단됨 → 동작 테스트(③④) 스킵
             tab_activated = True
             tab_id = tag.get("tab")
             if tab_id:
                 tab_activated = self._activate_tab({"data_tab": tab_id})
+            self._log.debug(f"[tag_input] {label!r} → tab_activated={tab_activated}")
 
             try:
                 # ① 세 요소 존재 확인
@@ -986,24 +1032,29 @@ class UIScanner:
                 # ③④ 동작 테스트 — 탭이 경고 다이얼로그로 차단된 경우 스킵
                 # (ADD 모달에서 예외처리 탭은 정책 저장 전 접근 불가)
                 if not tab_activated:
-                    checks.append("탭 접근 차단 (동작 테스트 생략 — 정책 등록 후 수정 모달에서 검증 필요)")
+                    checks.append("생성 시 작성 불가 (탭 클릭 시 앱이 경고로 차단 — 수정 모달에서 검증)")
                 else:
                     # ③ 태그 추가 동작 테스트
                     cont_loc = self.page.locator(cont_sel)
                     inp_loc  = self.page.locator(inp_sel)
                     btn_loc  = self.page.locator(btn_sel)
 
+                    self._log.debug(f"[tag_input] {label!r} → 초기 항목 수 카운트 ({cont_sel})")
                     initial_count = cont_loc.evaluate(
                         "el => el.querySelectorAll(':scope > *').length"
                     )
+                    self._log.debug(f"[tag_input] {label!r} → initial_count={initial_count}")
+                    self._log.debug(f"[tag_input] {label!r} → fill({test_value!r}) → {inp_sel}")
                     inp_loc.fill(test_value)
                     self.page.wait_for_timeout(200)
+                    self._log.debug(f"[tag_input] {label!r} → add_btn 클릭 ({btn_sel})")
                     btn_loc.first.evaluate("el => el.click()")
                     self.page.wait_for_timeout(400)
 
                     after_add_count = cont_loc.evaluate(
                         "el => el.querySelectorAll(':scope > *').length"
                     )
+                    self._log.debug(f"[tag_input] {label!r} → after_add_count={after_add_count}")
                     if after_add_count <= initial_count:
                         failures.append(
                             f"태그 추가 동작 실패 (추가 전: {initial_count},"
@@ -1018,6 +1069,7 @@ class UIScanner:
                             for pat in self._REMOVE_BTN_PATTERNS:
                                 if cont_loc.locator(pat).count() > 0:
                                     remove_btn_sel = pat  # 컨테이너 내 상대 selector
+                                    self._log.debug(f"[tag_input] {label!r} → 삭제버튼 자동탐지: {pat}")
                                     break
 
                         if remove_btn_sel:
@@ -1026,6 +1078,7 @@ class UIScanner:
                                 before_remove = cont_loc.evaluate(
                                     "el => el.querySelectorAll(':scope > *').length"
                                 )
+                                self._log.debug(f"[tag_input] {label!r} → 삭제버튼 클릭 ({remove_btn_sel})")
                                 remove_loc.first.evaluate("el => el.click()")
                                 self.page.wait_for_timeout(400)
                                 after_remove = cont_loc.evaluate(
@@ -1042,6 +1095,7 @@ class UIScanner:
 
                 status = "fail" if failures else "pass"
                 detail = "; ".join(failures) if failures else " + ".join(checks)
+                self._log.debug(f"[tag_input] {label!r} → {status}: {detail}")
                 report.results.append(ScanResult(
                     pattern="tag_input",
                     selector=inp_sel,
@@ -1053,12 +1107,16 @@ class UIScanner:
                 ))
 
             except Exception as e:
+                self._log.error(
+                    f"[tag_input] {label!r} (id={tag_id}) 예외 발생:\n"
+                    f"{traceback.format_exc()}"
+                )
                 report.results.append(ScanResult(
                     pattern="tag_input",
                     selector=inp_sel,
                     label=label,
                     status="error",
-                    detail=str(e),
+                    detail=traceback.format_exc(),
                     order=order,
                 ))
 
@@ -1144,12 +1202,15 @@ class UIScanner:
                 ))
 
         except Exception as e:
+            self._log.error(
+                f"[required_submit] 예외 발생:\n{traceback.format_exc()}"
+            )
             report.results.append(ScanResult(
                 pattern="required_submit",
                 selector=submit_sel,
                 label="필수 필드 미입력 제출 검증",
                 status="error",
-                detail=str(e),
+                detail=traceback.format_exc(),
                 order=_ORDER_LAST,
             ))
 

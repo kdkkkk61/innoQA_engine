@@ -450,6 +450,20 @@ class RansomDetectPolicyPage(BasePage):
         except Exception as e:
             raise Exception(f"정책 추가 모달이 열리지 않음: {e}") from e
 
+    def open_modify_modal(self, policy_name: str) -> None:
+        """
+        정책 행 선택 → 수정 버튼 클릭 → 모달 열림 대기.
+        저장하지 않고 모달만 연다 (UIScanner 스캔 전용).
+        모달이 열리지 않으면 Exception 발생.
+        """
+        self.click_policy_row(policy_name)
+        self.click(self.SEL_MODIFY_BTN)
+        self._fail_if_modal(self._TIMEOUT_MODAL)
+        try:
+            self.wait_for(self.SEL_ADD_MODAL, state="attached")
+        except Exception as e:
+            raise Exception(f"정책 수정 모달이 열리지 않음: {e}") from e
+
     def close_modal(self) -> None:
         """모달 닫기 버튼 클릭 → 목록 페이지 복귀 대기"""
         self.click(self.SEL_CLOSE_BTN)
