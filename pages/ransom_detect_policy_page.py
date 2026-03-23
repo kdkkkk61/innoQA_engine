@@ -395,11 +395,9 @@ class RansomDetectPolicyPage(BasePage):
         [AUTO] 접두사 안전 규칙에 따라 실수 삭제 방지.
         복사본 등 [AUTO] 접두사가 없는 정책은 건드리지 않는다.
         """
-        while True:
-            auto_names = [n for n in self.get_policy_names() if n.startswith("[AUTO]")]
-            if not auto_names:
-                break
-            self.delete_policy(auto_names[0])
+        auto_names = [n for n in self.get_policy_names() if n.startswith("[AUTO]")]
+        for name in auto_names:
+            self.delete_policy(name)
 
     def delete_policy(self, policy_name: str) -> None:
         """

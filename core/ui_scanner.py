@@ -162,16 +162,9 @@ class UIScanner:
             try:
                 modal_open_fn()
                 modal_opened = True
-            except Exception as e:
+            except Exception:
                 trigger_sel = (hints or {}).get("modal_trigger", {}).get("add", "")
-                self._log.error(f"[modal_open] 모달 열기 실패:\n{traceback.format_exc()}")
-                report.results.append(ScanResult(
-                    pattern="modal_open",
-                    selector=trigger_sel,
-                    label="모달 열기",
-                    status="error",
-                    detail=traceback.format_exc(),
-                ))
+                self._append_error(report, "modal_open", trigger_sel, "모달 열기")
                 return report
 
         if hints:
@@ -430,6 +423,31 @@ class UIScanner:
         except Exception:
             pass
 
+    # ── 스캔 결과 헬퍼 ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _status_detail(failures: list[str], checks: list[str]) -> tuple[str, str]:
+        """failures/checks 리스트에서 status·detail 문자열을 생성한다."""
+        status = "fail" if failures else "pass"
+        detail = "; ".join(failures) if failures else " + ".join(checks)
+        return status, detail
+
+    def _append_error(
+        self,
+        report: PageScanReport,
+        pattern: str,
+        selector: str,
+        label: str,
+        order=None,
+    ) -> None:
+        """예외 발생 시 로그 기록 후 ScanResult(error)를 report에 추가한다."""
+        tb = traceback.format_exc()
+        self._log.error(f"[{pattern}] {label!r} ({selector}) 예외 발생:\n{tb}")
+        report.results.append(ScanResult(
+            pattern=pattern, selector=selector, label=label,
+            status="error", detail=tb, order=order,
+        ))
+
     # ── 토글 체크박스 스캔 ────────────────────────────────────────────────────
 
     def _scan_toggle_checkboxes(self, hints: dict, report: PageScanReport) -> None:
@@ -439,19 +457,34 @@ class UIScanner:
         known_bug 항목도 실제로 검사한다 — 어떤 필드가 비정상인지 개별 확인이 목적.
         is_known_bug=True 로 전달하면 _check_toggle_with_deps 내부에서
         실패한 종속 필드를 "fail" 대신 "known_bug" 로 마킹한다.
+
+        dependent_fields 포맷 두 가지 모두 지원:
+          구형(str 리스트): ["input#foo", "input#bar"]  ← 하위 호환
+          신형(dict 리스트): [{selector, label, type, maxlength?, onpaste_blocked?}, ...]
         """
         for toggle in hints.get("toggle_checkboxes", []):
             selector        = toggle["selector"]
             label           = toggle.get("label", selector)
-            deps            = toggle.get("dependent_fields", [])
-            dep_labels      = toggle.get("dependent_labels", [])
-            dep_types       = toggle.get("dependent_types", [])
+            raw_deps        = toggle.get("dependent_fields", [])
             is_kb           = self._is_known_bug(selector, "toggle_dependent_fields")
             default_checked = toggle.get("default")  # True/False/None
 
+            # ── 포맷 정규화 ──────────────────────────────────────────────────
+            # 구형(str) → dict 변환, 신형은 그대로 사용
+            dep_fields: list[dict] = []
+            for d in raw_deps:
+                if isinstance(d, str):
+                    dep_fields.append({"selector": d, "label": d, "type": "field"})
+                else:
+                    dep_fields.append(d)
+
+            # 출력용 레이블·타입 리스트 (test_ui_scan.py 프린터 호환)
+            dep_labels = [d.get("label", d["selector"]) for d in dep_fields]
+            dep_types  = [d.get("type", "field")         for d in dep_fields]
+
             try:
                 result = self._check_toggle_with_deps(
-                    selector, label, deps,
+                    selector, label, dep_fields,
                     is_known_bug=is_kb,
                     default_checked=default_checked,
                 )
@@ -461,43 +494,37 @@ class UIScanner:
                     "dependent_types":  dep_types,
                 })
                 report.results.append(result)
-            except Exception as e:
-                self._log.error(
-                    f"[toggle_checkbox] {label!r} ({selector}) 예외 발생:\n"
-                    f"{traceback.format_exc()}"
-                )
-                report.results.append(ScanResult(
-                    pattern="toggle_checkbox",
-                    selector=selector,
-                    label=label,
-                    status="error",
-                    detail=traceback.format_exc(),
-                ))
+            except Exception:
+                self._append_error(report, "toggle_checkbox", selector, label, toggle.get("order"))
 
     def _check_toggle_with_deps(
         self,
         selector:        str,
         label:           str,
-        dep_selectors:   list[str],
+        dep_fields:      list[dict],
         is_known_bug:    bool = False,
         default_checked: Optional[bool] = None,
     ) -> ScanResult:
         """
-        토글 + 종속 필드 동작 검증.
+        토글 + 종속 필드 동작 검증 (C안: OFF→ON+입력→OFF재확인→복원).
 
         ① 기본값 확인 (default_checked 전달 시) — 모달 최초 열린 상태 기준
-        ② OFF 상태 → 각 종속 필드 disabled 여부 개별 확인
-        ③ ON  상태 → 각 종속 필드 enabled  여부 개별 확인
-        검증 완료 후 원래 상태로 복원한다.
+        ② OFF 상태 → 각 종속 필드 disabled 여부 확인
+        ③ ON  상태 → enabled 확인 + 종속 필드 실제 입력 테스트 (_test_dep_input)
+        ④ OFF 재확인 → ON→OFF 전환 후에도 disabled 유지 여부 재검증
+        ⑤ 원래 상태로 복원
 
         is_known_bug=True 이면 실패 종속 필드를 "fail" 대신 "known_bug" 로 마킹.
-        (fail 카운트 제외 — 알려진 버그이므로)
+
+        dep_fields 항목 구조:
+            {selector, label, type, maxlength?(number/text), onpaste_blocked?(text)}
 
         반환하는 ScanResult.extra:
-            "dependent_fields"  : dep_selectors 원본 리스트
+            "dependent_fields"  : dep_fields 원본 리스트
             "dependent_results" : 필드별 {"selector", "status", "detail"} 딕트 리스트
         """
-        toggle_loc = self.page.locator(selector)
+        dep_selectors = [d["selector"] for d in dep_fields]
+        toggle_loc    = self.page.locator(selector)
 
         if toggle_loc.count() == 0:
             return ScanResult(
@@ -506,11 +533,11 @@ class UIScanner:
                 label=label,
                 status="skip",
                 detail="요소를 찾을 수 없음",
-                extra={"dependent_fields": dep_selectors, "dependent_results": []},
+                extra={"dependent_fields": dep_fields, "dependent_results": []},
             )
 
         # 종속 필드 없는 단순 토글 — 존재 확인만
-        if not dep_selectors:
+        if not dep_fields:
             return ScanResult(
                 pattern="toggle_checkbox",
                 selector=selector,
@@ -530,33 +557,44 @@ class UIScanner:
             default_fail = f"기본값 불일치 (기대: {expected}, 실제: {actual})"
 
         # ② OFF 상태 → 종속 필드 disabled 확인
-        # off_ok[dep]: True=정상(disabled), False=비정상(still enabled), None=요소없음
-        off_ok: dict[str, bool | None] = {}
+        # off1_ok[sel]: True=정상(disabled), False=비정상(enabled), None=요소없음
+        off1_ok: dict[str, bool | None] = {}
         if was_checked:
             toggle_loc.evaluate("el => el.click()")
             self.page.wait_for_timeout(400)
 
-        for dep in dep_selectors:
-            dep_loc = self.page.locator(dep)
-            if dep_loc.count() == 0:
-                off_ok[dep] = None
-            else:
-                off_ok[dep] = not dep_loc.is_enabled()  # 비활성화 = 정상
+        for sel in dep_selectors:
+            loc = self.page.locator(sel)
+            off1_ok[sel] = None if loc.count() == 0 else not loc.is_enabled()
 
-        # ② ON 상태 → 종속 필드 enabled 확인
-        # on_ok[dep]: True=정상(enabled), False=비정상(still disabled), None=요소없음
-        on_ok: dict[str, bool | None] = {}
+        # ③ ON 상태 → enabled 확인 + 실제 입력 테스트
+        # on_ok[sel]: True=정상(enabled), False=비정상(disabled), None=요소없음
+        on_ok:        dict[str, bool | None] = {}
+        input_res:    dict[str, dict]        = {}   # sel → _test_dep_input 결과
         toggle_loc.evaluate("el => el.click()")
         self.page.wait_for_timeout(400)
 
-        for dep in dep_selectors:
-            dep_loc = self.page.locator(dep)
-            if dep_loc.count() == 0:
-                on_ok[dep] = None
+        for dep in dep_fields:
+            sel = dep["selector"]
+            loc = self.page.locator(sel)
+            if loc.count() == 0:
+                on_ok[sel] = None
             else:
-                on_ok[dep] = dep_loc.is_enabled()  # 활성화 = 정상
+                on_ok[sel] = loc.is_enabled()
+                if on_ok[sel]:
+                    input_res[sel] = self._test_dep_input(dep)
 
-        # 원래 상태로 복원
+        # ④ OFF 재확인 → ON→OFF 전환 후에도 disabled 유지 여부
+        # off2_ok[sel]: True=정상(disabled), False=비정상(enabled), None=요소없음
+        off2_ok: dict[str, bool | None] = {}
+        toggle_loc.evaluate("el => el.click()")
+        self.page.wait_for_timeout(400)
+
+        for sel in dep_selectors:
+            loc = self.page.locator(sel)
+            off2_ok[sel] = None if loc.count() == 0 else not loc.is_enabled()
+
+        # ⑤ 원래 상태로 복원
         current = toggle_loc.is_checked()
         if current != was_checked:
             toggle_loc.evaluate("el => el.click()")
@@ -567,19 +605,41 @@ class UIScanner:
         real_fail_count = 0
         known_bug_count = 0
 
-        for dep in dep_selectors:
-            o_ok = off_ok.get(dep)
-            n_ok = on_ok.get(dep)
+        for dep in dep_fields:
+            sel  = dep["selector"]
+            o1   = off1_ok.get(sel)
+            n    = on_ok.get(sel)
+            o2   = off2_ok.get(sel)
+            i_r  = input_res.get(sel, {})
 
-            if o_ok is None and n_ok is None:
-                dep_results.append({"selector": dep, "status": "skip",  "detail": "요소 없음"})
+            if o1 is None and n is None and o2 is None:
+                dep_results.append({"selector": sel, "status": "skip", "detail": "요소 없음"})
                 continue
 
             issues: list[str] = []
-            if o_ok is False:
+            checks: list[str] = []
+
+            if o1 is False:
                 issues.append("OFF 시 활성화됨 (비정상)")
-            if n_ok is False:
+            elif o1 is True:
+                checks.append("OFF→disabled")
+
+            if n is False:
                 issues.append("ON 시 비활성화됨 (비정상)")
+            elif n is True:
+                checks.append("ON→enabled")
+
+            if o2 is False:
+                issues.append("ON→OFF 전환 후 활성화 유지됨 (비정상)")
+            elif o2 is True:
+                checks.append("OFF재확인→disabled")
+
+            # 입력 테스트 결과 병합
+            if i_r:
+                if i_r.get("status") == "fail":
+                    issues.append(f"입력 테스트 실패: {i_r.get('detail', '')}")
+                elif i_r.get("status") == "pass":
+                    checks.append(i_r.get("detail", "입력 테스트 pass"))
 
             if issues:
                 if is_known_bug:
@@ -589,12 +649,13 @@ class UIScanner:
                     dep_status = "fail"
                     real_fail_count += 1
                 dep_results.append({
-                    "selector": dep,
+                    "selector": sel,
                     "status":   dep_status,
                     "detail":   ", ".join(issues),
                 })
             else:
-                dep_results.append({"selector": dep, "status": "pass", "detail": "ON/OFF 정상"})
+                detail_str = " + ".join(checks) if checks else "ON/OFF 정상"
+                dep_results.append({"selector": sel, "status": "pass", "detail": detail_str})
 
         # ── 부모 토글 요약 상태 결정 ──────────────────────────────────────────
         if real_fail_count > 0 or default_fail:
@@ -609,15 +670,15 @@ class UIScanner:
             parent_status = "known_bug"
             parent_detail = (
                 f"알려진 버그 — 종속 필드 {known_bug_count}개 비정상"
-                f" ({len(dep_selectors) - known_bug_count}개 정상)"
+                f" ({len(dep_fields) - known_bug_count}개 정상)"
             )
         else:
             parent_status = "pass"
             parts: list[str] = []
             if default_checked is not None:
                 parts.append(f"기본값 {'ON' if default_checked else 'OFF'} 확인")
-            if dep_selectors:
-                parts.append(f"ON/OFF 종속 필드 {len(dep_selectors)}개 정상")
+            if dep_fields:
+                parts.append(f"종속 필드 {len(dep_fields)}개 ON/OFF+입력 정상")
             parent_detail = " + ".join(parts) if parts else "토글 존재 확인"
 
         return ScanResult(
@@ -626,8 +687,136 @@ class UIScanner:
             label=label,
             status=parent_status,
             detail=parent_detail,
-            extra={"dependent_fields": dep_selectors, "dependent_results": dep_results},
+            extra={"dependent_fields": dep_fields, "dependent_results": dep_results},
         )
+
+    # ── 종속 필드 입력 테스트 헬퍼 ───────────────────────────────────────────
+
+    def _test_dep_input(self, dep_field: dict) -> dict:
+        """
+        ON 상태에서 종속 필드 타입별 실제 입력 테스트를 수행한다.
+
+        dep_field 키:
+            selector         : CSS selector
+            type             : "number_input" | "text_input" | "plain_checkbox" | "field"
+            maxlength        : (number/text) 기대 maxlength 값 (없으면 자동 감지)
+            onpaste_blocked  : (text) True이면 onpaste="return false" 속성 검증
+
+        반환: {"status": "pass"|"fail"|"skip", "detail": str}
+        """
+        ftype    = dep_field.get("type", "field")
+        sel      = dep_field["selector"]
+        maxlen   = dep_field.get("maxlength")
+        onpaste  = dep_field.get("onpaste_blocked", False)
+
+        if ftype == "plain_checkbox":
+            return self._test_plain_checkbox_dep(sel)
+        elif ftype in ("number_input", "text_input"):
+            return self._test_text_like_dep(sel, maxlen, onpaste, ftype)
+        else:
+            return {"status": "skip", "detail": f"입력 테스트 미지원 타입: {ftype}"}
+
+    def _test_text_like_dep(
+        self,
+        selector:        str,
+        maxlength:       Optional[int],
+        onpaste_blocked: bool,
+        ftype:           str = "text_input",
+    ) -> dict:
+        """
+        number_input / text_input 종속 필드 입력 테스트.
+
+        maxlength 지정 시:
+          ① HTML maxlength 속성값 확인 (기대값 vs 실제)
+          ② maxlength+5 글자 입력 → 실제 길이로 truncation 동작 확인
+        maxlength 미지정 시:
+          ③ "1234567890" (10자) 입력 → 실제 입력된 길이로 제한 자동 감지
+        onpaste_blocked=True 시:
+          ④ onpaste="return false" 속성 존재 확인
+        공통:
+          ⑤ 입력/삭제 시도
+             - text_input : 삭제 불가 시 fail
+             - number_input: 삭제 불가는 앱 유효성 검사로 간주 → 정보로만 기록 (pass 유지)
+        """
+        loc = self.page.locator(selector)
+        if loc.count() == 0:
+            return {"status": "skip", "detail": "요소 없음"}
+
+        checks:   list[str] = []
+        failures: list[str] = []
+
+        # ① maxlength 속성 + ② truncation 동작
+        if maxlength is not None:
+            actual_attr = loc.get_attribute("maxlength")
+            if actual_attr is None:
+                failures.append(f"maxlength 속성 없음 (기대: {maxlength})")
+            elif int(actual_attr) != maxlength:
+                failures.append(
+                    f"maxlength 불일치 (기대: {maxlength}, 실제: {actual_attr})"
+                )
+            else:
+                loc.fill("1" * (maxlength + 5))
+                actual_len = len(loc.input_value())
+                if actual_len > maxlength:
+                    failures.append(
+                        f"maxlength {maxlength}자 미적용 ({actual_len}자 입력됨)"
+                    )
+                else:
+                    checks.append(f"maxlength {maxlength}자 동작 확인")
+        else:
+            # ③ 자동 감지: 10자 입력
+            loc.fill("1234567890")
+            actual_len = len(loc.input_value())
+            if actual_len < 10:
+                checks.append(f"maxlength {actual_len}자 감지 (YAML 미명시)")
+            else:
+                checks.append("maxlength 없음 (10자 이상 가능)")
+
+        # ④ onpaste 차단 속성 확인
+        if onpaste_blocked:
+            attr = loc.get_attribute("onpaste") or ""
+            if "false" in attr:
+                checks.append("붙여넣기 차단 확인 (onpaste)")
+            else:
+                failures.append("onpaste 차단 속성 없음")
+
+        # ⑤ 입력/삭제 시도
+        loc.fill("")
+        if loc.input_value() != "":
+            if ftype == "number_input":
+                # 설정값 필드는 비움 불가가 앱 유효성 검사일 수 있음 → 정보로만 기록
+                checks.append("비움 불가 (앱 유효성 검사 추정)")
+            else:
+                failures.append("입력 후 삭제 불가")
+        else:
+            checks.append("입력/삭제 자유도 확인")
+
+        status, detail = self._status_detail(failures, checks)
+        return {"status": status, "detail": detail}
+
+    def _test_plain_checkbox_dep(self, selector: str) -> dict:
+        """
+        plain_checkbox 종속 필드 클릭 동작 테스트.
+        ON 상태일 때 호출된다 — 클릭 후 상태 변경 확인 후 원래 상태로 복원.
+        """
+        loc = self.page.locator(selector)
+        if loc.count() == 0:
+            return {"status": "skip", "detail": "요소 없음"}
+
+        was   = loc.is_checked()
+        loc.evaluate("el => el.click()")
+        self.page.wait_for_timeout(200)
+        after = loc.is_checked()
+
+        # 원래 상태 복원
+        if after != was:
+            loc.evaluate("el => el.click()")
+            self.page.wait_for_timeout(200)
+
+        if after != was:
+            return {"status": "pass", "detail": "클릭 동작 확인"}
+        else:
+            return {"status": "fail", "detail": "클릭 후 상태 미변경"}
 
     # ── 일반 체크박스 스캔 ────────────────────────────────────────────────────
 
@@ -693,8 +882,7 @@ class UIScanner:
                 else:
                     checks.append("label[for] 없음 (라벨 클릭 테스트 생략)")
 
-                status = "fail" if failures else "pass"
-                detail = "; ".join(failures) if failures else " + ".join(checks)
+                status, detail = self._status_detail(failures, checks)
                 self._log.debug(f"[plain_checkbox] {label!r} → {status}: {detail}")
                 report.results.append(ScanResult(
                     pattern="plain_checkbox",
@@ -704,19 +892,8 @@ class UIScanner:
                     detail=detail,
                     order=order,
                 ))
-            except Exception as e:
-                self._log.error(
-                    f"[plain_checkbox] {label!r} ({selector}) 예외 발생:\n"
-                    f"{traceback.format_exc()}"
-                )
-                report.results.append(ScanResult(
-                    pattern="plain_checkbox",
-                    selector=selector,
-                    label=label,
-                    status="error",
-                    detail=traceback.format_exc(),
-                    order=order,
-                ))
+            except Exception:
+                self._append_error(report, "plain_checkbox", selector, label, order)
 
     # ── 라디오 그룹 스캔 ──────────────────────────────────────────────────────
 
@@ -800,8 +977,7 @@ class UIScanner:
                     else:
                         failures.append("라디오 클릭 후 선택 상태 변화 없음")
 
-                status = "fail" if failures else "pass"
-                detail = "; ".join(failures) if failures else " + ".join(checks)
+                status, detail = self._status_detail(failures, checks)
                 self._log.debug(f"[radio_group] {label!r} → {status}: {detail}")
                 report.results.append(ScanResult(
                     pattern="radio_group",
@@ -812,19 +988,8 @@ class UIScanner:
                     order=order,
                 ))
 
-            except Exception as e:
-                self._log.error(
-                    f"[radio_group] {label!r} (name={name}) 예외 발생:\n"
-                    f"{traceback.format_exc()}"
-                )
-                report.results.append(ScanResult(
-                    pattern="radio_group",
-                    selector=f"[name={name}]",
-                    label=label,
-                    status="error",
-                    detail=str(e),
-                    order=order,
-                ))
+            except Exception:
+                self._append_error(report, "radio_group", f"[name={name}]", label, order)
 
     # ── 텍스트 입력 스캔 ──────────────────────────────────────────────────────
 
@@ -866,6 +1031,9 @@ class UIScanner:
                     ))
                     continue
 
+                # 원래 값 저장 — 스캔 후 복원 (EDIT 모달 대응)
+                original_value = loc.input_value()
+
                 failures: list[str] = []
                 checks:   list[str] = ["존재 확인"]
 
@@ -906,6 +1074,10 @@ class UIScanner:
                     else:
                         checks.append("입력/삭제 자유도 확인")
 
+                # 원래 값 복원
+                if loc.input_value() != original_value:
+                    loc.fill(original_value)
+
                 # ④ required 마커 확인
                 if required:
                     has_req_attr = loc.get_attribute("required") is not None
@@ -919,8 +1091,7 @@ class UIScanner:
                     else:
                         checks.append("required 마커 확인")
 
-                status = "fail" if failures else "pass"
-                detail = "; ".join(failures) if failures else " + ".join(checks)
+                status, detail = self._status_detail(failures, checks)
                 self._log.debug(f"[text_input] {label!r} → {status}: {detail}")
                 report.results.append(ScanResult(
                     pattern="text_input",
@@ -931,19 +1102,8 @@ class UIScanner:
                     order=order,
                 ))
 
-            except Exception as e:
-                self._log.error(
-                    f"[text_input] {label!r} ({selector}) 예외 발생:\n"
-                    f"{traceback.format_exc()}"
-                )
-                report.results.append(ScanResult(
-                    pattern="text_input",
-                    selector=selector,
-                    label=label,
-                    status="error",
-                    detail=traceback.format_exc(),
-                    order=order,
-                ))
+            except Exception:
+                self._append_error(report, "text_input", selector, label, order)
 
     # ── 태그 입력 스캔 ────────────────────────────────────────────────────────
 
@@ -965,7 +1125,14 @@ class UIScanner:
           ③ 태그 추가 동작 — test_value 입력 후 add_btn 클릭 → container 항목 증가 확인
           ④ 태그 삭제 동작 — remove_btn 클릭 → container 항목 감소 확인
              remove_btn: YAML 명시 우선, 없으면 container 내 자동 탐지
+
+        required_toggle: 탭 접근 전 활성화해야 하는 prerequisite 토글 selector.
+          탭 활성화 실패(경고 다이얼로그) 시 해당 토글을 ON하고 재시도.
+          스캔 완료 후 원래 상태로 복원.
         """
+        # required_toggle 복원 추적: {selector: was_checked}
+        _toggle_restore: dict[str, bool] = {}
+
         for tag in hints.get("tag_input", []):
             tag_id         = tag["id"]
             label          = tag.get("label", tag_id)
@@ -977,6 +1144,7 @@ class UIScanner:
             test_value        = tag.get("test_value", "scan_test")
             unique_test_value = tag.get("unique_test_value")  # 중복 거부 후 실제 추가용 고유값
             remove_btn_sel    = tag.get("remove_btn")  # 명시적 selector (선택)
+            required_toggle   = tag.get("required_toggle")   # 탭 접근 prerequisite 토글
 
             self._log.debug(f"[tag_input] 스캔 시작: {label!r} (id={tag_id})")
             # 탭 전환 필요 시
@@ -985,6 +1153,20 @@ class UIScanner:
             tab_id = tag.get("tab")
             if tab_id:
                 tab_activated = self._activate_tab({"data_tab": tab_id})
+                # 탭 접근 차단 + prerequisite 토글 지정 → 토글 ON 후 재시도
+                if not tab_activated and required_toggle:
+                    req_loc = self.page.locator(required_toggle)
+                    if req_loc.count() > 0:
+                        prev_checked = req_loc.is_checked()
+                        if required_toggle not in _toggle_restore:
+                            _toggle_restore[required_toggle] = prev_checked
+                        if not prev_checked:
+                            self._log.debug(
+                                f"[tag_input] {label!r} → required_toggle ON: {required_toggle}"
+                            )
+                            req_loc.evaluate("el => el.click()")
+                            self.page.wait_for_timeout(300)
+                        tab_activated = self._activate_tab({"data_tab": tab_id})
             self._log.debug(f"[tag_input] {label!r} → tab_activated={tab_activated}")
 
             try:
@@ -1131,8 +1313,7 @@ class UIScanner:
                         else:
                             checks.append("삭제 버튼 미탐지 (삭제 테스트 생략)")
 
-                status = "fail" if failures else "pass"
-                detail = "; ".join(failures) if failures else " + ".join(checks)
+                status, detail = self._status_detail(failures, checks)
                 self._log.debug(f"[tag_input] {label!r} → {status}: {detail}")
                 report.results.append(ScanResult(
                     pattern="tag_input",
@@ -1144,113 +1325,255 @@ class UIScanner:
                     order=order,
                 ))
 
-            except Exception as e:
-                self._log.error(
-                    f"[tag_input] {label!r} (id={tag_id}) 예외 발생:\n"
-                    f"{traceback.format_exc()}"
+            except Exception:
+                self._append_error(report, "tag_input", inp_sel, label, order)
+
+        # required_toggle 원래 상태로 복원
+        for req_sel, was_checked in _toggle_restore.items():
+            try:
+                req_loc = self.page.locator(req_sel)
+                if req_loc.count() > 0 and req_loc.is_checked() != was_checked:
+                    self._log.debug(
+                        f"[tag_input] required_toggle 복원: {req_sel} → {'ON' if was_checked else 'OFF'}"
+                    )
+                    req_loc.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(200)
+            except Exception:
+                self._log.debug(
+                    f"[tag_input] required_toggle 복원 실패 ({req_sel}):\n{traceback.format_exc()}"
                 )
-                report.results.append(ScanResult(
-                    pattern="tag_input",
-                    selector=inp_sel,
-                    label=label,
-                    status="error",
-                    detail=traceback.format_exc(),
-                    order=order,
-                ))
 
     # ── 필수 입력 제출 검증 ───────────────────────────────────────────────────
 
+    _ORDER_REQUIRED_SUBMIT = 9999  # required_submit 항목은 항상 출력 맨 마지막
+
     def _scan_required_submit(self, hints: dict, report: PageScanReport) -> None:
         """
-        submit_add 버튼을 클릭했을 때 필수 필드 미입력 시 경고 모달/메시지가
-        나타나는지 검증한다.
+        필수 입력 미입력 시 제출 검증.
 
-        검증 방법:
-          1. 모달이 빈 상태 (아무 것도 입력 안 함)에서 submit_add 클릭
-          2. Bootstrap 경고 모달(.modal.in) 또는 html5 validation message 확인
-          3. 경고가 나타나면 PASS, 나타나지 않고 닫히면 FAIL
-          4. 검증 후 경고 모달 닫기 (다음 스캔에 영향 없도록)
+        ADD 모달 + required_submit_sequence 정의 → 단계별 순서 검증
+        ADD 모달 + 시퀀스 없음              → 빈 폼 단순 검증 (폴백)
+        EDIT 모달 (submit_modify)           → 필수 필드 비움 → 수정 시도 → 경고 확인 → 복원
 
-        주의: 이 메서드 호출 전 모달이 열려 있어야 하며, 호출 후 모달은 그대로 유지.
+        주의: 호출 전 모달이 열려 있어야 하며, 호출 후 모달은 그대로 유지.
         """
-        submit_sel = (hints.get("modal_actions") or {}).get("submit_add", "")
-        if not submit_sel:
-            return
+        actions    = hints.get("modal_actions") or {}
+        add_sel    = actions.get("submit_add", "")
+        modify_sel = actions.get("submit_modify", "")
 
-        _ORDER_LAST = 9999  # required_submit은 항상 출력 맨 마지막
+        # ng-show 방식: DOM에 두 버튼 모두 존재할 수 있음 → is_visible()로 ADD/EDIT 구분
+        is_add  = bool(add_sel    and self.page.locator(add_sel).is_visible())
+        is_edit = bool(modify_sel and self.page.locator(modify_sel).is_visible()) and not is_add
 
-        submit_loc = self.page.locator(submit_sel)
-        if submit_loc.count() == 0:
+        if not is_add and not is_edit:
             report.results.append(ScanResult(
                 pattern="required_submit",
-                selector=submit_sel,
+                selector=add_sel or modify_sel or "(none)",
                 label="필수 필드 미입력 제출 검증",
                 status="skip",
                 detail="submit 버튼 없음",
-                order=_ORDER_LAST,
+                order=self._ORDER_REQUIRED_SUBMIT,
             ))
             return
 
-        # 첫 번째 탭으로 이동 (정책 이름 필드 있는 탭)
+        # 첫 번째 탭으로 이동 (필수 입력 필드 있는 탭)
         tabs = hints.get("modal_tabs", [])
         if tabs:
             self._activate_tab(tabs[0])
 
+        if is_add and hints.get("required_submit_sequence"):
+            self._run_submit_sequence(hints, report, add_sel)
+        elif is_add:
+            self._run_submit_simple(hints, report, add_sel, mode="등록")
+        else:
+            self._run_submit_edit(hints, report, modify_sel)
+
+    def _run_submit_sequence(
+        self, hints: dict, report: PageScanReport, submit_sel: str
+    ) -> None:
+        """
+        required_submit_sequence YAML 기반 단계별 필수 입력 검증 (ADD 모달 전용).
+
+        각 step에서 fill 필드를 누적으로 채우고 submit 클릭 → 경고 메시지 일치 검증.
+        expected: "success" 인 마지막 step은 실행 생략 (실제 저장은 close_fn 담당).
+        """
+        sequence = hints.get("required_submit_sequence", [])
+        main_modal_sel = hints.get("modal_id", "addItemModal")
+
+        # 필드 조회용 인덱스 {id_or_selector_key → hint_dict}
+        text_idx = {
+            ti["selector"].replace("input#", ""): ti
+            for ti in hints.get("text_inputs", [])
+        }
+        tag_idx = {ti["id"]: ti for ti in hints.get("tag_input", [])}
+
+        filled: set[str] = set()
+
+        for step_def in sequence:
+            step_n   = step_def.get("step", "?")
+            desc     = step_def.get("description", "")
+            fill_ids = step_def.get("fill", [])
+            exp_msg  = step_def.get("expected_msg", "")
+            expected = step_def.get("expected", "")
+            label    = f"필수 입력 Step {step_n} ({desc})"
+
+            # expected: "success" → 실행 생략, 확인 완료 기록만
+            if expected == "success":
+                report.results.append(ScanResult(
+                    pattern="required_submit",
+                    selector=submit_sel,
+                    label=label,
+                    status="pass",
+                    detail=f"필수 필드 확인 완료: {fill_ids} → 저장 성공 (close_fn 담당)",
+                    order=self._ORDER_REQUIRED_SUBMIT,
+                ))
+                continue
+
+            # 누적 필드 채우기
+            for fid in fill_ids:
+                if fid in filled:
+                    continue
+                try:
+                    if fid in text_idx:
+                        ti  = text_idx[fid]
+                        loc = self.page.locator(ti["selector"])
+                        if loc.count() > 0:
+                            loc.fill(ti.get("test_value", "[AUTO]_seq"))
+                            self.page.wait_for_timeout(150)
+                            filled.add(fid)
+                    elif fid in tag_idx:
+                        ti      = tag_idx[fid]
+                        inp_loc = self.page.locator(ti["input"])
+                        btn_loc = self.page.locator(ti["add_btn"])
+                        if inp_loc.count() > 0 and btn_loc.count() > 0:
+                            inp_loc.fill(ti.get("test_value", "scan_test"))
+                            self.page.wait_for_timeout(200)
+                            btn_loc.first.evaluate("el => el.click()")
+                            self.page.wait_for_timeout(400)
+                            filled.add(fid)
+                except Exception:
+                    self._log.debug(
+                        f"[req_seq] 필드 채우기 실패: {fid}\n{traceback.format_exc()}"
+                    )
+
+            # submit 클릭 → 경고 메시지 검증
+            try:
+                self.page.locator(submit_sel).first.evaluate("el => el.click()")
+                self.page.wait_for_timeout(600)
+
+                warn = self.page.locator(self._SEL_WARN_MODAL)
+                actual_msg = ""
+                if warn.count() > 0:
+                    body = warn.locator(".modal-body")
+                    actual_msg = body.inner_text().strip() if body.count() > 0 else ""
+                    self._dismiss_warning_dialog()
+
+                if not actual_msg:
+                    main_open = self.page.locator(f"#{main_modal_sel}.in").count() > 0
+                    status = "fail"
+                    detail = "경고 없이 제출됨 " + ("(모달 유지)" if main_open else "(모달 닫힘)")
+                elif exp_msg and actual_msg != exp_msg:
+                    status = "fail"
+                    detail = f"메시지 불일치 — 실제: '{actual_msg}' / 기대: '{exp_msg}'"
+                else:
+                    status = "pass"
+                    detail = f"경고: '{actual_msg}'"
+
+                report.results.append(ScanResult(
+                    pattern="required_submit",
+                    selector=submit_sel,
+                    label=label,
+                    status=status,
+                    detail=detail,
+                    order=self._ORDER_REQUIRED_SUBMIT,
+                ))
+
+            except Exception:
+                self._append_error(
+                    report, "required_submit", submit_sel, label, self._ORDER_REQUIRED_SUBMIT,
+                )
+
+    def _run_submit_simple(
+        self, hints: dict, report: PageScanReport, submit_sel: str, mode: str
+    ) -> None:
+        """ADD 모달 단순 검증 — 빈 폼으로 submit 클릭 후 경고 여부 확인 (시퀀스 미정의 폴백)."""
+        main_modal_sel = hints.get("modal_id", "addItemModal")
         try:
-            # 제출 버튼 클릭 (JS 직접 — 오버레이 우회)
-            submit_loc.first.evaluate("el => el.click()")
+            self.page.locator(submit_sel).first.evaluate("el => el.click()")
             self.page.wait_for_timeout(600)
-
-            # 경고 모달 감지 — #__globalMessageModal.in (앱 공통 경고 다이얼로그)
-            # 주의: .modal.in button 전체 탐색은 addItemModal의 닫기 버튼까지 포함됨
-            main_modal_sel  = hints.get("modal_id", "addItemModal")
-            warning_appeared = self._dismiss_warning_dialog()  # 감지 + 자동 닫기
-
-            # 모달이 여전히 열려있는지 확인 (닫힌 경우 = 실제 제출됨 = FAIL)
-            main_still_open = self.page.locator(f"#{main_modal_sel}.in").count() > 0
+            warning_appeared = self._dismiss_warning_dialog()
+            main_still_open  = self.page.locator(f"#{main_modal_sel}.in").count() > 0
 
             if not main_still_open:
-                # 경고 없이 제출됨 → FAIL (검증 기능 없음)
-                report.results.append(ScanResult(
-                    pattern="required_submit",
-                    selector=submit_sel,
-                    label="필수 필드 미입력 제출 검증",
-                    status="fail",
-                    detail="빈 채로 제출 시 경고 없이 모달이 닫힘",
-                    order=_ORDER_LAST,
-                ))
+                status, detail = "fail", f"빈 채로 {mode} 시 경고 없이 모달이 닫힘"
             elif warning_appeared:
-                report.results.append(ScanResult(
-                    pattern="required_submit",
-                    selector=submit_sel,
-                    label="필수 필드 미입력 제출 검증",
-                    status="pass",
-                    detail="빈 채로 제출 시 경고 모달 정상 출력",
-                    order=_ORDER_LAST,
-                ))
+                status, detail = "pass", f"빈 채로 {mode} 시 경고 모달 정상 출력"
             else:
-                # 경고 모달 없이 모달 열림 유지 = html5 validation 또는 다른 방식
-                report.results.append(ScanResult(
-                    pattern="required_submit",
-                    selector=submit_sel,
-                    label="필수 필드 미입력 제출 검증",
-                    status="pass",
-                    detail="빈 채로 제출 시 모달 닫히지 않음 (필드 검증 동작)",
-                    order=_ORDER_LAST,
-                ))
+                status, detail = "pass", f"빈 채로 {mode} 시 모달 닫히지 않음 (필드 검증 동작)"
 
-        except Exception as e:
-            self._log.error(
-                f"[required_submit] 예외 발생:\n{traceback.format_exc()}"
-            )
             report.results.append(ScanResult(
-                pattern="required_submit",
-                selector=submit_sel,
-                label="필수 필드 미입력 제출 검증",
-                status="error",
-                detail=traceback.format_exc(),
-                order=_ORDER_LAST,
+                pattern="required_submit", selector=submit_sel,
+                label=f"필수 필드 미입력 {mode} 검증",
+                status=status, detail=detail, order=self._ORDER_REQUIRED_SUBMIT,
             ))
+        except Exception:
+            self._append_error(
+                report, "required_submit", submit_sel,
+                f"필수 필드 미입력 {mode} 검증", self._ORDER_REQUIRED_SUBMIT,
+            )
+
+    def _run_submit_edit(
+        self, hints: dict, report: PageScanReport, submit_sel: str
+    ) -> None:
+        """EDIT 모달 검증 — 필수 text_input 비움 → 수정 시도 → 경고 확인 → 값 복원."""
+        main_modal_sel     = hints.get("modal_id", "addItemModal")
+        required_input_sel = ""
+        original_value     = ""
+
+        for ti in hints.get("text_inputs", []):
+            if ti.get("required") and self.page.locator(ti["selector"]).count() > 0:
+                required_input_sel = ti["selector"]
+                break
+
+        if required_input_sel:
+            req_loc        = self.page.locator(required_input_sel)
+            original_value = req_loc.input_value()
+            req_loc.fill("")
+            self.page.wait_for_timeout(200)
+
+        try:
+            self.page.locator(submit_sel).first.evaluate("el => el.click()")
+            self.page.wait_for_timeout(600)
+            warning_appeared = self._dismiss_warning_dialog()
+            main_still_open  = self.page.locator(f"#{main_modal_sel}.in").count() > 0
+
+            if not main_still_open:
+                status, detail = "fail", "필수 필드 비운 채 수정 시 경고 없이 모달이 닫힘"
+            elif warning_appeared:
+                status, detail = "pass", "필수 필드 비운 채 수정 시 경고 모달 정상 출력"
+            else:
+                status, detail = "pass", "필수 필드 비운 채 수정 시 모달 닫히지 않음 (필드 검증 동작)"
+
+            report.results.append(ScanResult(
+                pattern="required_submit", selector=submit_sel,
+                label="필수 필드 미입력 수정 검증",
+                status=status, detail=detail, order=self._ORDER_REQUIRED_SUBMIT,
+            ))
+        except Exception:
+            self._append_error(
+                report, "required_submit", submit_sel,
+                "필수 필드 미입력 수정 검증", self._ORDER_REQUIRED_SUBMIT,
+            )
+        finally:
+            if required_input_sel:
+                try:
+                    loc = self.page.locator(required_input_sel)
+                    if loc.count() > 0:
+                        loc.fill(original_value)
+                except Exception:
+                    self._log.debug(
+                        f"[required_submit] EDIT 복원 실패:\n{traceback.format_exc()}"
+                    )
 
     # ── 자동 탐지 종속 필드 매핑 ──────────────────────────────────────────────
 
