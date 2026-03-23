@@ -974,8 +974,9 @@ class UIScanner:
             cont_sel       = tag["container"]
             required       = tag.get("required", False)
             order          = tag.get("order")
-            test_value     = tag.get("test_value", "scan_test")
-            remove_btn_sel = tag.get("remove_btn")  # 명시적 selector (선택)
+            test_value        = tag.get("test_value", "scan_test")
+            unique_test_value = tag.get("unique_test_value")  # 중복 거부 후 실제 추가용 고유값
+            remove_btn_sel    = tag.get("remove_btn")  # 명시적 selector (선택)
 
             self._log.debug(f"[tag_input] 스캔 시작: {label!r} (id={tag_id})")
             # 탭 전환 필요 시
@@ -1044,6 +1045,8 @@ class UIScanner:
                         "el => el.querySelectorAll(':scope > *').length"
                     )
                     self._log.debug(f"[tag_input] {label!r} → initial_count={initial_count}")
+
+                    # ③-1차: test_value 추가 시도
                     self._log.debug(f"[tag_input] {label!r} → fill({test_value!r}) → {inp_sel}")
                     inp_loc.fill(test_value)
                     self.page.wait_for_timeout(200)
@@ -1051,19 +1054,54 @@ class UIScanner:
                     btn_loc.first.evaluate("el => el.click()")
                     self.page.wait_for_timeout(400)
 
-                    after_add_count = cont_loc.evaluate(
+                    after_first = cont_loc.evaluate(
                         "el => el.querySelectorAll(':scope > *').length"
                     )
-                    self._log.debug(f"[tag_input] {label!r} → after_add_count={after_add_count}")
-                    if after_add_count <= initial_count:
+                    self._log.debug(f"[tag_input] {label!r} → after_first={after_first}")
+
+                    tag_was_added = False
+
+                    if after_first > initial_count:
+                        # 추가 성공 (ADD 모달 정상 케이스, 또는 EDIT에서 중복 아닌 경우)
+                        checks.append("태그 추가 동작 확인")
+                        tag_was_added = True
+
+                    elif unique_test_value:
+                        # 추가 거부 → 중복 검사 확인 후 unique_test_value로 2차 시도
+                        checks.append(f"중복 입력 거부 확인 ({test_value!r})")
+                        self._log.debug(
+                            f"[tag_input] {label!r} → 2차 시도: "
+                            f"unique_test_value={unique_test_value!r}"
+                        )
+                        inp_loc.fill(unique_test_value)
+                        self.page.wait_for_timeout(200)
+                        btn_loc.first.evaluate("el => el.click()")
+                        self.page.wait_for_timeout(400)
+
+                        after_second = cont_loc.evaluate(
+                            "el => el.querySelectorAll(':scope > *').length"
+                        )
+                        self._log.debug(
+                            f"[tag_input] {label!r} → after_second={after_second}"
+                        )
+                        if after_second > after_first:
+                            checks.append("태그 추가 동작 확인")
+                            tag_was_added = True
+                        else:
+                            failures.append(
+                                f"태그 추가 동작 실패 (추가 전: {after_first},"
+                                f" 추가 후: {after_second})"
+                            )
+
+                    else:
+                        # unique_test_value 없이 추가 거부 → 실패
                         failures.append(
                             f"태그 추가 동작 실패 (추가 전: {initial_count},"
-                            f" 추가 후: {after_add_count})"
+                            f" 추가 후: {after_first})"
                         )
-                    else:
-                        checks.append("태그 추가 동작 확인")
 
-                        # ④ 태그 삭제 동작 테스트
+                    # ④ 태그 삭제 동작 테스트 (태그가 실제로 추가된 경우에만)
+                    if tag_was_added:
                         # remove_btn 미명시 시 자동 탐지
                         if not remove_btn_sel:
                             for pat in self._REMOVE_BTN_PATTERNS:

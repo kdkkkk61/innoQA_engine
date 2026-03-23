@@ -63,15 +63,18 @@ text_inputs:
 # remove_btn: 생략 시 컨테이너 내 자동 탐지 (공통 삭제 버튼 패턴으로 시도)
 # ──────────────────────────────────────────────────────────────────────────────
 tag_input:
-  - id:         "extension_input"
-    label:      "보호할 확장자"
-    input:      "input#protectExtension"
-    add_btn:    "button#extensionAttachBtn"
-    container:  "div#protectExtensionList"
-    tab:        "ransomCruncherDetectPolicyInfo"
-    required:   true                           # dt에 빨간 별표(*) 마커 존재
-    test_value: "txt"                          # 확장자 형식 테스트값
-    order:      20                             # 정책 이름 바로 아래
+  - id:               "extension_input"
+    label:            "보호할 확장자"
+    input:            "input#protectExtension"
+    add_btn:          "button#extensionAttachBtn"
+    container:        "div#protectExtensionList"
+    tab:              "ransomCruncherDetectPolicyInfo"
+    required:         true                     # dt에 빨간 별표(*) 마커 존재
+    test_value:       "txt"                    # 중복 입력 거부 테스트값
+                                               # (EDIT 모달: 정책 생성 시 이미 포함됨)
+    unique_test_value: "scan_ext"              # 실제 추가 동작 테스트용 고유값
+                                               # (ADD 모달: test_value 추가 성공 시 사용 안 함)
+    order:            20                       # 정책 이름 바로 아래
 
   # 예외처리 탭 항목 — order 200번대 (탭 2 영역)
   - id:         "except_file_path"
