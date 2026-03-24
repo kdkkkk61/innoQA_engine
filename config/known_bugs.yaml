@@ -20,3 +20,11 @@
   reported_date: "2026-03-12"
   ticket:        ""
   page_id:       "ransom_detect_policy"
+
+- selector:      "button[modify-btn]"
+  pattern:       "required_submit"
+  test_name:     "edit_required_submit"
+  reason:        "RDP 정책 수정 모달은 정책 이름을 비워도 저장 가능 (EDIT 모달에서 required 필드 검증 없음)"
+  reported_date: "2026-03-25"
+  ticket:        ""
+  page_id:       "rdp_policy"

@@ -1,0 +1,139 @@
+# rdp_policy 페이지 스캔 힌트
+# DOM 검증 완료 (2026-03-25) — Chrome Claude 직접 확인
+# RansomCruncher > RDP 정책 (managerRansomCruncherRdpPolicy)
+#
+# [구조 특이사항]
+# - 단일 탭 모달 (탭 없음, modal_tabs=[])
+# - 모달 컨테이너: div#addItemModal.modal-wrap.in (RansomDetect의 modal.in과 클래스명 다름)
+# - AngularJS ng-show 방식 — 모든 필드가 DOM에 항상 존재
+# - 연결설정은 2단계 라디오 그룹 구조:
+#     isConnect (연결 자단/연결 허용) → isAlwaysConnect (항상 연결/연결 시간 설정)
+# - 요일 체크박스(일~토)는 연결 시간 설정 선택 시 활성화되나 DOM엔 항상 존재
+#
+# [검증값 출처]
+# - default: ADD 모달 최초 열림 상태 Chrome MCP 직접 확인 (2026-03-25)
+# - id/maxlength: outerHTML 직접 추출로 확인
+#
+# [required_submit]
+# - 정책 이름만 필수 (step 1→2 저장 성공)
+# - 연결설정 미선택 상태로도 저장 가능 (연결 상태: 제한, 적용시간: 00:00~00:00)
+
+page_id: "rdp_policy"
+modal_id: "addItemModal"
+
+modal_trigger:
+  add:    "button#addItemBtn"
+  modify: "button#modifyItemBtn"
+
+# 탭 없음 — 단일 폼 구조
+modal_tabs: []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 필수 입력 순서 검증 (ADD 모달 전용)
+# ──────────────────────────────────────────────────────────────────────────────
+required_submit_sequence:
+  - step:         1
+    description:  "아무것도 입력 안 함"
+    fill:         []
+    expected_msg: "정책 이름을 입력해 주세요."
+
+  - step:         2
+    description:  "정책 이름만 입력"
+    fill:         ["rcRdpPolicyName"]
+    expected:     "success"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 텍스트 입력
+# ──────────────────────────────────────────────────────────────────────────────
+text_inputs:
+  - selector:   "input#rcRdpPolicyName"
+    label:      "정책 이름"
+    maxlength:  null    # DOM maxlength 속성 없음 (Chrome MCP 확인)
+    required:   true    # 앱 검증 기준 (DOM required 속성 없음)
+    test_value: "[AUTO]_seq"
+    order:      10
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 라디오 버튼 그룹
+#
+# [그룹 1] isConnect — 연결 허용 여부
+#   default: null — ADD 모달 최초 열림 시 아무것도 선택 안 됨
+#
+# [그룹 2] isAlwaysConnect — 연결 시간 제한 여부
+#   default: null — 마찬가지로 초기 미선택
+#   isAllowConnect 라디오 선택 후에 활성화되는 그룹이나
+#   DOM에는 항상 존재하므로 독립 스캔 가능
+# ──────────────────────────────────────────────────────────────────────────────
+radio_groups:
+  - name:    "isConnect"
+    label:   "연결 설정"
+    default: null
+    order:   20
+    options:
+      - selector: "input#isDenyConnect"
+        value:    "false"
+        label:    "연결 자단"
+      - selector: "input#isAllowConnect"
+        value:    "true"
+        label:    "연결 허용"
+
+  - name:    "isAlwaysConnect"
+    label:   "연결 시간 제한"
+    default: null
+    order:   30
+    options:
+      - selector: "input#isAllowAlwaysConnect"
+        value:    "true"
+        label:    "항상 연결"
+      - selector: "input#isDenyAlwaysConnect"
+        value:    "false"
+        label:    "연결 시간 설정"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 일반 체크박스 — 적용 요일 (일~토)
+# default: false — ADD 모달 최초 열림 시 전체 미선택 (Chrome MCP 확인)
+# isAlwaysConnect=false 선택 시 활성화되나 DOM엔 항상 존재
+# ──────────────────────────────────────────────────────────────────────────────
+plain_checkboxes:
+  - selector: "input#sunday"
+    label:    "적용 요일 - 일"
+    default:  false
+    order:    40
+
+  - selector: "input#monday"
+    label:    "적용 요일 - 월"
+    default:  false
+    order:    41
+
+  - selector: "input#tuesday"
+    label:    "적용 요일 - 화"
+    default:  false
+    order:    42
+
+  - selector: "input#wednesday"
+    label:    "적용 요일 - 수"
+    default:  false
+    order:    43
+
+  - selector: "input#thursday"
+    label:    "적용 요일 - 목"
+    default:  false
+    order:    44
+
+  - selector: "input#friday"
+    label:    "적용 요일 - 금"
+    default:  false
+    order:    45
+
+  - selector: "input#saturday"
+    label:    "적용 요일 - 토"
+    default:  false
+    order:    46
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 모달 액션 버튼
+# ──────────────────────────────────────────────────────────────────────────────
+modal_actions:
+  submit_add:    "button[add-btn]"
+  submit_modify: "button[modify-btn]"
+  close:         "button[data-dismiss='modal']"

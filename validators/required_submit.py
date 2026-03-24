@@ -204,7 +204,11 @@ def _run_submit_edit(
         main_still_open  = ctx.page.locator(f"#{main_modal_sel}.in").count() > 0
 
         if not main_still_open:
-            status, detail = "fail", "필수 필드 비운 채 수정 시 경고 없이 모달이 닫힘"
+            if ctx.is_known_bug(submit_sel, "edit_required_submit"):
+                status = "known_bug"
+                detail = "알려진 동작: EDIT 모달에서 필수 필드 비워도 저장됨"
+            else:
+                status, detail = "fail", "필수 필드 비운 채 수정 시 경고 없이 모달이 닫힘"
         elif warning_appeared:
             status, detail = "pass", "필수 필드 비운 채 수정 시 경고 모달 정상 출력"
         else:
