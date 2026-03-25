@@ -65,10 +65,11 @@ text_inputs:
 #   DOM에는 항상 존재하므로 독립 스캔 가능
 # ──────────────────────────────────────────────────────────────────────────────
 radio_groups:
-  - name:    "isConnect"
-    label:   "연결 설정"
-    default: null
-    order:   20
+  - name:            "isConnect"
+    label:           "연결 설정"
+    default:         null
+    require_default: true   # 이진 선택(차단/허용) — 기본값 없으면 휴먼에러 유발
+    order:           20
     options:
       - selector: "input#isDenyConnect"
         value:    "false"
@@ -76,11 +77,29 @@ radio_groups:
       - selector: "input#isAllowConnect"
         value:    "true"
         label:    "연결 허용"
+    # 연결 허용 선택 시 활성화, 연결 자단 선택 시 비활성화(disabled)되는 종속 필드
+    dependent_fields:
+      - selector:      "input#isAllowAlwaysConnect"
+        label:         "항상 연결 라디오"
+        active_option: "input#isAllowConnect"
+      - selector:      "input#isDenyAlwaysConnect"
+        label:         "연결 시간 설정 라디오"
+        active_option: "input#isAllowConnect"
+      - selector:      "input#connectPort"
+        label:         "연결 포트"
+        active_option: "input#isAllowConnect"
+      - selector:      "input#accessLimitCount"
+        label:         "접근 제한 횟수"
+        active_option: "input#isAllowConnect"
+      - selector:      "input#accessLimitIdleMinute"
+        label:         "유휴 시간 제한"
+        active_option: "input#isAllowConnect"
 
-  - name:    "isAlwaysConnect"
-    label:   "연결 시간 제한"
-    default: null
-    order:   30
+  - name:            "isAlwaysConnect"
+    label:           "연결 시간 제한"
+    default:         null
+    require_default: true   # 이진 선택(항상연결/시간설정) — 기본값 없으면 휴먼에러 유발
+    order:           30
     options:
       - selector: "input#isAllowAlwaysConnect"
         value:    "true"
@@ -88,6 +107,29 @@ radio_groups:
       - selector: "input#isDenyAlwaysConnect"
         value:    "false"
         label:    "연결 시간 설정"
+    # 연결 시간 설정 선택 시 활성화, 항상 연결 선택 시 비활성화되는 종속 필드 (적용 요일)
+    dependent_fields:
+      - selector:      "input#sunday"
+        label:         "적용 요일 - 일"
+        active_option: "input#isDenyAlwaysConnect"
+      - selector:      "input#monday"
+        label:         "적용 요일 - 월"
+        active_option: "input#isDenyAlwaysConnect"
+      - selector:      "input#tuesday"
+        label:         "적용 요일 - 화"
+        active_option: "input#isDenyAlwaysConnect"
+      - selector:      "input#wednesday"
+        label:         "적용 요일 - 수"
+        active_option: "input#isDenyAlwaysConnect"
+      - selector:      "input#thursday"
+        label:         "적용 요일 - 목"
+        active_option: "input#isDenyAlwaysConnect"
+      - selector:      "input#friday"
+        label:         "적용 요일 - 금"
+        active_option: "input#isDenyAlwaysConnect"
+      - selector:      "input#saturday"
+        label:         "적용 요일 - 토"
+        active_option: "input#isDenyAlwaysConnect"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 일반 체크박스 — 적용 요일 (일~토)

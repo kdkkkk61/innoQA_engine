@@ -10,10 +10,11 @@
 
 | 항목 | 상태 |
 |------|------|
-| 마지막 작업 세션 | 세션 4 (2026-03-24) |
+| 마지막 작업 세션 | 세션 5 (2026-03-25) |
 | 현재 브랜치 | main |
-| 아키텍처 결정 | Option C 확정 — validators/ 분리 완료 |
-| 다음 작업 | P0: `pytest tests/test_ui_scan.py -v -s --tb=long` 실행 → 오류 확인 |
+| 아키텍처 결정 | Option C 확정 + 시나리오 기반 QA 방향 확정 |
+| 전체 테스트 | 4 passed (test_ui_scan 2 + test_rdp_policy_scan 2) |
+| 다음 작업 | Phase 구조 설계 → UIScanner 멀티 페이즈 확장 |
 
 ---
 
@@ -36,6 +37,13 @@
 - [x] `test_policy_name_validation` — 빈값/maxlength/중복 에러 모달
 - [x] `test_extension_validation` — 확장자 태그 추가/중복/에러 모달
 - [x] `test_toggle_activation` — 토글 ON/OFF → 종속 필드 활성화 검증
+
+### RDP 정책 스캔 추가 (2026-03-25)
+- [x] `pages/rdp_policy_page.py` — RdpPolicyPage 클래스 (Chrome MCP DOM 확인 완료)
+- [x] `config/scan_hints/rdp_policy.yaml` — dependent_fields + require_default 포함
+- [x] `tests/test_rdp_policy_scan.py` — ADD/EDIT 스캔 2 passed
+- [x] `validators/radio_group.py` 확장 — dependent_fields, require_default 지원
+- [x] `config/known_bugs.yaml` — 3건 추가 (RDP EDIT 필수검증, isConnect/isAlwaysConnect 초기값)
 
 ### UIScanner 기반 스캔 시스템 (Option C 리팩토링 완료 — 2026-03-24)
 - [x] `core/models.py` — ScanResult, PageScanReport 데이터 클래스 (신규 분리)
@@ -70,33 +78,30 @@
 
 ## 미완료 작업
 
-### P0 — 즉시 (오류 수정) ← 앱 실행 필요
-- [ ] `pytest tests/test_ui_scan.py -v -s --tb=long` 실행 → 실제 오류 스택 확인
-- [ ] 오류 원인 파악 (의심 원인 → `log3.md` 참조)
-- [ ] 수정 후 테스트 통과 확인
-- [ ] `core/scanner.py` 삭제 (사용 안 됨 — ui_scanner.py에 통합됨)
+### P0 — 즉시 (Phase 기반 스캔 아키텍처)
+- [ ] `core/ui_scanner.py` — `scan(phase=1|2|3)` 멀티 페이즈 지원
+- [ ] `config/scan_hints/*.yaml` — 각 항목에 `phase: 1|2` 태그 추가
+- [ ] `tests/test_rdp_policy_scan.py` — 3 Phase 호출 구조로 리팩토링
+- [ ] `validators/initial_state.py` — Phase 1 전용 초기값 스냅샷 (모달 열리자마자 실행)
+- [ ] 탐지정책도 동일 Phase 구조로 전환
 
-### P1 — 다음 (EDIT 모달 지원)
-- [ ] EDIT 모달 스캔 추가 (`ui_scanner.py` 확장)
-  - [ ] `[AUTO]` 정책 1개 생성 → 수정 모달 오픈
-  - [ ] 예외처리 탭 `tab_activated=True` 확인 (EDIT 모달에서만 가능)
-  - [ ] 기존 값 기록 → 수정 → 검증 → 원복 로직
-- [ ] YAML `default:` 주석 처리된 항목 주석 해제 (Chrome MCP 재확인 후)
-  ```
-  # 확인 대상:
-  # - 라디오 default: null (현재 주석 해제 완료)
-  # - 6개 토글 default: false (현재 주석 해제 완료)
-  ```
+### P1 — 다음 (UX 감지 패턴 확장)
+- [ ] HE-05: `tab_access_restriction` validator
+  - ADD 모달에서 접근 불가 탭 → `known_bug` 또는 `ux_issue`로 리포트
+  - 탐지정책 예외처리 탭 케이스 적용
+  - YAML: 탭 정의에 `accessible_in: ["edit"]` 플래그 추가
+- [ ] Phase 2: 중복이름 검증 validator (`validators/duplicate_name.py`)
+- [ ] Phase별 리포트 섹션 헤더 표시
 
 ### P2 — 이후 (리포트 강화)
-- [ ] 스크린샷 자동 첨부 (pass/fail 모두)
-- [ ] `reports/generators/xlsx_report.py` — 심각도별 시트
+- [ ] 스크린샷 자동 첨부 (fail 시)
+- [ ] `reports/generators/xlsx_report.py` — Phase별 / 심각도별 시트
 - [ ] `reports/generators/json_export.py` — CI/CD용
 
 ### P3 — 장기 (범위 확장)
 - [ ] 다른 정책 페이지 scan_hints YAML 추가
 - [ ] XSS/SQLi 입력 테스트 (`common_validations.yaml`)
-- [ ] `validators/` 레이어 구현 (ui_scan_requirements.md Phase 1~5)
+- [ ] `core/scanner.py` 삭제 (사용 안 됨 — 잔재 파일)
 
 ---
 
