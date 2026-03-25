@@ -349,3 +349,35 @@ class RdpPolicyPage(BasePage):
         self.click_attached(self.SEL_CONFIRM_BTN)
         self.wait_for_modal_closed()
         raise Exception(f"예상치 못한 모달 발생: {msg!r}")
+
+    # ------------------------------------------------------------------
+    # Universal Scanner 표준 인터페이스 구현
+    # ------------------------------------------------------------------
+
+    # AUTO_NAME_PREFIX: 이름 길이 일관성 (10자 → _p1/_p2 추가 시 최대 13자)
+    AUTO_NAME_PREFIX = "[AUTO]_rdp"
+
+    def save_policy(self, name: str) -> None:
+        """Phase 1/2 완료 후 정책 저장 (이름만 필수)."""
+        self.fill(self.SEL_POLICY_NAME, name)
+        self.click_attached(self.SEL_REGISTER_BTN)
+        self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).wait_for(
+            state="attached", timeout=self._TIMEOUT_MODAL
+        )
+        self.click_attached(self.SEL_CONFIRM_BTN)
+        self.wait_for_modal_closed()
+        self.wait_for(self.SEL_ADD_BTN)
+
+    def close_edit_modal(self) -> None:
+        """Phase 3 EDIT 모달 닫기 — 조건부 (already closed 대응)."""
+        try:
+            if self.page.locator(self.SEL_ADD_MODAL).count() > 0:
+                self.close_modal()
+            else:
+                self.wait_for(self.SEL_ADD_BTN)
+        except Exception:
+            pass
+
+    def get_verify_values(self, saved_name: str) -> dict:
+        """Phase 3: EDIT 모달 로드 후 정책 이름 필드 값 확인."""
+        return {"input#rcRdpPolicyName": saved_name}

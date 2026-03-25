@@ -638,3 +638,39 @@ class RansomDetectPolicyPage(BasePage):
         self.click_attached(self.SEL_CONFIRM_BTN)
         self.wait_for_modal_closed()
         raise Exception(f"예상치 못한 모달 발생: {msg!r}")
+
+    # ------------------------------------------------------------------
+    # Universal Scanner 표준 인터페이스 구현
+    # ------------------------------------------------------------------
+
+    # AUTO_NAME_PREFIX: maxlength=20 제약 대응 (10자 → _p1/_p2 추가 시 최대 13자)
+    AUTO_NAME_PREFIX = "[AUTO]_det"
+
+    def save_policy(self, name: str) -> None:
+        """Phase 1/2 완료 후 정책 저장 (이름 + 확장자 필수)."""
+        self.fill(self.SEL_POLICY_NAME, name)
+        if self.page.locator("i.extentionDeleteBtn").count() == 0:
+            self.fill(self.SEL_EXTENSION_INPUT, "txt")
+            self.click(self.SEL_EXTENSION_ADD_BTN)
+            self.page.wait_for_timeout(300)
+        self.click(self.SEL_REGISTER_BTN)
+        self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).wait_for(
+            state="attached", timeout=self._TIMEOUT_MODAL
+        )
+        self.click_attached(self.SEL_CONFIRM_BTN)
+        self.wait_for_modal_closed()
+        self.wait_for(self.SEL_ADD_BTN)
+
+    def close_edit_modal(self) -> None:
+        """Phase 3 EDIT 모달 닫기 — known_bug로 이미 닫혔을 수 있으므로 조건부."""
+        try:
+            if self.page.locator(self.SEL_ADD_MODAL).count() > 0:
+                self.close_modal()
+            else:
+                self.wait_for(self.SEL_ADD_BTN)
+        except Exception:
+            pass
+
+    def get_verify_values(self, saved_name: str) -> dict:
+        """Phase 3: EDIT 모달 로드 후 정책 이름 필드 값 확인."""
+        return {"input#rcDetectPolicyName": saved_name}

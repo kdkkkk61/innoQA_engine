@@ -114,3 +114,36 @@ class BasePage:
             self.take_screenshot(f"error_{action.replace(':', '_')}")
         except Exception:
             pass
+
+    # ------------------------------------------------------------------
+    # Universal Scanner 표준 인터페이스
+    # 서브클래스에서 구현 — qa_runner.py가 호출
+    # ------------------------------------------------------------------
+
+    def save_policy(self, name: str) -> None:
+        """
+        Phase 1/2 완료 후 정책 저장.
+        서브클래스에서 반드시 override — 미구현 시 NotImplementedError.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__}.save_policy() 미구현. "
+            "pages/base_page.py Universal Scanner 표준 인터페이스 주석 참고."
+        )
+
+    def close_edit_modal(self) -> None:
+        """
+        Phase 3 EDIT 모달 닫기.
+        서브클래스에서 override. 기본: pass (아무것도 하지 않음).
+        SEL_ADD_MODAL, SEL_ADD_BTN 등은 서브클래스에만 있으므로 BasePage에서 구현 불가.
+        """
+        pass
+
+    def get_verify_values(self, saved_name: str) -> dict:
+        """
+        Phase 3 로드값 검증용 dict 반환.
+        기본: 빈 dict (검증 생략).
+        서브클래스에서 override 시 EDIT 모달 로드 후 필드값 일치 확인.
+        반환 형식: {"selector": "기대값", ...}
+        예: {"input#rcRdpPolicyName": saved_name}
+        """
+        return {}
