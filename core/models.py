@@ -17,7 +17,8 @@ class ScanResult:
 
     Attributes:
         pattern  : "initial_state" | "toggle_checkbox" | "plain_checkbox" | "radio_group" |
-                   "text_input" | "tag_input" | "required_submit" | "auto_detect" | "modal_open"
+                   "text_input" | "tag_input" | "required_submit" | "button_action" |
+                   "auto_detect" | "modal_open"
         selector : CSS selector 문자열
         label    : 사람이 읽을 수 있는 설명
         status   : "pass" | "fail" | "skip" | "known_bug" | "error"

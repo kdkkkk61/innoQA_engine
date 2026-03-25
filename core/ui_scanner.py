@@ -41,6 +41,7 @@ from validators.radio_group     import scan_radio_groups
 from validators.text_input      import scan_text_inputs
 from validators.tag_input       import scan_tag_inputs
 from validators.required_submit import scan_required_submit
+from validators.button_action   import scan_button_actions
 
 
 class UIScanner:
@@ -175,9 +176,9 @@ class UIScanner:
         if original_tab:
             ctx.activate_tab(original_tab)
 
-        run_initial = phase in (0, 1)     # 초기값 스냅샷 (터치 전 필수)
-        run_ui      = phase in (0, 2)     # UI 요소 동작 검증
-        run_submit  = phase in (0, 1, 3)  # 필수입력 검증 (ADD=1, EDIT=3, 전체=0)
+        run_initial = phase in (0, 1)        # 초기값 스냅샷 (터치 전 필수, ADD만)
+        run_ui      = phase in (0, 2, 3)     # UI 요소 동작 검증 (ADD + EDIT)
+        run_submit  = phase in (0, 1, 3)     # 필수입력 검증 (ADD=1, EDIT=3, 전체=0)
 
         if run_initial:
             scan_initial_state(ctx, hints, report)
@@ -188,6 +189,7 @@ class UIScanner:
             scan_radio_groups(ctx, hints, report)
             scan_text_inputs(ctx, hints, report)
             scan_tag_inputs(ctx, hints, report)
+            scan_button_actions(ctx, hints, report)
 
         if run_submit:
             scan_required_submit(ctx, hints, report)

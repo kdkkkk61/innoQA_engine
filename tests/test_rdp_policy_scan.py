@@ -49,8 +49,9 @@ _PATTERN_FALLBACK = {
     "toggle_checkbox": 4,
     "plain_checkbox":  5,
     "tag_input":       6,
-    "required_submit": 7,
-    "auto_detect":     8,
+    "button_action":   7,
+    "required_submit": 8,
+    "auto_detect":     9,
 }
 
 

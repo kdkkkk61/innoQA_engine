@@ -127,20 +127,33 @@ def pytest_configure(config):
     except AttributeError:
         pass
 
-    sys.stderr.write("\n" + "=" * 50 + "\n")
-    sys.stderr.write("  매니저 로그인 계정을 입력하세요\n")
-    sys.stderr.write("=" * 50 + "\n")
-    sys.stderr.flush()
+    # 환경변수 폴백: TEST_ID / TEST_PW 설정 시 프롬프트 스킵
+    # 예) set TEST_ID=admin && set TEST_PW=yourpassword
+    # EXE 전환 시: 이 블록을 GUI 로그인 팝업으로 교체하면 됨
+    env_id = os.environ.get("TEST_ID", "").strip()
+    env_pw = os.environ.get("TEST_PW", "").strip()
 
-    # getpass는 콘솔 TTY를 직접 읽으므로 pytest의 stdin 캡처에 영향받지 않는다.
-    # 입력 후 입력값을 한 번 출력해 사용자가 확인할 수 있게 한다.
-    username = getpass.getpass("ID [admin]: ", stream=sys.stderr) or "admin"
-    sys.stderr.write(f"  → {username}\n")
-    sys.stderr.flush()
+    if env_id and env_pw:
+        username = env_id or "admin"
+        password = env_pw
+        sys.stderr.write("\n" + "=" * 50 + "\n")
+        sys.stderr.write(f"  환경변수 계정 사용: {username}\n")
+        sys.stderr.write("=" * 50 + "\n\n")
+        sys.stderr.flush()
+    else:
+        sys.stderr.write("\n" + "=" * 50 + "\n")
+        sys.stderr.write("  매니저 로그인 계정을 입력하세요\n")
+        sys.stderr.write("=" * 50 + "\n")
+        sys.stderr.flush()
 
-    password = getpass.getpass("Password: ", stream=sys.stderr)
+        # getpass는 콘솔 TTY를 직접 읽으므로 pytest의 stdin 캡처에 영향받지 않는다.
+        username = getpass.getpass("ID [admin]: ", stream=sys.stderr) or "admin"
+        sys.stderr.write(f"  → {username}\n")
+        sys.stderr.flush()
 
-    sys.stderr.write("=" * 50 + "\n\n")
+        password = getpass.getpass("Password: ", stream=sys.stderr)
+
+        sys.stderr.write("=" * 50 + "\n\n")
 
     _credentials["admin"]   = {"username": username, "password": password}
     _credentials["invalid"] = {"username": "wrong_user", "password": "wrong_pass"}
