@@ -34,6 +34,7 @@ from core.models import ScanResult, PageScanReport  # noqa: F401
 from core.scan_context import ScanContext
 
 # ── validators import
+from validators.initial_state   import scan_initial_state
 from validators.toggle_checkbox import scan_toggle_checkboxes
 from validators.plain_checkbox  import scan_plain_checkboxes
 from validators.radio_group     import scan_radio_groups
@@ -77,15 +78,21 @@ class UIScanner:
         page_id: str,
         modal_open_fn:  Optional[Callable] = None,
         modal_close_fn: Optional[Callable] = None,
+        phase: int = 0,
     ) -> PageScanReport:
         """
-        page_id에 해당하는 scan_hints를 로드하고 전체 패턴을 검사한다.
+        page_id에 해당하는 scan_hints를 로드하고 해당 phase의 패턴을 검사한다.
 
         Args:
             page_id:        config/scan_hints/{page_id}.yaml 식별자
             modal_open_fn:  모달을 열어주는 callable. None이면 현재 DOM 상태 스캔.
             modal_close_fn: 모달을 닫아주는 callable.
                             None이면 hints의 modal_actions.close 버튼을 시도한다.
+            phase:          스캔 단계.
+                            0 = 전체 (하위 호환, 기본값)
+                            1 = Phase 1: 초기값 스냅샷 + 필수입력 검증 (ADD 모달)
+                            2 = Phase 2: UI 요소 동작 검증 (ADD 모달)
+                            3 = Phase 3: 수정 시나리오 검증 (EDIT 모달)
         """
         hints_path = self._config_dir / "scan_hints" / f"{page_id}.yaml"
         hints      = self._load_yaml(hints_path)
@@ -107,11 +114,18 @@ class UIScanner:
                 ctx.append_error(report, "modal_open", trigger_sel, "모달 열기")
                 return report
 
+        before_count = len(report.results)
         if hints:
-            self._scan_from_hints(ctx, hints, report)
+            self._scan_from_hints(ctx, hints, report, phase=phase)
         else:
             print(f"[UIScanner] scan_hints 없음 — 자동 탐지 폴백: {hints_path}")
             self._scan_auto_fallback(report)
+
+        # phase != 0 이면 새로 추가된 결과에 phase 번호 스탬프
+        if phase != 0:
+            for r in report.results[before_count:]:
+                if r.phase == 0:
+                    r.phase = phase
 
         # 모달 닫기
         if modal_opened:
@@ -130,14 +144,21 @@ class UIScanner:
     # ── YAML 구동 스캔 ────────────────────────────────────────────────────────
 
     def _scan_from_hints(
-        self, ctx: ScanContext, hints: dict, report: PageScanReport
+        self, ctx: ScanContext, hints: dict, report: PageScanReport,
+        phase: int = 0,
     ) -> None:
         """
-        scan_hints yaml에 정의된 패턴을 순서대로 검증한다.
+        scan_hints yaml에 정의된 패턴을 phase에 따라 검증한다.
         각 패턴 검증은 validators/ 모듈에 위임한다.
 
-        탭 복원 원칙:
-          스캔 시작 전 첫 번째 탭을 기억하고, 모든 패턴 스캔 완료 후 복원한다.
+        Phase 정의:
+          0 = 전체 (하위 호환): Phase 1 + Phase 2 순서로 실행
+          1 = 초기값 스냅샷(터치 전) + 필수입력 검증 (ADD 모달 1회차)
+          2 = UI 요소 동작 검증: 라디오, 체크박스, 텍스트, 태그 (ADD 모달 2회차)
+          3 = 수정 시나리오: 필수입력 검증 (EDIT 모달)
+
+        탭 복원 원칙 (readonly):
+          스캔 시작 전 첫 번째 탭을 기억하고, 스캔 완료 후 반드시 복원한다.
         """
         tabs         = hints.get("modal_tabs", [])
         original_tab = tabs[0] if tabs else None
@@ -154,12 +175,22 @@ class UIScanner:
         if original_tab:
             ctx.activate_tab(original_tab)
 
-        scan_toggle_checkboxes(ctx, hints, report)
-        scan_plain_checkboxes(ctx, hints, report)
-        scan_radio_groups(ctx, hints, report)
-        scan_text_inputs(ctx, hints, report)
-        scan_tag_inputs(ctx, hints, report)
-        scan_required_submit(ctx, hints, report)
+        run_initial = phase in (0, 1)     # 초기값 스냅샷 (터치 전 필수)
+        run_ui      = phase in (0, 2)     # UI 요소 동작 검증
+        run_submit  = phase in (0, 1, 3)  # 필수입력 검증 (ADD=1, EDIT=3, 전체=0)
+
+        if run_initial:
+            scan_initial_state(ctx, hints, report)
+
+        if run_ui:
+            scan_toggle_checkboxes(ctx, hints, report)
+            scan_plain_checkboxes(ctx, hints, report)
+            scan_radio_groups(ctx, hints, report)
+            scan_text_inputs(ctx, hints, report)
+            scan_tag_inputs(ctx, hints, report)
+
+        if run_submit:
+            scan_required_submit(ctx, hints, report)
 
         # 원래 탭으로 복원 (readonly 원칙)
         if original_tab:

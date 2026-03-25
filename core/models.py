@@ -16,14 +16,15 @@ class ScanResult:
     스캐너가 검사한 UI 요소 하나의 결과.
 
     Attributes:
-        pattern  : "toggle_checkbox" | "plain_checkbox" | "radio_group" |
-                   "text_input" | "tag_input" | "auto_detect" | "modal_open"
+        pattern  : "initial_state" | "toggle_checkbox" | "plain_checkbox" | "radio_group" |
+                   "text_input" | "tag_input" | "required_submit" | "auto_detect" | "modal_open"
         selector : CSS selector 문자열
         label    : 사람이 읽을 수 있는 설명
         status   : "pass" | "fail" | "skip" | "known_bug" | "error"
         detail   : 결과 상세 메시지
         extra    : 패턴별 추가 정보 (dependent_fields, tag_id 등)
         order    : scan_hints yaml의 order 값 — 출력 정렬 기준 (None이면 패턴 타입 순)
+        phase    : 스캔 페이즈 (1=초기값+필수입력, 2=UI동작, 3=수정, 0=전체)
     """
     pattern:  str
     selector: str
@@ -32,6 +33,7 @@ class ScanResult:
     detail:   str           = ""
     extra:    dict          = field(default_factory=dict)
     order:    Optional[int] = None
+    phase:    int           = 0
 
     def is_real_failure(self) -> bool:
         """known_bug 와 skip 은 실패 카운트에서 제외한다."""
@@ -70,3 +72,14 @@ class PageScanReport:
             f"known_bug={len(self.known_bugs)} "
             f"error={len(self.errors)}"
         )
+
+    @classmethod
+    def merge(cls, *reports: "PageScanReport") -> "PageScanReport":
+        """여러 페이즈의 결과를 하나의 리포트로 합산한다."""
+        if not reports:
+            return cls(page_id="")
+        merged = cls(page_id=reports[0].page_id)
+        for r in reports:
+            merged.results.extend(r.results)
+            merged.tab_sections.extend(r.tab_sections)
+        return merged

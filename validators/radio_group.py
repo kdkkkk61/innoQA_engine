@@ -5,12 +5,11 @@ validators/radio_group.py — 라디오 그룹 검증
   ① 모든 옵션 DOM 존재 확인
   ② 기본값 확인 (YAML default 정의 시)
   ③ 전체 옵션 순환 클릭 테스트 → 원래 옵션으로 복원
-  ④ require_default 검증 — 이진 선택 그룹에 초기값 없음 → 휴먼에러 유발 감지
-  ⑤ dependent_fields 잠금/해제 검증 (YAML dependent_fields 정의 시)
+  ④ dependent_fields 잠금/해제 검증 (YAML dependent_fields 정의 시)
 
-require_default YAML 구조:
-  require_default: true   # 이진 선택(ON/OFF, 차단/허용 등) — 기본값 없으면 UX 결함으로 리포트
-  default: null           # 현재 기본값 없음을 명시 (known_bugs.yaml 등록 시 known_bug 처리)
+NOTE: require_default (이진 라디오 초기값 없음) 감지는
+      Phase 1 전용인 validators/initial_state.py 에서 처리한다.
+      (클릭 루프 이전의 진짜 초기 상태를 확인해야 하기 때문)
 
 dependent_fields YAML 구조:
   dependent_fields:
@@ -34,6 +33,7 @@ def scan_radio_groups(
         order         = group.get("order")
         default_value = group.get("default")
         dep_fields    = group.get("dependent_fields", [])
+        # require_default 체크는 validators/initial_state.py (Phase 1)에서 처리
 
         ctx.log.debug(f"[radio_group] 스캔 시작: {label!r} (name={name})")
         try:
@@ -53,8 +53,7 @@ def scan_radio_groups(
             failures: list[str] = []
             checks:   list[str] = [f"옵션 {len(options)}개 모두 존재"]
 
-            # ② 기본값 확인
-            require_default = group.get("require_default", False)
+            # ② 기본값 확인 (default 값이 명시된 경우만)
             if default_value is not None:
                 default_opt = next(
                     (o for o in options if o.get("value") == default_value), None
@@ -115,43 +114,7 @@ def scan_radio_groups(
                 status=status, detail=detail, order=order,
             ))
 
-            # ④ require_default 결과 (별도 ScanResult)
-            # require_default=true 이고 default 미지정 시: DOM에서 미선택 여부 확인
-            if require_default and default_value is None:
-                any_checked = any(
-                    ctx.page.locator(o["selector"]).is_checked() for o in options
-                )
-                if any_checked:
-                    report.results.append(ScanResult(
-                        pattern="radio_group", selector=f"[name={name}]",
-                        label=f"{label} → 초기값",
-                        status="pass", detail="초기값 선택됨 (DOM 확인)",
-                        order=order,
-                    ))
-                else:
-                    opt_labels = " / ".join(o.get("label", o["selector"]) for o in options)
-                    rd_sel      = f"[name={name}]"
-                    rd_test     = "radio_require_default"
-                    if ctx.is_known_bug(rd_sel, rd_test):
-                        rd_status = "known_bug"
-                        rd_detail = f"알려진 UX 결함: 이진 선택 그룹 초기값 없음 ({opt_labels})"
-                    else:
-                        rd_status = "fail"
-                        rd_detail = (
-                            f"이진 선택 그룹({opt_labels}) 초기값 없음 "
-                            f"→ 선택 없이 저장 시 암묵적 동작 발생 (휴먼에러)"
-                        )
-                    ctx.log.debug(
-                        f"[radio_group] {label!r} → require_default {rd_status}"
-                    )
-                    report.results.append(ScanResult(
-                        pattern="radio_group", selector=rd_sel,
-                        label=f"{label} → 초기값",
-                        status=rd_status, detail=rd_detail,
-                        order=order,
-                    ))
-
-            # ⑤ dependent_fields 결과 (별도 ScanResult)
+            # ④ dependent_fields 결과 (별도 ScanResult)
             if dep_fields:
                 dep_status, dep_detail = ctx.status_detail(dep_failures, dep_checks)
                 ctx.log.debug(

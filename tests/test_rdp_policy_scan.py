@@ -1,23 +1,26 @@
 """
-tests/test_rdp_policy_scan.py — RDP 정책 UI 패턴 스캔 테스트
+tests/test_rdp_policy_scan.py — RDP 정책 시나리오 기반 QA 스캔
 
 대상 페이지: RansomCruncher > RDP 정책 (managerRansomCruncherRdpPolicy)
 
-기존 test_ui_scan.py(탐지정책)와 역할 분리:
-  탐지정책 테스트: 복잡한 토글+종속필드+태그입력+예외처리탭
-  이 파일:         RDP 정책 연결설정 라디오그룹 + 요일 체크박스 + 필수 제출 검증
+[시나리오 기반 QA 3-Phase 구조]
 
-[스캔 항목]
-  test_rdp_modal_ui_patterns      : ADD 모달 전체 UI 패턴 스캔
-    - radio_group × 2 (연결 설정, 연결 시간 제한)
-    - plain_checkbox × 7 (적용 요일 일~토)
-    - text_input × 1 (정책 이름)
-    - required_submit × 1 (이름 필수 검증)
-    - 스캔 완료 후 [AUTO]_rdp_ui_scan 정책으로 저장
+  Phase 1 — 정책 생성 기본 검증 (ADD 모달 1회차)
+    - 초기값 스냅샷: 모달 열리자마자 터치 전 상태 확인
+      · 이진 라디오 그룹에 초기값 없음 감지 (HE-01: 휴먼에러)
+    - 필수입력 검증: 빈 채로 등록 시도 → 경고 메시지 확인
+    - 저장: [AUTO]_rdp_p1 정책 생성
 
-  test_rdp_modal_ui_patterns_edit : EDIT 모달 스캔 + 정책 삭제
-    - ADD에서 생성한 [AUTO]_rdp_ui_scan 정책 사용
-    - 스캔 완료 후 [AUTO] 정책 정리
+  Phase 2 — UI 요소 동작 검증 (ADD 모달 2회차)
+    - radio_group × 2: 연결 설정, 연결 시간 제한 (클릭 동작 + 종속필드)
+    - plain_checkbox × 7: 적용 요일 (일~토)
+    - text_input × 1: 정책 이름
+    - 저장: [AUTO]_rdp_p2 정책 생성
+
+  Phase 3 — 수정 시나리오 검증 (EDIT 모달)
+    - [AUTO]_rdp_p2 정책 수정 모달 열기
+    - 필수입력 수정 검증: 이름 비움 → 저장 시도 (known_bug 확인)
+    - 정리: [AUTO] 정책 전체 삭제
 
 실행:
   pytest tests/test_rdp_policy_scan.py -v -s
@@ -25,8 +28,11 @@ tests/test_rdp_policy_scan.py — RDP 정책 UI 패턴 스캔 테스트
 """
 
 import pytest
-from core.ui_scanner import UIScanner, PageScanReport
+from core.ui_scanner import UIScanner
+from core.models import PageScanReport
 from pages.rdp_policy_page import RdpPolicyPage
+
+_PHASE_LABEL = {1: "Phase 1 (초기값+필수입력)", 2: "Phase 2 (UI 동작)", 3: "Phase 3 (수정)"}
 
 _STATUS_ICON = {
     "pass":      "✅",
@@ -36,31 +42,35 @@ _STATUS_ICON = {
     "error":     "💥",
 }
 _PATTERN_FALLBACK = {
-    "modal_open":      0,
-    "text_input":      1,
-    "radio_group":     2,
-    "toggle_checkbox": 3,
-    "plain_checkbox":  4,
-    "tag_input":       5,
-    "required_submit": 6,
-    "auto_detect":     7,
+    "initial_state":   0,
+    "modal_open":      1,
+    "text_input":      2,
+    "radio_group":     3,
+    "toggle_checkbox": 4,
+    "plain_checkbox":  5,
+    "tag_input":       6,
+    "required_submit": 7,
+    "auto_detect":     8,
 }
 
 
-def _print_scan_report(report: PageScanReport) -> None:
-    """스캔 결과를 출력한다."""
+def _print_phase_report(report: PageScanReport, phase: int) -> None:
+    """페이즈별 스캔 결과를 출력한다."""
     if report is None:
-        print("\n[스캔 결과 없음]")
+        print(f"\n[{_PHASE_LABEL[phase]}] 결과 없음")
         return
-    print(f"\n{report.summary()}")
+
+    print(f"\n{'═' * 60}")
+    print(f"  {_PHASE_LABEL[phase]}")
+    print(f"{'═' * 60}")
+    print(f"  {report.summary()}")
 
     def _sort_key(r):
         if r.order is not None:
             return r.order
         return 10_000 + _PATTERN_FALLBACK.get(r.pattern, 99) * 10
 
-    sorted_results = sorted(report.results, key=_sort_key)
-    for r in sorted_results:
+    for r in sorted(report.results, key=_sort_key):
         icon = _STATUS_ICON.get(r.status, "?")
         print(f"  {icon} [{r.pattern}] {r.label}: {r.detail}")
 
@@ -68,26 +78,27 @@ def _print_scan_report(report: PageScanReport) -> None:
 @pytest.mark.ui_scan
 class TestRdpPolicyScan:
 
-    def test_rdp_modal_ui_patterns(self, logged_in_page, settings, request):
+    def test_rdp_scenario_qa(self, logged_in_page, settings, request):
         """
-        [ADD 모달] RDP 정책 추가 모달 전체 UI 패턴 스캔.
-        config/scan_hints/rdp_policy.yaml 기준으로 검사.
+        RDP 정책 시나리오 기반 QA — Phase 1, 2, 3 순서 실행.
 
-        검증 항목:
-          - radio_group × 2 (연결 설정 2옵션, 연결 시간 제한 2옵션)
-          - plain_checkbox × 7 (적용 요일 일~토)
-          - text_input × 1 (정책 이름 — maxlength 속성 없음, 앱 레벨 required)
-          - required_submit × 1 (이름 미입력 → 경고, 이름 입력 → 저장 성공)
-
-        스캔 완료 후 [AUTO]_rdp_ui_scan 정책으로 저장.
+        Phase 1: 초기값 스냅샷 + 필수입력 → 저장 ([AUTO]_rdp_p1)
+        Phase 2: UI 요소 동작 전체 → 저장 ([AUTO]_rdp_p2)
+        Phase 3: EDIT 모달 수정 시나리오 → 정리
         """
         page_obj = RdpPolicyPage(logged_in_page, settings)
         page_obj.navigate_to()
         page_obj.delete_all_auto_policies()
 
-        def close_and_save():
-            """스캔 완료 후 [AUTO]_rdp_ui_scan 정책으로 저장."""
-            page_obj.fill(page_obj.SEL_POLICY_NAME, "[AUTO]_rdp_ui_scan")
+        scanner = UIScanner(logged_in_page, config_dir="config")
+
+        # ─────────────────────────────────────────────────────────────
+        # Phase 1: 초기값 스냅샷 + 필수입력 검증
+        # ─────────────────────────────────────────────────────────────
+        p1_name = "[AUTO]_rdp_p1"
+
+        def close_phase1():
+            page_obj.fill(page_obj.SEL_POLICY_NAME, p1_name)
             page_obj.click_attached(page_obj.SEL_REGISTER_BTN)
             page_obj.page.locator(page_obj.SEL_CONFIRM_MODAL_OPENED).wait_for(
                 state="attached", timeout=page_obj._TIMEOUT_MODAL
@@ -96,50 +107,56 @@ class TestRdpPolicyScan:
             page_obj.wait_for_modal_closed()
             page_obj.wait_for(page_obj.SEL_ADD_BTN)
 
-        scanner = UIScanner(logged_in_page, config_dir="config")
-        report: PageScanReport = scanner.scan(
-            "rdp_policy",
+        report1 = scanner.scan(
+            "rdp_policy", phase=1,
             modal_open_fn=page_obj.open_add_modal,
-            modal_close_fn=close_and_save,
+            modal_close_fn=close_phase1,
         )
+        _print_phase_report(report1, 1)
 
-        request.node._scan_report = report
-        _print_scan_report(report)
+        # ─────────────────────────────────────────────────────────────
+        # Phase 2: UI 요소 동작 검증
+        # ─────────────────────────────────────────────────────────────
+        p2_name = "[AUTO]_rdp_p2"
 
-        assert not report.failed, (
-            f"UI 패턴 검사 실패 {len(report.failed)}건:\n"
-            + "\n".join(
-                f"  [{r.pattern}] {r.label}: {r.detail}"
-                for r in report.failed
+        def close_phase2():
+            page_obj.fill(page_obj.SEL_POLICY_NAME, p2_name)
+            page_obj.click_attached(page_obj.SEL_REGISTER_BTN)
+            page_obj.page.locator(page_obj.SEL_CONFIRM_MODAL_OPENED).wait_for(
+                state="attached", timeout=page_obj._TIMEOUT_MODAL
             )
+            page_obj.click_attached(page_obj.SEL_CONFIRM_BTN)
+            page_obj.wait_for_modal_closed()
+            page_obj.wait_for(page_obj.SEL_ADD_BTN)
+
+        report2 = scanner.scan(
+            "rdp_policy", phase=2,
+            modal_open_fn=page_obj.open_add_modal,
+            modal_close_fn=close_phase2,
         )
+        _print_phase_report(report2, 2)
 
-    def test_rdp_modal_ui_patterns_edit(self, logged_in_page, settings, request):
-        """
-        [EDIT 모달] RDP 정책 수정 모달 UI 패턴 스캔.
+        # ─────────────────────────────────────────────────────────────
+        # Phase 3: 수정 시나리오 검증
+        # ─────────────────────────────────────────────────────────────
+        def close_phase3():
+            """EDIT 모달 닫기 — known_bug로 이미 닫혔을 수 있으므로 조건부 처리."""
+            try:
+                if page_obj.page.locator(page_obj.SEL_ADD_MODAL).count() > 0:
+                    page_obj.close_modal()
+                else:
+                    page_obj.wait_for(page_obj.SEL_ADD_BTN)
+            except Exception:
+                pass
 
-        흐름:
-          ① [AUTO]_rdp_ui_scan 정책 확인 (test_rdp_modal_ui_patterns에서 생성됨)
-             없으면 직접 생성 (test 1 실패 대비 fallback)
-          ② EDIT 모달 열기 → UIScanner 스캔
-          ③ [AUTO] 정책 삭제 (스캔 성공/실패 무관하게 항상 정리)
-        """
-        page_obj = RdpPolicyPage(logged_in_page, settings)
-        page_obj.navigate_to()
-
-        test_name = "[AUTO]_rdp_ui_scan"
-        if test_name not in page_obj.get_policy_names():
-            test_name = page_obj.add_policy("[AUTO]_rdp_ui_scan")
-
-        scanner = UIScanner(logged_in_page, config_dir="config")
-        report: PageScanReport | None = None
-
+        report3: PageScanReport | None = None
         try:
-            report = scanner.scan(
-                "rdp_policy",
-                modal_open_fn=lambda: page_obj.open_modify_modal(test_name),
-                modal_close_fn=page_obj.close_modal,
+            report3 = scanner.scan(
+                "rdp_policy", phase=3,
+                modal_open_fn=lambda: page_obj.open_modify_modal(p2_name),
+                modal_close_fn=close_phase3,
             )
+            _print_phase_report(report3, 3)
         finally:
             try:
                 page_obj.navigate_to()
@@ -147,13 +164,22 @@ class TestRdpPolicyScan:
             except Exception:
                 pass
 
-        request.node._scan_report = report
-        _print_scan_report(report)
+        # ─────────────────────────────────────────────────────────────
+        # 결합 리포트 & 검증
+        # ─────────────────────────────────────────────────────────────
+        reports = [r for r in (report1, report2, report3) if r is not None]
+        combined = PageScanReport.merge(*reports)
 
-        assert not report.failed, (
-            f"UI 패턴 검사 실패 {len(report.failed)}건:\n"
+        request.node._scan_report = combined
+
+        print(f"\n{'═' * 60}")
+        print(f"  전체 결과: {combined.summary()}")
+        print(f"{'═' * 60}")
+
+        assert not combined.failed, (
+            f"UI 패턴 검사 실패 {len(combined.failed)}건:\n"
             + "\n".join(
-                f"  [{r.pattern}] {r.label}: {r.detail}"
-                for r in report.failed
+                f"  [Phase {r.phase}][{r.pattern}] {r.label}: {r.detail}"
+                for r in combined.failed
             )
         )
