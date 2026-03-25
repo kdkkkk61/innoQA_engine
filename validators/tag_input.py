@@ -42,6 +42,7 @@ def scan_tag_inputs(
         unique_test_value = tag.get("unique_test_value")
         remove_btn_sel    = tag.get("remove_btn")
         required_toggle   = tag.get("required_toggle")
+        test_empty_add    = tag.get("test_empty_add", False)  # 빈값 추가 방지 검증
 
         ctx.log.debug(f"[tag_input] 스캔 시작: {label!r} (id={tag_id})")
 
@@ -103,11 +104,18 @@ def scan_tag_inputs(
                 else:
                     checks.append("required 마커 확인")
 
-            # ③④ 동작 테스트 — 탭이 경고 다이얼로그로 차단된 경우 스킵
+            # ③④ 동작 테스트 — 탭이 경고 다이얼로그로 차단된 경우 HE-05 기록
             if not tab_activated:
-                checks.append(
-                    "생성 시 작성 불가 (탭 클릭 시 앱이 경고로 차단 — 수정 모달에서 검증)"
-                )
+                # HE-05: 탭 차단 경고 텍스트 캡처 (dismiss_warning_dialog가 이미 텍스트 저장)
+                warn_text = ctx.last_warning_text
+                if warn_text:
+                    checks.append(
+                        f"생성 시 탭 접근 차단 확인 — 경고: '{warn_text}'"
+                    )
+                else:
+                    checks.append(
+                        "생성 시 작성 불가 (탭 클릭 시 앱이 경고로 차단 — 수정 모달에서 검증)"
+                    )
             else:
                 cont_loc = ctx.page.locator(cont_sel)
                 inp_loc  = ctx.page.locator(inp_sel)
@@ -118,6 +126,22 @@ def scan_tag_inputs(
                     "el => el.querySelectorAll(':scope > *').length"
                 )
                 ctx.log.debug(f"[tag_input] {label!r} → initial_count={initial_count}")
+
+                # ③-0차: 빈값 추가 방지 확인 (test_empty_add: true)
+                if test_empty_add:
+                    ctx.log.debug(f"[tag_input] {label!r} → 빈값 추가 시도")
+                    inp_loc.fill("")
+                    ctx.page.wait_for_timeout(200)
+                    btn_loc.first.evaluate("el => el.click()")
+                    ctx.page.wait_for_timeout(400)
+                    after_empty = cont_loc.evaluate(
+                        "el => el.querySelectorAll(':scope > *').length"
+                    )
+                    ctx.log.debug(f"[tag_input] {label!r} → after_empty={after_empty}")
+                    if after_empty > initial_count:
+                        failures.append("빈값 태그 추가됨 (추가 방지 미동작)")
+                    else:
+                        checks.append("빈값 추가 방지 확인")
 
                 # ③-1차: test_value 추가 시도
                 ctx.log.debug(f"[tag_input] {label!r} → fill({test_value!r}) → {inp_sel}")

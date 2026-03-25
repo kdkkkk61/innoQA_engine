@@ -261,6 +261,11 @@ def logged_in_page(browser, settings, credentials):
                 sys.stderr.write("계정이 잠겼습니다. 잠금 해제 후 pytest를 다시 실행하세요.\n\n")
                 sys.stderr.flush()
                 pytest.exit(f"[계정 잠금] {msg}", returncode=1)
+            # 환경변수 모드: 비밀번호 재입력 불가 → 즉시 종료
+            if os.environ.get("TEST_PW", "").strip():
+                sys.stderr.write("환경변수 TEST_PW가 틀렸습니다. 올바른 비밀번호로 다시 실행하세요.\n\n")
+                sys.stderr.flush()
+                pytest.exit(f"[환경변수 로그인 실패] {msg}", returncode=1)
             # 일반 비밀번호 오류 → 재입력
             new_pw = getpass.getpass("Password (다시 입력): ", stream=sys.stderr)
             credentials["admin"]["password"] = new_pw

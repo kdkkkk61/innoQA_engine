@@ -78,7 +78,13 @@ def _run_submit_sequence(
         fill_ids = step_def.get("fill", [])
         exp_msg  = step_def.get("expected_msg", "")
         expected = step_def.get("expected", "")
+        exp_type = step_def.get("expected_type", "")  # "any_warning" 등 타입 기반 판정
         label    = f"필수 입력 Step {step_n} ({desc})"
+
+        # ── phases_only 필터: 특정 phase에서만 실행 ──────────────────────────
+        phases_only = step_def.get("phases_only", [])
+        if phases_only and ctx.phase not in phases_only:
+            continue
 
         if expected == "success":
             report.results.append(ScanResult(
@@ -86,22 +92,40 @@ def _run_submit_sequence(
                 status="pass",
                 detail=f"필수 필드 확인 완료: {fill_ids} → 저장 성공 (close_fn 담당)",
                 order=_ORDER_REQUIRED_SUBMIT,
+                extra={"missing_field": ""},
             ))
             continue
 
-        for fid in fill_ids:
-            if fid in filled:
+        # ── fill_from_context: context_extra에서 값을 읽어 특정 필드 채우기 ──
+        if "fill_from_context" in step_def:
+            ctx_key     = step_def["fill_from_context"]
+            fill_target = step_def.get("fill_target", "")
+            ctx_val     = ctx.extra.get(ctx_key, "")
+
+            if not ctx_val:
+                report.results.append(ScanResult(
+                    pattern="required_submit", selector=submit_sel, label=label,
+                    status="skip",
+                    detail=f"context_extra['{ctx_key}'] 미설정 — 스킵",
+                    order=_ORDER_REQUIRED_SUBMIT,
+                    extra={
+                        "missing_field":       step_def.get("missing_field", ""),
+                        "missing_field_label": step_def.get("missing_field_label", ""),
+                    },
+                ))
                 continue
-            try:
-                if fid in text_idx:
-                    ti  = text_idx[fid]
-                    loc = ctx.page.locator(ti["selector"])
-                    if loc.count() > 0:
-                        loc.fill(ti.get("test_value", "[AUTO]_seq"))
-                        ctx.page.wait_for_timeout(150)
-                        filled.add(fid)
-                elif fid in tag_idx:
-                    ti      = tag_idx[fid]
+
+            if fill_target in text_idx:
+                ti  = text_idx[fill_target]
+                loc = ctx.page.locator(ti["selector"])
+                if loc.count() > 0:
+                    loc.fill(ctx_val)
+                    ctx.page.wait_for_timeout(200)
+
+            # ── fill_tag_before: 제출 전 tag_input 미리 채우기 (중복 검증용) ──
+            for tag_id in step_def.get("fill_tag_before", []):
+                if tag_id in tag_idx:
+                    ti      = tag_idx[tag_id]
                     inp_loc = ctx.page.locator(ti["input"])
                     btn_loc = ctx.page.locator(ti["add_btn"])
                     if inp_loc.count() > 0 and btn_loc.count() > 0:
@@ -109,11 +133,33 @@ def _run_submit_sequence(
                         ctx.page.wait_for_timeout(200)
                         btn_loc.first.evaluate("el => el.click()")
                         ctx.page.wait_for_timeout(400)
-                        filled.add(fid)
-            except Exception:
-                ctx.log.debug(
-                    f"[req_seq] 필드 채우기 실패: {fid}\n{traceback.format_exc()}"
-                )
+        else:
+            # ── 일반 fill 로직 ───────────────────────────────────────────────
+            for fid in fill_ids:
+                if fid in filled:
+                    continue
+                try:
+                    if fid in text_idx:
+                        ti  = text_idx[fid]
+                        loc = ctx.page.locator(ti["selector"])
+                        if loc.count() > 0:
+                            loc.fill(ti.get("test_value", "[AUTO]_seq"))
+                            ctx.page.wait_for_timeout(150)
+                            filled.add(fid)
+                    elif fid in tag_idx:
+                        ti      = tag_idx[fid]
+                        inp_loc = ctx.page.locator(ti["input"])
+                        btn_loc = ctx.page.locator(ti["add_btn"])
+                        if inp_loc.count() > 0 and btn_loc.count() > 0:
+                            inp_loc.fill(ti.get("test_value", "scan_test"))
+                            ctx.page.wait_for_timeout(200)
+                            btn_loc.first.evaluate("el => el.click()")
+                            ctx.page.wait_for_timeout(400)
+                            filled.add(fid)
+                except Exception:
+                    ctx.log.debug(
+                        f"[req_seq] 필드 채우기 실패: {fid}\n{traceback.format_exc()}"
+                    )
 
         try:
             ctx.page.locator(submit_sel).first.evaluate("el => el.click()")
@@ -126,7 +172,17 @@ def _run_submit_sequence(
                 actual_msg = body.inner_text().strip() if body.count() > 0 else ""
                 ctx.dismiss_warning_dialog()
 
-            if not actual_msg:
+            # ── 결과 판정 ────────────────────────────────────────────────────
+            if exp_type == "any_warning":
+                # 어떤 경고든 출현하면 pass (메시지 내용 무관 — 중복 이름 등)
+                if actual_msg:
+                    status = "pass"
+                    detail = f"경고 확인: '{actual_msg}'"
+                else:
+                    main_open = ctx.page.locator(f"#{main_modal_sel}.in").count() > 0
+                    status    = "fail"
+                    detail    = "경고 없이 제출됨 " + ("(모달 유지)" if main_open else "(모달 닫힘)")
+            elif not actual_msg:
                 main_open = ctx.page.locator(f"#{main_modal_sel}.in").count() > 0
                 status    = "fail"
                 detail    = "경고 없이 제출됨 " + ("(모달 유지)" if main_open else "(모달 닫힘)")
@@ -140,7 +196,39 @@ def _run_submit_sequence(
             report.results.append(ScanResult(
                 pattern="required_submit", selector=submit_sel, label=label,
                 status=status, detail=detail, order=_ORDER_REQUIRED_SUBMIT,
+                extra={
+                    "missing_field":       step_def.get("missing_field", ""),
+                    "missing_field_label": step_def.get("missing_field_label", ""),
+                },
             ))
+
+            # ── reset_after: 지정 텍스트 필드 초기화 (중복 테스트 후 폼 리셋) ──
+            for rf_id in step_def.get("reset_after", []):
+                if rf_id in text_idx:
+                    loc_r = ctx.page.locator(text_idx[rf_id]["selector"])
+                    if loc_r.count() > 0:
+                        loc_r.fill("")
+                        ctx.page.wait_for_timeout(100)
+                filled.discard(rf_id)
+
+            # ── reset_tag_after: fill_tag_before로 추가한 태그 전부 제거 ───────
+            for tag_id in step_def.get("reset_tag_after", []):
+                if tag_id in tag_idx:
+                    ti         = tag_idx[tag_id]
+                    cont_loc   = ctx.page.locator(ti["container"])
+                    remove_sel = ti.get("remove_btn", "button.deleteBtn")
+                    try:
+                        for _ in range(20):   # 최대 20개 태그 제거
+                            del_btns = cont_loc.locator(remove_sel)
+                            if del_btns.count() == 0:
+                                break
+                            del_btns.first.evaluate("el => el.click()")
+                            ctx.page.wait_for_timeout(300)
+                    except Exception:
+                        ctx.log.debug(
+                            f"[req_seq] reset_tag_after 실패: {tag_id}\n"
+                            f"{traceback.format_exc()}"
+                        )
 
         except Exception:
             ctx.append_error(

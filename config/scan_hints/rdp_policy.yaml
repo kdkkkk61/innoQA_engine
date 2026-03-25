@@ -32,12 +32,27 @@ modal_tabs: []
 # 필수 입력 순서 검증 (ADD 모달 전용)
 # ──────────────────────────────────────────────────────────────────────────────
 required_submit_sequence:
-  - step:         1
-    description:  "아무것도 입력 안 함"
-    fill:         []
-    expected_msg: "정책 이름을 입력해 주세요."
+  # ── Step 0_dup: 중복 이름 등록 시도 (Phase 2 전용) ──────────────────────────
+  # Phase 1에서 저장된 [AUTO]_rdp_p1 이름으로 등록 시도 → 경고 확인
+  # rdp는 이름만 필수이므로 fill_tag_before 불필요
+  - step:               "0_dup"
+    description:        "중복 이름 등록 시도"
+    fill_from_context:  "existing_name"      # context_extra["existing_name"] 값 사용
+    fill_target:        "rcRdpPolicyName"
+    phases_only:        [2]                  # Phase 2 ADD 모달에서만 실행
+    expected_type:      "any_warning"        # 어떤 경고든 출현하면 pass
+    reset_after:        ["rcRdpPolicyName"]  # 제출 후 이름 필드 초기화
+    missing_field:      "rcRdpPolicyName"
+    missing_field_label: "정책 이름"
 
-  - step:         2
+  - step:               1
+    description:        "아무것도 입력 안 함"
+    fill:               []
+    expected_msg:       "정책 이름을 입력해 주세요."
+    missing_field:      "rcRdpPolicyName"
+    missing_field_label: "정책 이름"
+
+  - step:          2
     description:  "정책 이름만 입력"
     fill:         ["rcRdpPolicyName"]
     expected:     "success"
@@ -52,6 +67,75 @@ text_inputs:
     required:   true    # 앱 검증 기준 (DOM required 속성 없음)
     test_value: "[AUTO]_seq"
     order:      10
+
+  # ── 연결 허용 선택 시 활성화되는 필드 ─────────────────────────────────────────
+  # DOM 순서: 연결 설정 라디오(20) 바로 다음에 위치 (Chrome MCP 확인 2026-03-25)
+  - selector:    "input#connectPort"
+    label:       "연결 포트"
+    maxlength:   null        # DOM maxlength 없음 (Chrome MCP 2026-03-25)
+    max_value:   65535       # JS 클램핑 상한 확인
+    min_value:   0           # JS 클램핑 하한 확인
+    required:    false
+    allow_empty: false
+    order:       21
+
+  - selector:    "input#accessLimitCount"
+    label:       "접근 시도 횟수 제한"
+    maxlength:   2           # DOM maxlength=2 (Chrome MCP 2026-03-25)
+    max_value:   99          # maxlength=2 → 최대 99
+    min_value:   0
+    required:    false
+    allow_empty: false
+    order:       22
+
+  - selector:    "input#accessLimitIdleMinute"
+    label:       "횟수 초과 시 지연시간"
+    maxlength:   3           # DOM maxlength=3 (Chrome MCP 2026-03-25)
+    max_value:   999         # maxlength=3 → 최대 999
+    min_value:   0
+    required:    false
+    allow_empty: false
+    order:       23
+
+  # ── 연결 시간 설정 선택 시 활성화되는 필드 ─────────────────────────────────────
+  # DOM 순서: 연결 시간 제한 라디오(30) 다음, 적용 요일(40~) 이전 (Chrome MCP 확인 2026-03-25)
+  # 적용 시간 범위: 00:00 ~ 24:00 (의도된 설계 — 24:00 = 하루 종료 자정)
+  # 분 필드: hour<24이면 max=59, hour=24이면 max=0 (복합 클램핑 — 단순 max_value 미적용)
+  - selector:    "input#connectStartHour"
+    label:       "적용 시간 시작 (시)"
+    maxlength:   null
+    max_value:   24          # JS 클램핑 상한 (Chrome MCP 2026-03-25)
+    min_value:   0
+    required:    false
+    allow_empty: false
+    order:       31
+
+  - selector:    "input#connectStartMinute"
+    label:       "적용 시간 시작 (분)"
+    maxlength:   null
+    max_value:   59          # hour<24일 때 상한 (복합 클램핑 단순화)
+    min_value:   0
+    required:    false
+    allow_empty: false
+    order:       32
+
+  - selector:    "input#connectEndHour"
+    label:       "적용 시간 종료 (시)"
+    maxlength:   null
+    max_value:   24          # JS 클램핑 상한 (Chrome MCP 2026-03-25)
+    min_value:   0
+    required:    false
+    allow_empty: false
+    order:       33
+
+  - selector:    "input#connectEndMinute"
+    label:       "적용 시간 종료 (분)"
+    maxlength:   null
+    max_value:   59          # hour<24일 때 상한 (복합 클램핑 단순화)
+    min_value:   0
+    required:    false
+    allow_empty: false
+    order:       34
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 라디오 버튼 그룹
@@ -107,7 +191,7 @@ radio_groups:
       - selector: "input#isDenyAlwaysConnect"
         value:    "false"
         label:    "연결 시간 설정"
-    # 연결 시간 설정 선택 시 활성화, 항상 연결 선택 시 비활성화되는 종속 필드 (적용 요일)
+    # 연결 시간 설정 선택 시 활성화, 항상 연결 선택 시 비활성화되는 종속 필드
     dependent_fields:
       - selector:      "input#sunday"
         label:         "적용 요일 - 일"
@@ -129,6 +213,18 @@ radio_groups:
         active_option: "input#isDenyAlwaysConnect"
       - selector:      "input#saturday"
         label:         "적용 요일 - 토"
+        active_option: "input#isDenyAlwaysConnect"
+      - selector:      "input#connectStartHour"
+        label:         "적용 시간 시작 (시)"
+        active_option: "input#isDenyAlwaysConnect"
+      - selector:      "input#connectStartMinute"
+        label:         "적용 시간 시작 (분)"
+        active_option: "input#isDenyAlwaysConnect"
+      - selector:      "input#connectEndHour"
+        label:         "적용 시간 종료 (시)"
+        active_option: "input#isDenyAlwaysConnect"
+      - selector:      "input#connectEndMinute"
+        label:         "적용 시간 종료 (분)"
         active_option: "input#isDenyAlwaysConnect"
 
 # ──────────────────────────────────────────────────────────────────────────────

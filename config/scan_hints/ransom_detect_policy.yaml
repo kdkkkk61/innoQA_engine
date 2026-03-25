@@ -54,20 +54,39 @@ modal_tabs:
 # fill 항목: text_inputs/tag_input의 id 참조
 # ──────────────────────────────────────────────────────────────────────────────
 required_submit_sequence:
-  - step:         1
-    description:  "아무것도 입력 안 함"
-    fill:         []
-    expected_msg: "정책 이름을 입력해 주세요."
+  # ── Step 0_dup: 중복 이름 등록 시도 (Phase 2 전용) ──────────────────────────
+  # Phase 1에서 저장된 [AUTO]_detect_p1 이름으로 등록 시도 → 경고 확인
+  # context_extra["existing_name"] = p1_name 으로 테스트 파일에서 주입
+  - step:               "0_dup"
+    description:        "중복 이름 등록 시도"
+    fill_from_context:  "existing_name"     # context_extra["existing_name"] 값 사용
+    fill_target:        "rcDetectPolicyName"
+    fill_tag_before:    ["extension_input"] # 확장자 먼저 채워야 중복이름 경고 도달
+    phases_only:        [2]                 # Phase 2 ADD 모달에서만 실행
+    expected_type:      "any_warning"       # 어떤 경고든 출현하면 pass
+    reset_after:        ["rcDetectPolicyName"]  # 제출 후 이름 필드 초기화
+    reset_tag_after:    ["extension_input"] # fill_tag_before로 추가한 확장자 태그 제거
+    missing_field:      "rcDetectPolicyName"
+    missing_field_label: "정책 이름"
 
-  - step:         2
-    description:  "정책 이름만 입력"
-    fill:         ["rcDetectPolicyName"]
-    expected_msg: "보호할 확장자를 입력해 주세요."
+  - step:               1
+    description:        "아무것도 입력 안 함"
+    fill:               []
+    expected_msg:       "정책 이름을 입력해 주세요."
+    missing_field:      "rcDetectPolicyName"
+    missing_field_label: "정책 이름"
 
-  - step:         3
-    description:  "정책 이름 + 확장자 입력"
-    fill:         ["rcDetectPolicyName", "extension_input"]
-    expected:     "success"
+  - step:               2
+    description:        "정책 이름만 입력"
+    fill:               ["rcDetectPolicyName"]
+    expected_msg:       "보호할 확장자를 입력해 주세요."
+    missing_field:      "extension_input"
+    missing_field_label: "보호할 확장자"
+
+  - step:          3
+    description:   "정책 이름 + 확장자 입력"
+    fill:          ["rcDetectPolicyName", "extension_input"]
+    expected:      "success"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 텍스트 입력 (속성 + 동작 검증 대상)
@@ -100,6 +119,7 @@ tag_input:
     required:        true
     test_value:      "txt"        # EDIT 모달: 정책 생성 시 이미 포함 → 중복 거부 테스트
     unique_test_value: "scan_ext" # ADD 모달 / EDIT에서 실제 추가 동작 테스트용 고유값
+    test_empty_add:  true         # 빈값 추가 방지 확인
     order:           20
 
   - id:              "except_file_path"
@@ -107,6 +127,7 @@ tag_input:
     input:           "input#exceptFilePath"
     add_btn:         "button#addExceptFilePath"
     container:       "ul#exceptFilePathList"
+    remove_btn:      "button.deleteBtn"   # Chrome MCP 확인 (2026-03-25): li > button.deleteBtn
     tab:             "ransomCruncherDetectPolicyExceptList"
     required_toggle: "input#isExceptDetect"
     test_value:      "C:\\scan_test_path"
@@ -117,6 +138,7 @@ tag_input:
     input:           "input#exceptProcessPath"
     add_btn:         "button#addExceptProcessPath"
     container:       "ul#exceptProcessPathList"
+    remove_btn:      "button.deleteBtn"   # Chrome MCP 확인 (2026-03-25): li > button.deleteBtn
     tab:             "ransomCruncherDetectPolicyExceptList"
     required_toggle: "input#isExceptDetect"
     test_value:      "scan_test.exe"
@@ -127,6 +149,7 @@ tag_input:
     input:           "input#exceptDigitalSign"
     add_btn:         "button#addExceptDigitalSign"
     container:       "ul#exceptDigitalSignList"
+    remove_btn:      "button.deleteBtn"   # Chrome MCP 확인 (2026-03-25): li > button.deleteBtn
     tab:             "ransomCruncherDetectPolicyExceptList"
     required_toggle: "input#isExceptDetect"
     test_value:      "scan_test_sign"
@@ -163,10 +186,11 @@ plain_checkboxes:
 #   사용자가 명시적으로 선택해야 하는 설계 (기본 선택값 없음)
 # ──────────────────────────────────────────────────────────────────────────────
 radio_groups:
-  - name:    "behaviorDetectLevelType"
-    label:   "행위기반 탐지등급 설정"
-    default: null
-    order:   40
+  - name:            "behaviorDetectLevelType"
+    label:           "행위기반 탐지등급 설정"
+    default:         null
+    require_default: true   # ADD 모달 초기값 없음 → 저장 시 암묵적으로 LOW 적용 (HE-01)
+    order:           40
     options:
       - selector: "input#detectLevelTypeNone"
         value:    "NONE"
@@ -234,7 +258,10 @@ toggle_checkboxes:
       - selector: "input#exceptProcessCollectPeriod"
         label:    "수집 기간"                 # UI 텍스트 확인 (2026-03-23)
         type:     "number_input"
-        # maxlength 없음 — DOM 확인 결과 maxlength 속성 미존재
+        # DOM type=text, maxlength/min/max 속성 없음
+        # JS 클램핑: 0~15 (16 이상 → 15, 음수 → 부호 제거, 문자→0)
+        # Chrome MCP 경계값 직접 테스트 확인 (2026-03-25)
+        max: 15
 
   - selector: "input#isPolicyUpdateIntervalMinute"
     label:    "정책 갱신주기"

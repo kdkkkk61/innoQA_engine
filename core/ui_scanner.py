@@ -34,7 +34,7 @@ from core.models import ScanResult, PageScanReport  # noqa: F401
 from core.scan_context import ScanContext
 
 # ── validators import
-from validators.initial_state   import scan_initial_state
+from validators.initial_state   import scan_initial_state, scan_loaded_values
 from validators.toggle_checkbox import scan_toggle_checkboxes
 from validators.plain_checkbox  import scan_plain_checkboxes
 from validators.radio_group     import scan_radio_groups
@@ -77,9 +77,10 @@ class UIScanner:
     def scan(
         self,
         page_id: str,
-        modal_open_fn:  Optional[Callable] = None,
-        modal_close_fn: Optional[Callable] = None,
+        modal_open_fn:   Optional[Callable] = None,
+        modal_close_fn:  Optional[Callable] = None,
         phase: int = 0,
+        context_extra:   Optional[dict] = None,
     ) -> PageScanReport:
         """
         page_id에 해당하는 scan_hints를 로드하고 해당 phase의 패턴을 검사한다.
@@ -102,6 +103,8 @@ class UIScanner:
             page=self.page,
             log=self._log,
             known_bugs=self._known_bugs,
+            extra=context_extra or {},
+            phase=phase,
         )
 
         # 모달 열기
@@ -176,12 +179,16 @@ class UIScanner:
         if original_tab:
             ctx.activate_tab(original_tab)
 
-        run_initial = phase in (0, 1)        # 초기값 스냅샷 (터치 전 필수, ADD만)
-        run_ui      = phase in (0, 2, 3)     # UI 요소 동작 검증 (ADD + EDIT)
-        run_submit  = phase in (0, 1, 3)     # 필수입력 검증 (ADD=1, EDIT=3, 전체=0)
+        run_initial       = phase in (0, 1)        # 초기값 스냅샷 (터치 전, ADD만)
+        run_verify_loaded = phase == 3             # EDIT 모달 저장값 로드 확인
+        run_ui            = phase in (0, 2, 3)    # UI 요소 동작 검증 (ADD + EDIT)
+        run_submit        = phase in (0, 1, 2, 3) # 필수입력 검증 — 전 Phase 실행
 
         if run_initial:
             scan_initial_state(ctx, hints, report)
+
+        if run_verify_loaded:
+            scan_loaded_values(ctx, hints, report)
 
         if run_ui:
             scan_toggle_checkboxes(ctx, hints, report)

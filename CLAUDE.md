@@ -96,6 +96,124 @@ tests/
 
 ---
 
+## scan_hints YAML 작성 규칙 (Chrome MCP 필드 확인 절차)
+
+새 페이지의 scan_hints yaml을 작성하거나 필드를 추가할 때,
+**브라우저에 보이는 것만 확인하면 안 된다.** 반드시 아래 절차를 따른다.
+
+### 필드 확인 필수 항목
+
+```javascript
+// Chrome MCP에서 반드시 실행할 JS — 모든 속성 한 번에 추출
+const el = document.getElementById('fieldId');
+const attrs = {};
+for (const attr of el.attributes) attrs[attr.name] = attr.value;
+JSON.stringify({ attrs, type: el.type, disabled: el.disabled, value: el.value })
+```
+
+| 확인 항목 | 이유 |
+|---|---|
+| `type` | text / number / checkbox / radio 구분 |
+| `maxlength` | DOM 제한 vs JS 클램핑 구분 |
+| `min` / `max` | number type 범위 제한 |
+| `disabled` | 종속 필드 여부 |
+| `ng-model` | AngularJS 바인딩 키 |
+| `ng-change` / `ng-blur` | JS 클램핑 트리거 이벤트 |
+| `ng-min` / `ng-max` | AngularJS 범위 validator |
+| 실제 경계값 입력 테스트 | "65536 입력 → 65535로 바뀌는가" 직접 확인 |
+
+### 잘못된 접근 (금지)
+
+```
+❌ 화면에 숫자 입력 박스가 보이니까 text_input으로 추가
+❌ maxlength 속성 없으니까 maxlength: null로 처리하고 끝
+❌ 값이 0으로 보이니까 기본값 0으로 기록
+```
+
+### 올바른 접근
+
+```
+✅ JS로 outerHTML + 모든 attribute 추출 후 확인
+✅ maxlength 없어도 → JS 클램핑 있는지 경계값 직접 테스트
+✅ disabled=false여도 → 어떤 조건에서 disabled되는지 dep_fields 추적
+✅ 시간 필드 max=24 → 0~23이 맞는지 0~24가 의도인지 제품팀 확인 필요로 기록
+```
+
+### YAML 주석 기록 기준
+
+```yaml
+- selector: "input#connectPort"
+  maxlength: null   # DOM maxlength 없음, JS 클램핑 max=65535 (Chrome MCP 확인)
+  # 확인일: 2026-03-25 / 확인방법: Chrome MCP javascript_tool outerHTML 추출
+```
+
+---
+
+## 스캔 결과 출력 규칙 (절대 준수)
+
+### 핵심 원칙: 화면 순서 = 출력 순서
+
+스캔 결과는 **UI 화면 위→아래 시각적 순서**로 출력한다.
+패턴 타입별(라디오/토글/텍스트...)로 묶어서 출력하는 것은 금지.
+
+```
+❌ 나쁜 예 — 타입별 묶음
+  ✅ [radio_group] 행위기반 탐지등급
+  ✅ [toggle_checkbox] 탐지 제외사항
+  ✅ [toggle_checkbox] 롤백 기능 사용
+  ✅ [text_input] 정책 이름
+  ✅ [plain_checkbox] 소프트웨어 인증 사용
+
+✅ 좋은 예 — 화면 순서 (order 기준 정렬)
+  ✅ [text_input] 정책 이름          ← order=10
+  ✅ [plain_checkbox] 소프트웨어 인증 사용  ← order=30
+  ✅ [radio_group] 행위기반 탐지등급  ← order=40
+  ✅ [toggle_checkbox] 롤백 기능 사용 ← order=80
+       └ ✅ [number_input] 복구 대상파일 최대용량
+       └ ✅ [number_input] 차단 후 롤백 대기시간
+  ✅ [toggle_checkbox] 프로세스 격리기능 ← order=90
+       └ ✅ [plain_checkbox] 격리 프로세스 삭제
+```
+
+### 출력 구현 필수 요건
+
+1. **정렬**: `order` 값 오름차순. `order` 없는 항목은 맨 뒤.
+2. **탭 구간 헤더**: `report.tab_sections`를 이용해 탭 경계마다 구분선 출력.
+   - `required_submit` 패턴은 탭 구분 제외 (항상 마지막).
+   - 탭 없는 페이지(RDP 등)도 동일 코드 사용 (단순히 헤더 출력 안 됨).
+3. **종속 필드**: `toggle_checkbox`의 `dep_fields`는 부모 바로 아래 `└` 트리로 출력.
+   - `r.extra.get("dependent_labels")` / `dependent_types` / `dependent_results` 활용
+4. **새 테스트 파일 추가 시**: `_print_phase_report`에 탭 헤더 + toggle dep 필드 출력 코드 반드시 포함.
+
+```python
+# 필수 — toggle dep 필드 출력 패턴 (모든 테스트 파일에 동일하게 적용)
+for r in sorted(report.results, key=_sort_key):
+    icon = _STATUS_ICON.get(r.status, "?")
+    print(f"  {icon} [{r.pattern}] {r.label}: {r.detail}")
+    if r.pattern == "toggle_checkbox":
+        dep_labels  = r.extra.get("dependent_labels",  [])
+        dep_types   = r.extra.get("dependent_types",   [])
+        dep_results = r.extra.get("dependent_results", [])
+        for i, dep_label in enumerate(dep_labels):
+            dep_type   = dep_types[i]   if i < len(dep_types)   else "field"
+            dep_res    = dep_results[i]  if i < len(dep_results) else {}
+            dep_status = dep_res.get("status", "skip")
+            dep_icon   = _STATUS_ICON.get(dep_status, "?")
+            dep_detail = dep_res.get("detail", "")
+            detail_str = f" — {dep_detail}" if dep_detail else ""
+            print(f"       └ {dep_icon} [{dep_type}] {dep_label}{detail_str}")
+```
+
+### YAML order 값 작성 규칙
+
+- 화면 상단 요소 = 낮은 order 값
+- 하단 요소 = 높은 order 값
+- 10단위 간격 유지 (중간 삽입 여유 확보)
+- toggle의 dep_fields는 별도 order 없이 부모 order에 귀속
+- 탭 구분: 정책정보 탭 10~199 / 예외처리 탭 200~299 / 제출 9999
+
+---
+
 ## 데이터 안전 규칙
 
 - 복사/삭제 조작은 `[AUTO]` 접두사 정책만 허용

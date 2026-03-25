@@ -20,13 +20,20 @@ class ScanContext:
     스캔 컨텍스트 — validators에 전달되는 공유 상태 + 헬퍼.
 
     Attributes:
-        page       : Playwright Page 객체
-        log        : scan_logger 인스턴스
-        known_bugs : known_bugs.yaml 로드 결과
+        page              : Playwright Page 객체
+        log               : scan_logger 인스턴스
+        known_bugs        : known_bugs.yaml 로드 결과
+        extra             : 테스트 파일에서 주입하는 런타임 컨텍스트
+                            (existing_name, verify_values 등)
+        phase             : 현재 스캔 단계 (1/2/3/0)
+        last_warning_text : dismiss_warning_dialog 호출 시 캡처된 경고 메시지
     """
-    page:       Page
-    log:        object                  # scan_logger (duck-typed)
-    known_bugs: list[dict] = field(default_factory=list)
+    page:              Page
+    log:               object                  # scan_logger (duck-typed)
+    known_bugs:        list[dict] = field(default_factory=list)
+    extra:             dict       = field(default_factory=dict)
+    phase:             int        = 0
+    last_warning_text: str        = ""
 
     # ── 공용 상수 ──────────────────────────────────────────────────────────────
     # 앱 공통 경고 다이얼로그 (login_page.py SEL_ERROR_MODAL과 동일)
@@ -69,15 +76,28 @@ class ScanContext:
         주의: .modal.in 전체 탐색 금지 → addItemModal의 닫기 버튼까지 포함되어
               메인 모달이 닫힘 — 반드시 #__globalMessageModal 직접 지정 필요.
 
+        부수효과:
+            self.last_warning_text 에 경고 메시지 텍스트를 저장한다.
+            경고 없으면 빈 문자열로 초기화.
+
         반환:
             True  = 다이얼로그가 있었고 닫음
             False = 다이얼로그 없음
         """
+        self.last_warning_text = ""
         try:
             warn_modal = self.page.locator(self.SEL_WARN_MODAL)
             if warn_modal.count() == 0:
                 return False
             self.log.debug(f"[warn_dialog] 경고 모달 감지됨 ({self.SEL_WARN_MODAL})")
+            # 텍스트 캡처 (dismiss 전)
+            try:
+                body = warn_modal.locator(".modal-body")
+                if body.count() > 0:
+                    self.last_warning_text = body.inner_text().strip()
+                    self.log.debug(f"[warn_dialog] 텍스트: {self.last_warning_text!r}")
+            except Exception:
+                pass
             confirm = warn_modal.locator("button")
             if confirm.count() > 0:
                 self.log.debug("[warn_dialog] 확인 버튼 클릭")
@@ -109,11 +129,19 @@ class ScanContext:
         ))
 
     def is_known_bug(self, selector: str, test_name: str) -> bool:
-        """selector + test_name 조합이 known_bugs에 등록되어 있는지 확인한다."""
-        return any(
-            bug.get("selector") == selector and bug.get("test_name") == test_name
-            for bug in self.known_bugs
-        )
+        """
+        selector + test_name 조합이 known_bugs에 등록되어 있는지 확인한다.
+
+        status 처리:
+          "open"   (기본값) → known_bug 처리 (fail 카운트 제외, 추적 중)
+          "fixed"           → known_bug 아님 → 여전히 실패하면 fail (회귀 감지)
+          "wont_fix"        → known_bug 처리 (의도된 동작으로 확정)
+        """
+        for bug in self.known_bugs:
+            if bug.get("selector") == selector and bug.get("test_name") == test_name:
+                status = bug.get("status", "open")
+                return status != "fixed"
+        return False
 
     @staticmethod
     def status_detail(failures: list[str], checks: list[str]) -> tuple[str, str]:
