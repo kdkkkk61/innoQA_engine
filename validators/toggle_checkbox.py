@@ -320,23 +320,47 @@ def _test_text_like_dep(
 
 def _test_plain_checkbox_dep(ctx: ScanContext, selector: str) -> dict:
     """
-    plain_checkbox 종속 필드 클릭 동작 테스트.
-    ON 상태일 때 호출된다 — 클릭 후 상태 변경 확인 후 원래 상태로 복원.
+    plain_checkbox 종속 필드 양방향 클릭 동작 테스트.
+    ON 상태(부모 토글 ON)일 때 호출된다.
+
+    두 방향 모두 검증:
+      1차: 현재 상태 → 반대 상태 (OFF→ON 또는 ON→OFF)
+      2차: 반대 상태 → 원래 상태 (복원 + 검증)
     """
     loc = ctx.page.locator(selector)
     if loc.count() == 0:
         return {"status": "skip", "detail": "요소 없음"}
 
-    was   = loc.is_checked()
+    checks:   list[str] = []
+    failures: list[str] = []
+    was = loc.is_checked()
+
+    # 1차 클릭
     loc.evaluate("el => el.click()")
     ctx.page.wait_for_timeout(200)
-    after = loc.is_checked()
+    after1 = loc.is_checked()
 
-    if after != was:
+    if after1 != was:
+        direction = ("OFF→ON" if after1 else "ON→OFF")
+        checks.append(f"{direction} 클릭 확인")
+    else:
+        failures.append("1차 클릭 후 상태 미변경")
+
+    # 2차 클릭 (반대 방향 + 원래 상태 복원)
+    loc.evaluate("el => el.click()")
+    ctx.page.wait_for_timeout(200)
+    after2 = loc.is_checked()
+
+    if after2 != after1:
+        direction = ("OFF→ON" if after2 else "ON→OFF")
+        checks.append(f"{direction} 클릭 확인")
+    else:
+        failures.append("2차 클릭 후 상태 미변경")
+
+    # 원래 상태 복원이 안 됐으면 강제 복원
+    if after2 != was:
         loc.evaluate("el => el.click()")
         ctx.page.wait_for_timeout(200)
 
-    if after != was:
-        return {"status": "pass", "detail": "클릭 동작 확인"}
-    else:
-        return {"status": "fail", "detail": "클릭 후 상태 미변경"}
+    status, detail = ctx.status_detail(failures, checks)
+    return {"status": status, "detail": detail}

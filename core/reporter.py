@@ -14,9 +14,9 @@ from __future__ import annotations
 from core.models import PageScanReport
 
 _PHASE_LABEL: dict[int, str] = {
-    1: "Phase 1 (초기값+필수입력)",
-    2: "Phase 2 (UI 동작)",
-    3: "Phase 3 (수정)",
+    1: "시나리오 1: 구조 확인  (초기값 + 필수입력 검증)",
+    2: "시나리오 2: 동작 검증  (UI 인터랙션 + 중복 처리)",
+    3: "시나리오 3: 수정 시나리오  (저장값 로드 + 재확인)",
 }
 
 _STATUS_ICON: dict[str, str] = {
