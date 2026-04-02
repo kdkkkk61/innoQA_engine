@@ -147,10 +147,13 @@ def run_phase3_cases(
     page_obj,
 ) -> PageScanReport | None:
     """
-    config/test_profiles/{page_id}.yaml 을 읽어 Case A / Case B 두 번 검증.
+    config/test_profiles/{page_id}.yaml 을 읽어 단일 정책 전환 검증.
 
-    Case A: 모든 기능 ON + 최대값 → 저장 → 수정 모달 재오픈 → 값 검증 → 스냅샷
-    Case B: 모든 기능 OFF + 최솟값 → 저장 → 수정 모달 재오픈 → 값 검증 → 스냅샷
+    흐름:
+      1. create 액션으로 전체 ON 정책 생성
+      2. verify_created: 수정 모달에서 전체 ON 확인 + 스냅샷
+      3. modify_to_off 액션 적용 후 저장
+      4. verify_modified: 수정 모달에서 전체 OFF 확인 + 스냅샷
 
     profile 파일 없으면 None 반환 (건너뜀).
     """
@@ -162,96 +165,97 @@ def run_phase3_cases(
     with open(profile_path, encoding="utf-8") as f:
         profile = yaml.safe_load(f) or {}
 
-    report = PageScanReport(page_id=page_id)
+    report      = PageScanReport(page_id=page_id)
+    create_cfg  = profile.get("create", {})
+    policy_name = create_cfg.get("policy_name", f"[AUTO]_{page_id[:6]}_p4")
 
-    for case_key in ("case_a", "case_b"):
-        case = profile.get(case_key)
-        if not case:
-            continue
-        case_label   = "Case A (전체 ON)" if case_key == "case_a" else "Case B (전체 OFF)"
-        policy_name  = case["policy_name"]
-        actions      = case.get("actions", [])
-        verify_dict  = case.get("verify", {})
-        order_base   = 1000 if case_key == "case_a" else 2000
+    # ── 1. 전체 ON 정책 생성 ──────────────────────────────────────
+    try:
+        page_obj.open_add_modal()
+        playwright_page.locator("input#rcDetectPolicyName").first.fill(policy_name)
+        playwright_page.wait_for_timeout(200)
+        _apply_profile_actions(playwright_page, create_cfg.get("actions", []))
+        page_obj.save_policy(policy_name)
+        report.results.append(ScanResult(
+            pattern="profile_case", selector="",
+            label="전체 ON 정책 생성",
+            status="pass", detail=f"'{policy_name}' 생성 성공",
+            order=1000, phase=4,
+        ))
+    except Exception as e:
+        report.results.append(ScanResult(
+            pattern="profile_case", selector="",
+            label="전체 ON 정책 생성",
+            status="error", detail=str(e),
+            order=1000, phase=4,
+        ))
+        return report
 
-        # 1. 추가 모달 열기
+    # ── 2. 생성 직후 검증: 전체 ON 확인 ──────────────────────────
+    verify_created = profile.get("verify_created", {})
+    if verify_created:
         try:
-            page_obj.open_add_modal()
+            page_obj.open_modify_modal(policy_name)
+            playwright_page.wait_for_timeout(500)
+            report.results.extend(_verify_profile_case(
+                playwright_page, verify_created,
+                "전체 ON", phase=4, order_base=1010,
+            ))
+            _save_snapshot(page_id, "created_all_on", verify_created)
         except Exception as e:
             report.results.append(ScanResult(
-                pattern="profile_case", selector="button#addItemBtn",
-                label=f"[{case_label}] 추가 모달 열기",
+                pattern="profile_verify", selector="",
+                label="전체 ON 검증 오류",
                 status="error", detail=str(e),
-                order=order_base, phase=4,
+                order=1010, phase=4,
             ))
-            continue
 
-        # 2. 정책 이름 입력
+    # ── 3. 수정: 전체 OFF로 전환 ──────────────────────────────────
+    modify_cfg = profile.get("modify_to_off", {})
+    if modify_cfg:
         try:
-            playwright_page.locator("input#rcDetectPolicyName").first.fill(policy_name)
-            playwright_page.wait_for_timeout(200)
-        except Exception:
-            pass
-
-        # 3. 액션 적용
-        try:
-            _apply_profile_actions(playwright_page, actions)
+            # 모달이 이미 열려 있으면 그 상태에서 적용, 아니면 재오픈
+            _apply_profile_actions(playwright_page, modify_cfg.get("actions", []))
+            save_fn = getattr(page_obj, "save_edit_modal", page_obj.close_edit_modal)
+            save_fn()
+            playwright_page.wait_for_timeout(500)
             report.results.append(ScanResult(
                 pattern="profile_case", selector="",
-                label=f"[{case_label}] 설정 적용",
-                status="pass", detail=f"{len(actions)}개 액션 적용 완료",
-                order=order_base + 1, phase=4,
+                label="전체 OFF로 수정 저장",
+                status="pass", detail="전체 OFF 액션 적용 후 저장 성공",
+                order=2000, phase=4,
             ))
         except Exception as e:
             report.results.append(ScanResult(
                 pattern="profile_case", selector="",
-                label=f"[{case_label}] 설정 적용",
+                label="전체 OFF로 수정 저장",
                 status="error", detail=str(e),
-                order=order_base + 1, phase=4,
+                order=2000, phase=4,
             ))
             try:
                 page_obj.close_edit_modal()
             except Exception:
                 pass
-            continue
 
-        # 4. 저장
+    # ── 4. 수정 후 검증: 전체 OFF 확인 ───────────────────────────
+    verify_modified = profile.get("verify_modified", {})
+    if verify_modified:
         try:
-            page_obj.save_policy(policy_name)
-            report.results.append(ScanResult(
-                pattern="profile_case", selector="",
-                label=f"[{case_label}] 저장",
-                status="pass", detail=f"'{policy_name}' 저장 성공",
-                order=order_base + 2, phase=4,
+            page_obj.open_modify_modal(policy_name)
+            playwright_page.wait_for_timeout(500)
+            report.results.extend(_verify_profile_case(
+                playwright_page, verify_modified,
+                "전체 OFF", phase=4, order_base=2010,
             ))
+            _save_snapshot(page_id, "modified_all_off", verify_modified)
+            page_obj.close_edit_modal()
         except Exception as e:
             report.results.append(ScanResult(
-                pattern="profile_case", selector="",
-                label=f"[{case_label}] 저장",
+                pattern="profile_verify", selector="",
+                label="전체 OFF 검증 오류",
                 status="error", detail=str(e),
-                order=order_base + 2, phase=4,
+                order=2010, phase=4,
             ))
-            continue
-
-        # 5. 수정 모달 재오픈 → 값 검증 → 스냅샷
-        if verify_dict:
-            try:
-                page_obj.open_modify_modal(policy_name)
-                playwright_page.wait_for_timeout(500)
-                verify_results = _verify_profile_case(
-                    playwright_page, verify_dict,
-                    case_label, phase=4, order_base=order_base + 10,
-                )
-                report.results.extend(verify_results)
-                _save_snapshot(page_id, case_key, verify_dict)
-                page_obj.close_edit_modal()
-            except Exception as e:
-                report.results.append(ScanResult(
-                    pattern="profile_verify", selector="",
-                    label=f"[{case_label}] 검증 실행 오류",
-                    status="error", detail=str(e),
-                    order=order_base + 10, phase=4,
-                ))
 
     return report if report.results else None
 

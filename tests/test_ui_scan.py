@@ -1,4 +1,8 @@
 """
+[DEPRECATED] tests/test_ui_scan.py
+→ tests/test_ransom_detect_policy_scan.py 로 마이그레이션 완료 (2026-03-25)
+→ 시나리오 기반 QA Phase 구조로 대체됨. 이 파일은 참조용으로만 보존.
+
 tests/test_ui_scan.py — UIScanner 기반 UI 패턴 스캔 테스트
 
 기존 test_ransom_detect_policy.py와 역할 분리:

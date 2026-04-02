@@ -1,0 +1,80 @@
+scan_mode: list_page
+page_id: common_process
+
+# ── 탭 구조 ──────────────────────────────────────────────────────
+tabs:
+  - label: "예외 프로세스"
+    param_key: processType
+    param_value: EXCEPT_PROCESS
+  - label: "차단 프로세스"
+    param_key: processType
+    param_value: DENY_PROCESS    # Chrome MCP 확인 2026-03-26 (BLOCK_PROCESS 아님)
+
+# ── 검색창 ───────────────────────────────────────────────────────
+search:
+  selector: "input#searchText"
+  label: "프로세스 이름 검색"
+  maxlength: 20   # DOM maxlength 속성 확인됨 (Chrome MCP 2026-03-26)
+
+# ── 액션 버튼 ────────────────────────────────────────────────────
+action_buttons:
+  - label: "프로세스 추가"
+    selector: "button#addItemBtn"
+    order: 30
+  - label: "수정"
+    selector: "button#modifyItemBtn"
+    order: 31
+  - label: "삭제"
+    selector: "button#removeItemBtn"
+    order: 32
+  - label: "Example"
+    selector: "button#downloadFileBtn"
+    order: 33
+  - label: "Import"
+    selector: "button#importFileBtn"
+    order: 34
+
+# ── 테이블 컬럼 ──────────────────────────────────────────────────
+table_columns:
+  order: 40
+  headers:
+    - "프로세스 이름"
+    - "전자서명"
+    - "SHA2"
+    - "등록일"
+    - "수정일"
+
+# ── 추가 모달 ────────────────────────────────────────────────────
+add_modal:
+  modal_selector: "div#addItemModal"
+  modal_open_selector: "button#addItemBtn"
+  submit_selector: "button[add-btn]"
+  cancel_selector: "button.btn-default"   # 취소 버튼
+  fields:
+    - id: processName
+      label: "프로세스 명"
+      type: text
+      required: true
+      order: 50
+    - id: sign
+      label: "전자서명"
+      type: text
+      required: false
+      order: 51
+    - id: sha2
+      label: "SHA2"
+      type: textarea
+      required: true    # UI 표시(*) 기준 — 실제 JS 검증 여부 확인 필요 (2026-03-26)
+      order: 52
+    - id: description
+      label: "설명"
+      type: textarea
+      required: false
+      order: 53
+
+# ── CRUD 테스트 ──────────────────────────────────────────────────
+crud:
+  test_name: "[AUTO]_cp_test"
+  # SHA2는 64자 hex (SHA-256)
+  test_sha2: "AABB112233445566778899001122334455667788990011223344556677889900"
+  order: 100

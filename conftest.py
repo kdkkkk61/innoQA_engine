@@ -9,9 +9,16 @@ pytest 전역 fixture
 - 테스트 실패 시 자동 스크린샷 저장
 """
 import getpass
+import io
 import os
 import sys
 import pytest
+
+# Windows CP949 환경에서 리디렉션 시 UnicodeEncodeError 방지
+if hasattr(sys.stdout, "buffer") and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "buffer") and sys.stderr.encoding.lower() != "utf-8":
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 import yaml
 from datetime import datetime
 from playwright.sync_api import sync_playwright
