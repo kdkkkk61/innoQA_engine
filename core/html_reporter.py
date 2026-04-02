@@ -129,7 +129,13 @@ def _render_summary_card(page_id: str, report: PageScanReport) -> str:
 def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
     rows = []
     prev_scenario = None
-    for r in sorted(report.results, key=lambda x: (x.order or 9999, x.phase or 0)):
+    # list_page: order 기준 (order가 시나리오를 인코딩)
+    # modal_form: phase → order 순 (Phase 1 전체 → Phase 2 전체 → ...)
+    if is_list_page:
+        sort_key = lambda x: (x.order or 9999, x.phase or 0)
+    else:
+        sort_key = lambda x: (x.phase or 0, x.order or 9999)
+    for r in sorted(report.results, key=sort_key):
         badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
         scenario   = _scenario_label(r, is_list_page)
         expected, actual = _expected_vs_actual(r)
