@@ -1,0 +1,117 @@
+# ransom_detect_policy 에이전트 파일 매핑
+# 에이전트 정책 파일(XML)의 필드 ↔ UI selector 매핑
+#
+# 용도: test_profiles 스냅샷과 에이전트 실제 파일 값을 비교할 때 사용
+# 비교 기능은 별도 구현 예정 — 이 파일은 매핑 정의만 담당
+#
+# 확인 방법: C:\ProgramData\Innotium\InnoRc\itOption.~cst (XML)
+# 매핑 확인일: 2026-04-02 / Chrome MCP + XML 직접 대조
+
+product: RansomCruncher
+agent_file:
+  path: "C:\\ProgramData\\Innotium\\InnoRc\\itOption.~cst"
+  format: xml
+  encoding: UTF-8
+
+# XML 필드 → UI selector 매핑
+# true_val / false_val: XML에서 ON/OFF를 나타내는 실제 값
+# value_map: XML 값 → UI 표시값 (radio 등)
+mappings:
+  # 소프트웨어 인증 사용
+  ISSOFTCERTI:
+    selector: "input#isSoftwareCertificate"
+    type:     checkbox
+    true_val:  "1"
+    false_val: "0"
+
+  # 행위기반 탐지등급 (ISRSWAREBLOCK)
+  # 0=사용안함 추정, 1=LOW, 2=MEDIUM, 3=HIGH — 제품팀 확인 필요
+  ISRSWAREBLOCK:
+    selector:  "input[name='behaviorDetectLevelType']"
+    type:      radio
+    value_map:
+      "0": "NONE"
+      "1": "LOW"
+      "2": "MEDIUM"   # XML 기본값 '_기본 정책 탐지 ON_' = 2
+      "3": "HIGH"
+
+  # MS-SQL 원격 차단 해제 (ISMSSQLBLOCK)
+  ISMSSQLBLOCK:
+    selector: "input#isMssqlRemoteBlock"
+    type:     checkbox
+    true_val:  "1"
+    false_val: "0"
+
+  # MSI 파일 신뢰성 검사 해제 (ISMSITRUSTCHECK)
+  ISMSITRUSTCHECK:
+    selector: "input#isMsiFileTrustCheck"
+    type:     checkbox
+    true_val:  "1"
+    false_val: "0"
+
+  # 탐지 제외사항 (ISUSEREXCEPT)
+  ISUSEREXCEPT:
+    selector: "input#isExceptDetect"
+    type:     checkbox
+    true_val:  "1"
+    false_val: "0"
+
+  # 롤백 기능 사용 (ISROLLBACK)
+  ISROLLBACK:
+    selector: "input#isRollbackUse"
+    type:     checkbox
+    true_val:  "1"
+    false_val: "0"
+
+  # 복구 대상파일 최대용량 (ISRBSTORAGE) — 단위: MB
+  ISRBSTORAGE:
+    selector: "input#rollbackFileMaxSize"
+    type:     number
+    # XML 기본값: 100 (MB)
+
+  # 차단 후 롤백 대기시간 (ISRBWAITTIME) — 단위: 초
+  # UI는 분(minute) 단위로 표시 — 변환 필요
+  # 확인 필요: UI값(분) * 60 = XML값(초)?
+  ISRBWAITTIME:
+    selector: "input#blockRollbackWaitMinute"
+    type:     number
+    unit_note: "XML=초, UI=분 — 변환 필요 여부 제품팀 확인"
+
+  # 프로세스 격리기능 (ISRSWAREOPTSET)
+  # 주의: XML값 60 — 이것이 격리기능인지 갱신주기인지 확인 필요
+  ISRSWAREOPTSET:
+    selector: "input#isPolicyUpdateIntervalMinute"
+    type:     checkbox_or_number
+    note:     "XML값 60 — 정책 갱신주기(분) 또는 다른 필드 가능. 제품팀 확인 필요"
+
+  # 격리 프로세스 삭제 (ISPROCDEL)
+  ISPROCDEL:
+    selector: "input#isRemoveIsolatedProcess"
+    type:     checkbox
+    true_val:  "1"
+    false_val: "0"
+
+  # 트레이아이콘 숨김 (ISHIDETRAYICON)
+  ISHIDETRAYICON:
+    selector: "input#isHideTrayIcon"
+    type:     checkbox
+    true_val:  "1"
+    false_val: "0"
+
+  # 예외 폴더 목록 (EXCEPTFOLDER) — 세미콜론 구분 목록
+  EXCEPTFOLDER:
+    selector: "ul#exceptFilePathList"
+    type:     tag_list
+    separator: ";"
+
+  # 예외 파일경로 (EXCEPTFILEPATH)
+  EXCEPTFILEPATH:
+    selector: "input#exceptFilePath"
+    type:     tag_list
+    separator: ";"
+
+  # 전자서명 예외 (EXCEPTSIGN)
+  EXCEPTSIGN:
+    selector: "ul#exceptDigitalSignList"
+    type:     tag_list
+    separator: ";"

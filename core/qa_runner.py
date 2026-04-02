@@ -17,13 +17,243 @@ Phase 이름 생성 규칙:
 """
 from __future__ import annotations
 
+import json
 import yaml
-from pathlib import Path
+from datetime import datetime
+from pathlib  import Path
 
 from core.ui_scanner import UIScanner
 from core.models     import PageScanReport, ScanResult
 from core.reporter   import print_phase_report, print_combined_report
 from pages.registry  import PAGE_REGISTRY
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Phase 3 두 케이스 헬퍼
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _apply_profile_actions(page, actions: list) -> None:
+    """test_profiles YAML의 actions 목록을 순서대로 실행."""
+    for action in actions:
+        atype = action["type"]
+        if atype == "checkbox_set":
+            sel  = action["selector"]
+            want = action["value"]
+            el   = page.locator(sel).first
+            if el.count() == 0:
+                continue
+            current = el.is_checked()
+            if want != current:
+                el.evaluate("el => el.click()")
+                page.wait_for_timeout(200)
+        elif atype == "radio_set":
+            sel = action["selector"]
+            page.locator(sel).first.evaluate("el => el.click()")
+            page.wait_for_timeout(200)
+        elif atype == "text_set":
+            sel = action["selector"]
+            val = str(action["value"])
+            el  = page.locator(sel).first
+            if el.count() == 0:
+                continue
+            el.evaluate(
+                "(el, v) => { el.value = v;"
+                " el.dispatchEvent(new Event('input',{bubbles:true}));"
+                " el.dispatchEvent(new Event('blur',{bubbles:true})); }",
+                val,
+            )
+            page.wait_for_timeout(200)
+        elif atype == "tag_add":
+            inp_sel = action["input"]
+            btn_sel = action["btn"]
+            val     = action["value"]
+            page.locator(inp_sel).first.fill(val)
+            page.wait_for_timeout(100)
+            page.locator(btn_sel).first.evaluate("el => el.click()")
+            page.wait_for_timeout(300)
+
+
+def _verify_profile_case(
+    page,
+    verify_dict: dict,
+    case_label: str,
+    phase: int,
+    order_base: int,
+) -> list:
+    """modify 모달 오픈 후 verify_dict 항목별로 값 검증. ScanResult 리스트 반환."""
+    results = []
+    for i, (selector, expected) in enumerate(verify_dict.items()):
+        order = order_base + i
+        try:
+            el = page.locator(selector).first
+            if el.count() == 0:
+                results.append(ScanResult(
+                    pattern="profile_verify", selector=selector,
+                    label=f"[{case_label}] {selector}",
+                    status="skip", detail="요소 없음",
+                    order=order, phase=phase,
+                ))
+                continue
+            if expected == "checked":
+                ok     = el.is_checked()
+                status = "pass" if ok else "fail"
+                detail = "checked ✓" if ok else "unchecked (기댓값: checked)"
+            elif expected == "unchecked":
+                ok     = not el.is_checked()
+                status = "pass" if ok else "fail"
+                detail = "unchecked ✓" if ok else "checked (기댓값: unchecked)"
+            else:
+                actual = el.input_value()
+                status = "pass" if actual == str(expected) else "fail"
+                detail = (f"'{actual}' ✓" if status == "pass"
+                          else f"기댓값 '{expected}', 실제 '{actual}'")
+            results.append(ScanResult(
+                pattern="profile_verify", selector=selector,
+                label=f"[{case_label}] {selector}",
+                status=status, detail=detail,
+                order=order, phase=phase,
+            ))
+        except Exception as e:
+            results.append(ScanResult(
+                pattern="profile_verify", selector=selector,
+                label=f"[{case_label}] {selector}",
+                status="error", detail=str(e),
+                order=order, phase=phase,
+            ))
+    return results
+
+
+def _save_snapshot(page_id: str, case_name: str, verify_dict: dict) -> None:
+    """검증 기댓값을 reports/policy_snapshots/에 JSON으로 저장 (에이전트 비교용)."""
+    snap_dir = Path("reports") / "policy_snapshots"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    snap = {
+        "page_id":   page_id,
+        "case":      case_name,
+        "timestamp": ts,
+        "values":    verify_dict,
+    }
+    path = snap_dir / f"{page_id}_{case_name}_{ts}.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(snap, f, ensure_ascii=False, indent=2)
+    print(f"  💾 스냅샷 저장: {path}")
+
+
+def run_phase3_cases(
+    playwright_page,
+    settings: dict,
+    page_id: str,
+    page_obj,
+) -> PageScanReport | None:
+    """
+    config/test_profiles/{page_id}.yaml 을 읽어 Case A / Case B 두 번 검증.
+
+    Case A: 모든 기능 ON + 최대값 → 저장 → 수정 모달 재오픈 → 값 검증 → 스냅샷
+    Case B: 모든 기능 OFF + 최솟값 → 저장 → 수정 모달 재오픈 → 값 검증 → 스냅샷
+
+    profile 파일 없으면 None 반환 (건너뜀).
+    """
+    config_dir   = settings.get("config_dir", "config")
+    profile_path = Path(config_dir) / "test_profiles" / f"{page_id}.yaml"
+    if not profile_path.exists():
+        return None
+
+    with open(profile_path, encoding="utf-8") as f:
+        profile = yaml.safe_load(f) or {}
+
+    report = PageScanReport(page_id=page_id)
+
+    for case_key in ("case_a", "case_b"):
+        case = profile.get(case_key)
+        if not case:
+            continue
+        case_label   = "Case A (전체 ON)" if case_key == "case_a" else "Case B (전체 OFF)"
+        policy_name  = case["policy_name"]
+        actions      = case.get("actions", [])
+        verify_dict  = case.get("verify", {})
+        order_base   = 1000 if case_key == "case_a" else 2000
+
+        # 1. 추가 모달 열기
+        try:
+            page_obj.open_add_modal()
+        except Exception as e:
+            report.results.append(ScanResult(
+                pattern="profile_case", selector="button#addItemBtn",
+                label=f"[{case_label}] 추가 모달 열기",
+                status="error", detail=str(e),
+                order=order_base, phase=4,
+            ))
+            continue
+
+        # 2. 정책 이름 입력
+        try:
+            playwright_page.locator("input#rcDetectPolicyName").first.fill(policy_name)
+            playwright_page.wait_for_timeout(200)
+        except Exception:
+            pass
+
+        # 3. 액션 적용
+        try:
+            _apply_profile_actions(playwright_page, actions)
+            report.results.append(ScanResult(
+                pattern="profile_case", selector="",
+                label=f"[{case_label}] 설정 적용",
+                status="pass", detail=f"{len(actions)}개 액션 적용 완료",
+                order=order_base + 1, phase=4,
+            ))
+        except Exception as e:
+            report.results.append(ScanResult(
+                pattern="profile_case", selector="",
+                label=f"[{case_label}] 설정 적용",
+                status="error", detail=str(e),
+                order=order_base + 1, phase=4,
+            ))
+            try:
+                page_obj.close_edit_modal()
+            except Exception:
+                pass
+            continue
+
+        # 4. 저장
+        try:
+            page_obj.save_policy(policy_name)
+            report.results.append(ScanResult(
+                pattern="profile_case", selector="",
+                label=f"[{case_label}] 저장",
+                status="pass", detail=f"'{policy_name}' 저장 성공",
+                order=order_base + 2, phase=4,
+            ))
+        except Exception as e:
+            report.results.append(ScanResult(
+                pattern="profile_case", selector="",
+                label=f"[{case_label}] 저장",
+                status="error", detail=str(e),
+                order=order_base + 2, phase=4,
+            ))
+            continue
+
+        # 5. 수정 모달 재오픈 → 값 검증 → 스냅샷
+        if verify_dict:
+            try:
+                page_obj.open_modify_modal(policy_name)
+                playwright_page.wait_for_timeout(500)
+                verify_results = _verify_profile_case(
+                    playwright_page, verify_dict,
+                    case_label, phase=4, order_base=order_base + 10,
+                )
+                report.results.extend(verify_results)
+                _save_snapshot(page_id, case_key, verify_dict)
+                page_obj.close_edit_modal()
+            except Exception as e:
+                report.results.append(ScanResult(
+                    pattern="profile_verify", selector="",
+                    label=f"[{case_label}] 검증 실행 오류",
+                    status="error", detail=str(e),
+                    order=order_base + 10, phase=4,
+                ))
+
+    return report if report.results else None
 
 
 def run_scan(
@@ -237,9 +467,28 @@ def run_3phase_scan(
         print(f"  ⏭ [{page_id}] Phase 3 실행되지 않음")
 
     # ─────────────────────────────────────────────────────────────
+    # Phase 4: test_profiles가 있으면 Case A / Case B 두 케이스 검증
+    # ─────────────────────────────────────────────────────────────
+    report4: PageScanReport | None = None
+    try:
+        report4 = run_phase3_cases(playwright_page, settings, page_id, page_obj)
+        if report4:
+            print_phase_report(report4, 4)
+        else:
+            print(f"\n  ⏭ [{page_id}] 시나리오 4 스킵 — test_profiles/{page_id}.yaml 없음")
+    except Exception as e:
+        print(f"  💥 [{page_id}] 시나리오 4 실행 중 예외: {e}")
+    finally:
+        try:
+            page_obj.navigate_to()
+            page_obj.delete_all_auto_policies()
+        except Exception:
+            pass
+
+    # ─────────────────────────────────────────────────────────────
     # 결합 리포트
     # ─────────────────────────────────────────────────────────────
-    reports = [r for r in (report1, report2, report3) if r is not None]
+    reports = [r for r in (report1, report2, report3, report4) if r is not None]
     if not reports:
         raise RuntimeError(f"[{page_id}] 스캔 결과 없음 — 모든 Phase 실패")
 
