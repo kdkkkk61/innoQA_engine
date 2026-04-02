@@ -134,29 +134,29 @@ def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
         scenario   = _scenario_label(r, is_list_page)
         expected, actual = _expected_vs_actual(r)
 
-        # 시나리오 구분 헤더 행
+        # 시나리오 구분 헤더 행 (4컬럼 전체 span)
         if scenario != prev_scenario:
             rows.append(f"""
         <tr class="scenario-header">
-          <td colspan="5">{html.escape(scenario)}</td>
+          <td colspan="4">{html.escape(scenario)}</td>
         </tr>""")
             prev_scenario = scenario
 
         rows.append(f"""
         <tr class="row-{css}">
-          <td class="col-label" colspan="1">{html.escape(r.label)}</td>
+          <td class="col-label">{html.escape(r.label)}</td>
           <td class="col-status">{badge}</td>
           <td class="col-expected">{html.escape(expected)}</td>
-          <td class="col-actual" colspan="2">{html.escape(actual)}</td>
+          <td class="col-actual">{html.escape(actual)}</td>
         </tr>""")
     return f"""
     <table class="result-table">
       <thead>
         <tr>
-          <th>검증 항목</th>
-          <th>결과</th>
-          <th>기댓값</th>
-          <th colspan="2">실제값</th>
+          <th class="col-label">검증 항목</th>
+          <th class="col-status">결과</th>
+          <th class="col-expected">기댓값</th>
+          <th class="col-actual">실제값</th>
         </tr>
       </thead>
       <tbody>{''.join(rows)}</tbody>
@@ -253,9 +253,10 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .result-table th { background: #f0f4f8; padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; }
 .result-table td { padding: 9px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
 .result-table tr:hover td { background: #fafbfc; }
-.col-label    { width: 42%; }
-.col-status   { width: 10%; text-align: center; }
-.col-expected, .col-actual { width: 24%; font-size: 12px; color: #555; }
+.col-label    { width: 40%; }
+.col-status   { width: 10%; text-align: center; white-space: nowrap; }
+.col-expected { width: 22%; font-size: 12px; color: #555; }
+.col-actual   { width: 28%; font-size: 12px; color: #555; }
 .row-fail td  { background: #fff8f8; }
 .row-bug td   { background: #fffdf0; }
 .row-error td { background: #fff5f5; }
