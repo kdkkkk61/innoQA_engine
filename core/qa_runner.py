@@ -172,8 +172,6 @@ def run_phase3_cases(
     # ── 1. 전체 ON 정책 생성 ──────────────────────────────────────
     try:
         page_obj.open_add_modal()
-        playwright_page.locator("input#rcDetectPolicyName").first.fill(policy_name)
-        playwright_page.wait_for_timeout(200)
         _apply_profile_actions(playwright_page, create_cfg.get("actions", []))
         page_obj.save_policy(policy_name)
         report.results.append(ScanResult(

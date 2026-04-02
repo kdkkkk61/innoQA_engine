@@ -378,6 +378,16 @@ class RdpPolicyPage(BasePage):
         except Exception:
             pass
 
+    def save_edit_modal(self) -> None:
+        """Phase 4: 수정 모달에서 변경 내용 저장 (수정 저장 버튼 클릭 + 확인 처리)."""
+        self.click_attached(self.SEL_SAVE_BTN)
+        self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).wait_for(
+            state="attached", timeout=self._TIMEOUT_MODAL
+        )
+        self.click_attached(self.SEL_CONFIRM_BTN)
+        self.wait_for_modal_closed()
+        self.wait_for(self.SEL_ADD_BTN)
+
     def get_verify_values(self, saved_name: str) -> dict:
         """Phase 3: EDIT 모달 로드 후 정책 이름 필드 값 확인."""
         return {"input#rcRdpPolicyName": saved_name}

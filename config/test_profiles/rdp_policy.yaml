@@ -1,0 +1,109 @@
+# rdp_policy Phase 4 테스트 프로파일
+# 단일 정책 전환 검증 (2026-04-02)
+#
+# 흐름:
+#   1. create: 연결 허용 + 시간 설정 + 전체 요일 + 최대값으로 정책 생성
+#   2. verify_created: 생성 직후 수정 모달에서 전체 ON 확인
+#   3. modify_to_off: 연결 차단으로 전환 저장
+#   4. verify_modified: 재오픈 후 연결 차단 확인
+#
+# verify 값 형식:
+#   "checked"   → el.is_checked() == True
+#   "unchecked" → el.is_checked() == False
+#   그 외 문자열  → el.input_value() == 해당값
+
+page_id: rdp_policy
+
+# ── 1. 생성: 연결 허용 + 연결 시간 설정 + 전체 요일 + 최대값 ─────────────────
+create:
+  policy_name: "[AUTO]_rdp_p4"
+
+  actions:
+    # 연결 허용 선택 (종속 필드 활성화)
+    - type:     radio_set
+      selector: "input#isAllowConnect"
+
+    # 연결 시간 설정 선택 (요일/시간 필드 활성화)
+    - type:     radio_set
+      selector: "input#isDenyAlwaysConnect"
+
+    # 연결 포트 최대값 (JS 클램핑 상한 65535)
+    - type:     text_set
+      selector: "input#connectPort"
+      value:    "65535"
+
+    # 접근 시도 횟수 제한 최대값 (maxlength=2 → 99)
+    - type:     text_set
+      selector: "input#accessLimitCount"
+      value:    "99"
+
+    # 횟수 초과 시 지연시간 최대값 (maxlength=3 → 999)
+    - type:     text_set
+      selector: "input#accessLimitIdleMinute"
+      value:    "999"
+
+    # 적용 요일 전체 체크
+    - type:     checkbox_set
+      selector: "input#sunday"
+      value:    true
+    - type:     checkbox_set
+      selector: "input#monday"
+      value:    true
+    - type:     checkbox_set
+      selector: "input#tuesday"
+      value:    true
+    - type:     checkbox_set
+      selector: "input#wednesday"
+      value:    true
+    - type:     checkbox_set
+      selector: "input#thursday"
+      value:    true
+    - type:     checkbox_set
+      selector: "input#friday"
+      value:    true
+    - type:     checkbox_set
+      selector: "input#saturday"
+      value:    true
+
+    # 적용 시간: 00:00 ~ 24:00
+    - type:     text_set
+      selector: "input#connectStartHour"
+      value:    "0"
+    - type:     text_set
+      selector: "input#connectStartMinute"
+      value:    "0"
+    - type:     text_set
+      selector: "input#connectEndHour"
+      value:    "24"
+    - type:     text_set
+      selector: "input#connectEndMinute"
+      value:    "0"
+
+# ── 2. 생성 후 검증: 전체 ON 확인 ────────────────────────────────────────────
+verify_created:
+  "input#isAllowConnect":          "checked"
+  "input#isDenyAlwaysConnect":     "checked"
+  "input#connectPort":             "65535"
+  "input#accessLimitCount":        "99"
+  "input#accessLimitIdleMinute":   "999"
+  "input#sunday":                  "checked"
+  "input#monday":                  "checked"
+  "input#tuesday":                 "checked"
+  "input#wednesday":               "checked"
+  "input#thursday":                "checked"
+  "input#friday":                  "checked"
+  "input#saturday":                "checked"
+  "input#connectStartHour":        "0"
+  "input#connectStartMinute":      "0"
+  "input#connectEndHour":          "24"
+  "input#connectEndMinute":        "0"
+
+# ── 3. 수정: 연결 차단으로 전환 ──────────────────────────────────────────────
+modify_to_off:
+  actions:
+    - type:     radio_set
+      selector: "input#isDenyConnect"
+
+# ── 4. 수정 후 검증: 연결 차단 확인 ──────────────────────────────────────────
+verify_modified:
+  "input#isDenyConnect":           "checked"

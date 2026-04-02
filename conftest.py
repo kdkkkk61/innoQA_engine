@@ -11,14 +11,54 @@ pytest 전역 fixture
 import getpass
 import io
 import os
+import shutil
 import sys
 import pytest
 
-# Windows CP949 환경에서 리디렉션 시 UnicodeEncodeError 방지
+# Windows CP949 환경에서 UnicodeEncodeError 방지
 if hasattr(sys.stdout, "buffer") and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "buffer") and sys.stderr.encoding.lower() != "utf-8":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+
+class _TeeOutput:
+    """stdout/stderr 를 터미널 + 파일에 동시 출력."""
+    def __init__(self, original, file_obj):
+        self._orig = original
+        self._file = file_obj
+
+    def write(self, data):
+        self._orig.write(data)
+        try:
+            self._file.write(data)
+        except Exception:
+            pass
+
+    def flush(self):
+        self._orig.flush()
+        try:
+            self._file.flush()
+        except Exception:
+            pass
+
+    def fileno(self):
+        return self._orig.fileno()
+
+    def isatty(self):
+        return getattr(self._orig, "isatty", lambda: False)()
+
+    @property
+    def encoding(self):
+        return "utf-8"
+
+    @property
+    def errors(self):
+        return "replace"
+
+    @property
+    def closed(self):
+        return False
 import yaml
 from datetime import datetime
 from playwright.sync_api import sync_playwright
@@ -164,6 +204,58 @@ def pytest_configure(config):
 
     _credentials["admin"]   = {"username": username, "password": password}
     _credentials["invalid"] = {"username": "wrong_user", "password": "wrong_pass"}
+
+    # ── 로그 파일 자동 저장 설정 ──────────────────────────────────────
+    from pathlib import Path
+    from datetime import datetime as _dt
+
+    runs_dir = Path("reports/runs")
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
+    # -k 필터값을 파일명에 포함 (없으면 "all")
+    try:
+        k_filter = (config.getoption("-k", skip=True) or "all").strip()
+    except Exception:
+        k_filter = "all"
+    k_filter = "".join(c if c.isalnum() or c in "_-" else "_" for c in k_filter)[:40] or "all"
+
+    ts       = _dt.now().strftime("%Y%m%d_%H%M%S")
+    log_path = runs_dir / f"{ts}_{k_filter}.log"
+    log_file = open(log_path, "w", encoding="utf-8")
+
+    config._qa_log_file     = log_file
+    config._qa_log_path     = log_path
+    config._qa_orig_stdout  = sys.stdout
+    config._qa_orig_stderr  = sys.stderr
+
+    sys.stdout = _TeeOutput(sys.stdout, log_file)
+    sys.stderr = _TeeOutput(sys.stderr, log_file)
+
+
+def pytest_unconfigure(config):
+    """테스트 종료 시 로그 파일 닫고 last_run.log에 복사."""
+    from pathlib import Path
+
+    log_file = getattr(config, "_qa_log_file", None)
+    log_path = getattr(config, "_qa_log_path", None)
+
+    # stdout/stderr 원본 복원
+    orig_out = getattr(config, "_qa_orig_stdout", None)
+    orig_err = getattr(config, "_qa_orig_stderr", None)
+    if orig_out:
+        sys.stdout = orig_out
+    if orig_err:
+        sys.stderr = orig_err
+
+    if log_file:
+        try:
+            log_file.flush()
+            log_file.close()
+        except Exception:
+            pass
+
+    if log_path and Path(log_path).exists():
+        shutil.copy2(log_path, Path("reports/last_run.log"))
 
 
 @pytest.fixture(scope="session")
