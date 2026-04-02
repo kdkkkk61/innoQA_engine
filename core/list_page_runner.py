@@ -845,7 +845,7 @@ class ListPageRunner:
         ))
 
     def _take_screenshot(self, label: str) -> str | None:
-        """결함 발견 시점 스크린샷 저장. 경로 반환 (실패 시 None)."""
+        """결함 발견 시점 스크린샷 저장. 오버레이 숨김 → 캡처 → 복원."""
         try:
             from pathlib import Path
             from datetime import datetime
@@ -854,7 +854,11 @@ class ListPageRunner:
             ts   = datetime.now().strftime("%H%M%S_%f")[:9]
             safe = "".join(c if c.isalnum() or c in "_-" else "_" for c in label)[:35]
             path = ss_dir / f"BUG_{safe}_{ts}.png"
+            _hide = "['qa-block-overlay','qa-test-banner'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';})"
+            _show = "['qa-block-overlay','qa-test-banner'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='';})"
+            self.page.evaluate(_hide)
             self.page.screenshot(path=str(path))
+            self.page.evaluate(_show)
             return str(path)
         except Exception:
             return None
