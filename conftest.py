@@ -74,6 +74,9 @@ _credentials: dict = {}
 # 의존성 추적: dependency(name=...) 로 명명된 테스트의 pass/fail 결과 보관
 _dependency_results: dict = {}
 
+# HTML 리포트용 — (page_id, PageScanReport) 수집 버퍼
+_scan_reports: list = []
+
 # ------------------------------------------------------------------
 # 테스트 진행 중 주입 요소 JS
 # 1. 클릭 차단 오버레이 (qa-block-overlay): pointer-events:all 로 페이지 클릭 차단
@@ -233,8 +236,29 @@ def pytest_configure(config):
 
 
 def pytest_unconfigure(config):
-    """테스트 종료 시 로그 파일 닫고 last_run.log에 복사."""
+    """테스트 종료 시 HTML 리포트 생성 → 로그 파일 닫고 last_run.log에 복사."""
     from pathlib import Path
+
+    # ── HTML 리포트 생성 (scan_reports 있을 때만) ─────────────────────
+    if _scan_reports:
+        try:
+            import yaml as _yaml
+            with open(CONFIG_PATH, encoding="utf-8") as _f:
+                _cfg = _yaml.safe_load(_f) or {}
+            product_name = _cfg.get("product_name", "RansomCruncher")
+            from core.html_reporter import generate_html_report
+            html_path = generate_html_report(
+                _scan_reports,
+                product_name=product_name,
+                output_dir="reports",
+                screenshot_dir="reports/screenshots",
+            )
+            # stdout이 아직 Tee 상태일 수 있으므로 직접 write
+            sys.stdout.write(f"\n[HTML 리포트] {html_path}\n")
+            sys.stdout.flush()
+        except Exception as _e:
+            sys.stdout.write(f"\n[HTML 리포트 생성 실패] {_e}\n")
+            sys.stdout.flush()
 
     log_file = getattr(config, "_qa_log_file", None)
     log_path = getattr(config, "_qa_log_path", None)
@@ -413,6 +437,17 @@ def pytest_runtest_makereport(item, call):
         marker = item.get_closest_marker("dependency")
         if marker and marker.kwargs.get("name"):
             _dependency_results[marker.kwargs["name"]] = report.passed
+
+    # HTML 리포트용 스캔 결과 수집 (test_page_scan 전용)
+    if report.when == "call":
+        scan_report = getattr(item, "_scan_report", None)
+        if scan_report is not None:
+            try:
+                page_id = item.callspec.params.get("page_id")
+            except AttributeError:
+                page_id = None
+            if page_id:
+                _scan_reports.append((page_id, scan_report))
 
     if report.when == "call" and report.failed:
         page = item.funcargs.get("fresh_page") or item.funcargs.get("logged_in_page")

@@ -1,4 +1,5 @@
 base_url: "http://192.168.13.141/#!/"
+product_name: "RansomCruncher"
 
 browser:
   headless: false        # true: 헤드리스(백그라운드), false: 브라우저 창 표시
