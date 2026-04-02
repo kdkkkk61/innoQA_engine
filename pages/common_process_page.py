@@ -61,7 +61,9 @@ class CommonProcessPage(BasePage):
                 and "pageSize=100" in self.page.url):
             return
 
-        if "manager/main.html" not in self.page.url:
+        # CommonProcess 페이지가 아니면 항상 main.html 재로드
+        # (메뉴 아코디언이 이미 열린 상태가 아닐 때 JS 클릭이 동작하지 않는 문제 방지)
+        if "CommonProcess" not in self.page.url or "pageSize=100" not in self.page.url:
             host = self.base_url.split("/#!/")[0].rstrip("/")
             self.page.goto(f"{host}/manager/main.html")
             self._dismiss_stale_confirm_modal()
@@ -171,10 +173,80 @@ class CommonProcessPage(BasePage):
         )
         self.page.wait_for_timeout(200)
 
+    def switch_tab(self, label: str) -> None:
+        """탭 레이블로 탭 전환 후 목록 로드 대기."""
+        self.page.locator(f"a:has-text('{label}')").first.evaluate("el => el.click()")
+        self.page.wait_for_timeout(500)
+        self.wait_for(self.SEL_ADD_BTN)
+
+    def try_add_item(self, name: str, sha2: str) -> tuple[bool, str]:
+        """항목 추가 시도. 성공/에러 여부와 모달 메시지 반환.
+        성공: (True, 메시지), 에러: (False, 에러 메시지)
+        """
+        if not name.startswith("[AUTO]"):
+            raise Exception("테스트 항목([AUTO] 접두사)만 생성 가능합니다")
+
+        self.click(self.SEL_ADD_BTN)
+        self.page.locator(self.SEL_MODAL_OPEN).wait_for(
+            state="attached", timeout=self._TIMEOUT_MODAL
+        )
+        self.page.wait_for_timeout(300)
+
+        self.fill(self.SEL_PROCESS_NAME, name)
+
+        sha2_loc = self.page.locator(self.SEL_SHA2).first
+        sha2_loc.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
+        sha2_loc.evaluate(
+            "(el, value) => { el.value = value; "
+            "el.dispatchEvent(new Event('input', {bubbles:true})); }",
+            sha2
+        )
+        self.page.wait_for_timeout(200)
+
+        self.click_attached(self.SEL_REGISTER_BTN)
+
+        try:
+            self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).wait_for(
+                state="attached", timeout=self._TIMEOUT_MODAL
+            )
+            msg = self.page.locator(self.SEL_MODAL_BODY_TEXT).first.inner_text().strip()
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).wait_for(
+                state="detached", timeout=self._TIMEOUT_TABLE
+            )
+        except Exception as e:
+            msg = str(e)
+
+        # 추가 모달이 아직 열려 있으면 에러로 저장 실패한 것 → 닫기
+        if self.page.locator(self.SEL_MODAL_OPEN).count() > 0:
+            try:
+                self.click_attached(self.SEL_CLOSE_BTN)
+                self.wait_for(self.SEL_ADD_BTN)
+            except Exception:
+                pass
+            return False, msg
+
+        self.wait_for(self.SEL_ADD_BTN)
+        self._restore_page_size()
+        return True, msg
+
     def delete_all_auto_items(self) -> None:
-        """[AUTO] 접두사 항목을 모두 삭제한다."""
-        for name in [n for n in self.get_item_names() if n.startswith("[AUTO]")]:
-            self.delete_item(name)
+        """[AUTO] 접두사 항목을 예외/차단 탭 모두에서 삭제한다."""
+        for tab_label in ("예외 프로세스", "차단 프로세스"):
+            try:
+                self.switch_tab(tab_label)
+            except Exception:
+                pass
+            for name in [n for n in self.get_item_names() if n.startswith("[AUTO]")]:
+                try:
+                    self.delete_item(name)
+                except Exception:
+                    pass
+        # 예외 탭으로 복귀
+        try:
+            self.switch_tab("예외 프로세스")
+        except Exception:
+            pass
 
     def delete_item(self, name: str) -> None:
         """항목 삭제. [AUTO] 접두사 필수."""

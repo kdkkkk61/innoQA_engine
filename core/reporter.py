@@ -159,8 +159,10 @@ def print_combined_report(combined: PageScanReport) -> None:
         print(f"  ⚠️  추적 중인 결함 {len(combined.known_bugs)}건 — 수정 필요 (fail 카운트 제외)")
         print(f"{'─' * 60}")
         for r in combined.known_bugs:
-            phase_tag = f"[Phase {r.phase}]" if r.phase else ""
-            print(f"  ⚠️  {phase_tag}[{r.pattern}] {r.label}")
+            scenario_tag = r.extra.get("scenario_tag") if r.extra else None
+            ctx = f"[{scenario_tag}]" if scenario_tag else (f"[Phase {r.phase}]" if r.phase else "")
+            prefix = f"{ctx} " if ctx else ""
+            print(f"  ⚠️  {prefix}[{r.pattern}] {r.label}")
             print(f"       → {r.detail}")
         print(f"{'─' * 60}")
         print(f"  💡 known_bugs.yaml 에서 status: open → fixed 로 변경 시 회귀 감지 활성화")

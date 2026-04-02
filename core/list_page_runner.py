@@ -237,11 +237,14 @@ class ListPageRunner:
         for req_f in req_fields:
             self._test_required_field(req_f, req_fields, submit_sel)
 
-        # 모달 닫기
+        # 글자수 제한 없는 필드 오버플로 테스트
+        self._scan_field_overflow(fields, req_fields, open_sel, submit_sel, cancel_sel, modal_sel)
+
+        # 모달 닫기 (이미 닫혀있으면 스킵)
         try:
-            self.page.locator(cancel_sel).first.evaluate("el => el.click()")
-            self.page.wait_for_timeout(400)
-            # 닫힘 후 잔여 모달 처리
+            if self.page.locator(f"{modal_sel}.in").count() > 0:
+                self.page.locator(cancel_sel).first.evaluate("el => el.click()")
+                self.page.wait_for_timeout(400)
             if self.page.locator(_CONFIRM_MODAL).count() > 0:
                 self.page.locator(_CONFIRM_BTN).first.evaluate("el => el.click()")
                 self.page.wait_for_timeout(400)
@@ -296,15 +299,135 @@ class ListPageRunner:
             self.page.locator(_CONFIRM_BTN).first.evaluate("el => el.click()")
             self.page.locator(_CONFIRM_MODAL).wait_for(state="detached", timeout=3_000)
             self._ok("list_modal_required", sel, f"필수 미입력 경고 — {flabel}",
-                     f"경고: '{msg}'", order=forder + 100)
+                     f"경고: '{msg}'", order=forder + 20)
         except Exception:
             self._fail("list_modal_required", sel, f"필수 미입력 경고 — {flabel}",
                        "경고 모달 없음 (필수 검증 미동작 — 실제 required 아닐 수 있음)",
-                       order=forder + 100)
+                       order=forder + 20)
+
+    def _scan_field_overflow(
+        self,
+        fields: list,
+        req_fields: list,
+        open_sel: str,
+        submit_sel: str,
+        cancel_sel: str,
+        modal_sel: str,
+        overflow_len: int = 500,
+        order_base: int = 90,
+    ) -> None:
+        """글자수 제한 없는 필드에 긴 값 입력 후 제출 → 서버 오류 여부 확인.
+
+        maxlength 속성이 없는 필드 중 text/textarea 타입에 대해
+        overflow_len 길이의 문자열을 입력하고 제출한다.
+        - 서버 오류 모달('서버에서 오류') → fail (클라이언트 검증 누락)
+        - 정상 저장 또는 유효성 에러 → pass
+        """
+        # maxlength 미지정 텍스트 필드만 대상
+        targets = [
+            f for f in fields
+            if f.get("type") in ("text", "textarea") and not f.get("maxlength")
+        ]
+        if not targets:
+            return
+
+        for i, field in enumerate(targets):
+            fid    = field["id"]
+            ftype  = field.get("type", "text")
+            flabel = field.get("label", fid)
+            tag    = "textarea" if ftype == "textarea" else "input"
+            sel    = f"{tag}#{fid}"
+            order  = order_base + i
+
+            try:
+                # 각 iteration마다 모달을 새로 열기 (이전 테스트 후 닫혀있을 수 있음)
+                if self.page.locator(f"{modal_sel}.in").count() == 0:
+                    self.page.locator(open_sel).first.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(500)
+                    if self.page.locator(f"{modal_sel}.in").count() == 0:
+                        self._err("list_modal_overflow", sel,
+                                  f"글자수 제한 없음 — {flabel} ({overflow_len}자)",
+                                  "모달 재열기 실패", order=order)
+                        continue
+
+                # 필수 필드 모두 유효값으로 채우기 (모달 내 요소를 직접 JS로 채움)
+                for req_f in req_fields:
+                    r_tag = "textarea" if req_f.get("type") == "textarea" else "input"
+                    r_id  = req_f["id"]
+                    fill_val = "A" * 64 if req_f.get("type") == "textarea" else "overflow_test"
+                    self.page.evaluate(
+                        "(args) => { const el = document.getElementById(args.id);"
+                        " if(el){ el.value = args.v;"
+                        " el.dispatchEvent(new Event('input',{bubbles:true})); } }",
+                        {"id": r_id, "v": fill_val},
+                    )
+
+                # 대상 필드에 긴 값 입력
+                long_val = "A" * overflow_len
+                self.page.evaluate(
+                    "(args) => { const el = document.getElementById(args.id);"
+                    " if(el){ el.value = args.v;"
+                    " el.dispatchEvent(new Event('input',{bubbles:true})); } }",
+                    {"id": fid, "v": long_val},
+                )
+
+                # 제출 (querySelector 사용 — locator timeout 없음)
+                self.page.evaluate(
+                    "(sel) => { const el = document.querySelector(sel); if(el) el.click(); }",
+                    submit_sel,
+                )
+                # 응답 확인 — 모달 뜨는 즉시 진행 (sleep 없음)
+                try:
+                    self.page.locator(_CONFIRM_MODAL).wait_for(state="attached", timeout=3_000)
+                    msg = self.page.locator(_MODAL_TEXT).first.inner_text().strip()
+                    self.page.locator(_CONFIRM_BTN).first.evaluate("el => el.click()")
+                    self.page.locator(_CONFIRM_MODAL).wait_for(state="detached", timeout=3_000)
+
+                    if "서버" in msg or "오류" in msg or "error" in msg.lower():
+                        self._known_bug(
+                            "list_modal_overflow", sel,
+                            f"글자수 제한 누락 — {flabel} ({overflow_len}자)",
+                            f"클라이언트 검증 없어 서버 오류 발생: '{msg}'",
+                            order=order,
+                        )
+                    else:
+                        self._ok(
+                            "list_modal_overflow", sel,
+                            f"글자수 제한 없음 — {flabel} ({overflow_len}자)",
+                            f"서버 오류 없음, 응답: '{msg}'",
+                            order=order,
+                        )
+                except Exception:
+                    # 모달 없이 저장됨 (timeout — 모달 안 뜸)
+                    self._ok(
+                        "list_modal_overflow", sel,
+                        f"글자수 제한 없음 — {flabel} ({overflow_len}자)",
+                        f"서버 오류 없음 (저장 성공 또는 무응답)",
+                        order=order,
+                    )
+                    try:
+                        auto_name = "overflow_test"
+                        if auto_name in self.page_obj.get_item_names():
+                            self.page_obj.delete_item(auto_name)
+                    except Exception:
+                        pass
+
+            except Exception as e:
+                self._err("list_modal_overflow", sel,
+                          f"글자수 제한 없음 — {flabel} ({overflow_len}자)",
+                          str(e), order=order)
+
+            # 모달이 아직 열려있으면 취소
+            try:
+                if self.page.locator(f"{modal_sel}.in").count() > 0:
+                    self.page.locator(cancel_sel).first.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(400)
+            except Exception:
+                pass
 
     # ── 수정 모달 ─────────────────────────────────────────────────
 
-    def _scan_modify(self, test_name: str, crud_order: int) -> None:
+    def _scan_modify(self, test_name: str, crud_order: int, tab_label: str = "") -> None:
         """수정 모달 열기 → 값 로드 확인 → 실제 저장 → 재확인까지 검증."""
         modal_cfg  = self.hints.get("add_modal", {})
         modal_sel  = modal_cfg.get("modal_selector", "div#addItemModal")
@@ -386,10 +509,11 @@ class ListPageRunner:
                     self.page.locator(_CONFIRM_MODAL).wait_for(
                         state="detached", timeout=3_000
                     )
+                    _tab = f" [{tab_label}]" if tab_label else ""
                     if "SHA2" in msg or "해시" in msg:
                         self._known_bug(
                             "list_modify_bug", "input#sign",
-                            "전자서명 변경 시 SHA2 초기화 (제품 버그)",
+                            f"전자서명 변경 시 SHA2 초기화 (제품 버그){_tab}",
                             f"전자서명 수정 → 내부 SHA2 상태 초기화 → 에러: '{msg}'",
                             order=o_save - 1,
                         )
@@ -397,7 +521,7 @@ class ListPageRunner:
                         # 예상치 못한 에러
                         self._fail(
                             "list_modify_bug", "input#sign",
-                            "전자서명 변경 시 SHA2 초기화 (제품 버그)",
+                            f"전자서명 변경 시 SHA2 초기화 (제품 버그){_tab}",
                             f"예상치 못한 에러 모달: '{msg}'",
                             order=o_save - 1,
                         )
@@ -405,7 +529,7 @@ class ListPageRunner:
                     # 에러 없이 저장됨 → 버그가 수정된 경우
                     self._ok(
                         "list_modify_bug", "input#sign",
-                        "전자서명 변경 시 SHA2 초기화 (제품 버그)",
+                        f"전자서명 변경 시 SHA2 초기화 (제품 버그){_tab}",
                         "에러 없이 저장 성공 — 버그 수정된 것으로 보임",
                         order=o_save - 1,
                     )
@@ -539,27 +663,143 @@ class ListPageRunner:
                       str(e), order=crud_order)
             return
 
-        # 수정 모달 열림 + 값 로드 + 저장 + 재확인 (추가 직후, 삭제 전)
-        # _scan_modify 내부 order: crud_order+1 ~ crud_order+4
-        self._scan_modify(test_name, crud_order)
+        # 차단 탭 CRUD + SHA2 전역 유니크 검증 — order: crud_order+1 ~
+        # 반드시 _scan_modify() 전에 실행: modify가 SHA2를 변경하면 중복 검증이 불가능
+        tabs = self.hints.get("tabs", [])
+        sha2_b = crud.get("test_sha2_b", "")
+        if sha2_b and hasattr(self.page_obj, "switch_tab") and hasattr(self.page_obj, "try_add_item"):
+            self._scan_block_tab_crud(test_name, test_sha2, sha2_b, crud_order + 1)
+            # 차단 탭 검증 후 예외 탭으로 복귀 — 이후 수정/검색 테스트는 예외 탭 항목 대상
+            if tabs:
+                try:
+                    self.page_obj.switch_tab(tabs[0]["label"])
+                except Exception:
+                    pass
+
+        # 수정 모달 열림 + 값 로드 + 저장 + 재확인 (차단 탭 검증 후)
+        # _scan_modify 내부 order: crud_order+8 ~ crud_order+11
+        except_label = tabs[0]["label"] if tabs else "예외 탭"
+        self._scan_modify(test_name, crud_order + 7, tab_label=except_label)
 
         # 검색 UX 검증 (항목이 존재하는 상태에서 실행)
-        # order: crud_order+5, crud_order+6
-        self._scan_search_with_item(test_name, crud_order + 5)
+        # order: crud_order+13, crud_order+14
+        self._scan_search_with_item(test_name, crud_order + 13)
 
-        # 삭제 — order: crud_order+7
+        # 예외 탭으로 복귀 후 삭제 — order: crud_order+17
+        if tabs and hasattr(self.page_obj, "switch_tab"):
+            try:
+                self.page_obj.switch_tab(tabs[0]["label"])
+            except Exception:
+                pass
+
         try:
             self.page_obj.delete_item(test_name)
             names_after = self.page_obj.get_item_names()
             if test_name not in names_after:
-                self._ok("list_crud", "table tbody tr", "CRUD — 항목 삭제",
-                         f"'{test_name}' 삭제 후 목록 제거 확인", order=crud_order + 7)
+                self._ok("list_crud", "table tbody tr", "CRUD — 예외 탭 항목 삭제",
+                         f"'{test_name}' 삭제 후 목록 제거 확인", order=crud_order + 17)
             else:
-                self._fail("list_crud", "table tbody tr", "CRUD — 항목 삭제",
-                           f"'{test_name}' 삭제 후에도 목록에 남아있음", order=crud_order + 7)
+                self._fail("list_crud", "table tbody tr", "CRUD — 예외 탭 항목 삭제",
+                           f"'{test_name}' 삭제 후에도 목록에 남아있음", order=crud_order + 17)
         except Exception as e:
-            self._err("list_crud", "table tbody tr", "CRUD — 항목 삭제",
-                      str(e), order=crud_order + 7)
+            self._err("list_crud", "table tbody tr", "CRUD — 예외 탭 항목 삭제",
+                      str(e), order=crud_order + 17)
+
+    def _scan_block_tab_crud(
+        self,
+        test_name: str,
+        sha2_a: str,
+        sha2_b: str,
+        order_base: int,
+    ) -> None:
+        """차단 탭으로 전환 후 SHA2 전역 유니크 제약 + CRUD 검증.
+
+        검증 시나리오:
+          1. 차단 탭 전환
+          2. 동일 이름 + SHA2_A(중복) 추가 시도 → 에러 확인
+          3. 동일 이름 + SHA2_B(유니크) 추가 → 성공 확인
+          4. 차단 탭 항목 삭제
+        """
+        tabs = self.hints.get("tabs", [])
+        block_tab = next((t for t in tabs if "차단" in t["label"]), None)
+        if not block_tab:
+            return
+
+        # 1. 차단 탭 전환
+        try:
+            self.page_obj.switch_tab(block_tab["label"])
+        except Exception as e:
+            self._err("list_crud", "a", f"차단 탭 전환", str(e), order=order_base)
+            return
+
+        # 2. 동일 이름 + SHA2_A(중복) → 에러여야 함
+        try:
+            ok, msg = self.page_obj.try_add_item(test_name, sha2_a)
+            if not ok:
+                self._ok(
+                    "list_crud", "div#addItemModal",
+                    "차단 탭 — SHA2 중복 에러 확인",
+                    f"예외 탭과 동일 SHA2 사용 시 에러: {msg!r}",
+                    order=order_base + 1,
+                )
+            else:
+                self._fail(
+                    "list_crud", "div#addItemModal",
+                    "차단 탭 — SHA2 중복 에러 확인",
+                    f"동일 SHA2 추가가 성공함 (전역 유니크 제약 미작동): msg={msg!r}",
+                    order=order_base + 1,
+                )
+                # 잘못 추가됐으면 삭제
+                try:
+                    self.page_obj.delete_item(test_name)
+                except Exception:
+                    pass
+        except Exception as e:
+            self._err("list_crud", "div#addItemModal",
+                      "차단 탭 — SHA2 중복 에러 확인", str(e), order=order_base + 1)
+
+        # 3. 동일 이름 + SHA2_B(유니크) → 성공해야 함
+        try:
+            ok, msg = self.page_obj.try_add_item(test_name, sha2_b)
+            if ok:
+                self._ok(
+                    "list_crud", "table tbody tr",
+                    "차단 탭 — 동일 이름 + 다른 SHA2 추가",
+                    f"이름 중복 허용 + SHA2 유니크 조합으로 추가 성공",
+                    order=order_base + 2,
+                )
+            else:
+                self._fail(
+                    "list_crud", "table tbody tr",
+                    "차단 탭 — 동일 이름 + 다른 SHA2 추가",
+                    f"추가 실패: {msg!r}",
+                    order=order_base + 2,
+                )
+                return
+        except Exception as e:
+            self._err("list_crud", "table tbody tr",
+                      "차단 탭 — 동일 이름 + 다른 SHA2 추가", str(e), order=order_base + 2)
+            return
+
+        # 4. 차단 탭 검색 UX 검증 (항목이 존재하는 상태)
+        self._scan_search_with_item(test_name, order_base + 3)
+
+        # 5. 차단 탭 수정 검증 (예외 탭과 동일한 버그 여부 확인)
+        self._scan_modify(test_name, order_base + 5, tab_label=block_tab["label"])
+
+        # 6. 차단 탭 항목 삭제
+        try:
+            self.page_obj.delete_item(test_name)
+            names_after = self.page_obj.get_item_names()
+            if test_name not in names_after:
+                self._ok("list_crud", "table tbody tr", "차단 탭 — 항목 삭제",
+                         f"'{test_name}' 삭제 확인", order=order_base + 10)
+            else:
+                self._fail("list_crud", "table tbody tr", "차단 탭 — 항목 삭제",
+                           f"삭제 후에도 목록에 남아있음", order=order_base + 10)
+        except Exception as e:
+            self._err("list_crud", "table tbody tr",
+                      "차단 탭 — 항목 삭제", str(e), order=order_base + 10)
 
     # ── 내부 헬퍼 ─────────────────────────────────────────────────
 
@@ -589,7 +829,13 @@ class ListPageRunner:
 
     def _known_bug(self, pattern, selector, label, detail, order, phase=1):
         """제품 버그로 확인된 항목. 테스트 실패가 아닌 버그 추적용 ⚠️."""
+        # order 기반 시나리오 번호 계산
+        scenario_idx = sum(1 for t, _ in _SCENARIO_THRESHOLDS if order >= t) - 1
+        scenario_idx = max(0, min(scenario_idx, len(_SCENARIO_THRESHOLDS) - 1))
+        _, scenario_header = _SCENARIO_THRESHOLDS[scenario_idx]
+        scenario_tag = scenario_header.split(":")[0]  # "시나리오 3"
         self.report.results.append(ScanResult(
             pattern=pattern, selector=selector, label=label,
             status="known_bug", detail=detail, order=order, phase=phase,
+            extra={"scenario_tag": scenario_tag},
         ))
