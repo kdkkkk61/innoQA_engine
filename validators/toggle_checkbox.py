@@ -215,6 +215,16 @@ def _check_toggle_with_deps(
             f"알려진 버그 — 종속 필드 {known_bug_count}개 비정상"
             f" ({len(dep_fields) - known_bug_count}개 정상)"
         )
+        ss = ctx.take_screenshot(f"{label}_bug")
+        return ScanResult(
+            pattern="toggle_checkbox", selector=selector, label=label,
+            status=parent_status, detail=parent_detail,
+            extra={
+                "dependent_fields":  dep_fields,
+                "dependent_results": dep_results,
+                "screenshot": ss,
+            },
+        )
     else:
         parent_status = "pass"
         parts: list[str] = []

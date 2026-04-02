@@ -143,6 +143,21 @@ class ScanContext:
                 return status != "fixed"
         return False
 
+    def take_screenshot(self, label: str) -> str | None:
+        """결함 발견 시점 스크린샷 저장. 경로 반환 (실패 시 None)."""
+        try:
+            from pathlib import Path
+            from datetime import datetime
+            ss_dir = Path("reports/screenshots")
+            ss_dir.mkdir(parents=True, exist_ok=True)
+            ts   = datetime.now().strftime("%H%M%S_%f")[:9]
+            safe = "".join(c if c.isalnum() or c in "_-" else "_" for c in label)[:35]
+            path = ss_dir / f"BUG_{safe}_{ts}.png"
+            self.page.screenshot(path=str(path))
+            return str(path)
+        except Exception:
+            return None
+
     @staticmethod
     def status_detail(failures: list[str], checks: list[str]) -> tuple[str, str]:
         """failures/checks 리스트에서 status·detail 문자열을 생성한다."""

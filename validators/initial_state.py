@@ -195,6 +195,7 @@ def _check_radio_require_default(
                 )
 
             ctx.log.debug(f"[initial_state] {label!r} → {status}")
+            ss = ctx.take_screenshot(f"{label}_초기값") if status in ("known_bug", "fail") else None
             report.results.append(ScanResult(
                 pattern="initial_state",
                 selector=rd_sel,
@@ -203,6 +204,7 @@ def _check_radio_require_default(
                 detail=detail,
                 order=order,
                 phase=1,
+                extra={"screenshot": ss} if ss else {},
             ))
 
 

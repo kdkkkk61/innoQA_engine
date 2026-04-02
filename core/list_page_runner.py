@@ -810,15 +810,19 @@ class ListPageRunner:
         ))
 
     def _fail(self, pattern, selector, label, detail, order, phase=1):
+        ss = self._take_screenshot(label)
         self.report.results.append(ScanResult(
             pattern=pattern, selector=selector, label=label,
             status="fail", detail=detail, order=order, phase=phase,
+            extra={"screenshot": ss} if ss else {},
         ))
 
     def _err(self, pattern, selector, label, detail, order, phase=1):
+        ss = self._take_screenshot(label)
         self.report.results.append(ScanResult(
             pattern=pattern, selector=selector, label=label,
             status="error", detail=detail, order=order, phase=phase,
+            extra={"screenshot": ss} if ss else {},
         ))
 
     def _skip(self, pattern, selector, label, detail, order, phase=1):
@@ -829,13 +833,28 @@ class ListPageRunner:
 
     def _known_bug(self, pattern, selector, label, detail, order, phase=1):
         """제품 버그로 확인된 항목. 테스트 실패가 아닌 버그 추적용 ⚠️."""
-        # order 기반 시나리오 번호 계산
         scenario_idx = sum(1 for t, _ in _SCENARIO_THRESHOLDS if order >= t) - 1
         scenario_idx = max(0, min(scenario_idx, len(_SCENARIO_THRESHOLDS) - 1))
         _, scenario_header = _SCENARIO_THRESHOLDS[scenario_idx]
-        scenario_tag = scenario_header.split(":")[0]  # "시나리오 3"
+        scenario_tag = scenario_header.split(":")[0]
+        ss = self._take_screenshot(label)
         self.report.results.append(ScanResult(
             pattern=pattern, selector=selector, label=label,
             status="known_bug", detail=detail, order=order, phase=phase,
-            extra={"scenario_tag": scenario_tag},
+            extra={"scenario_tag": scenario_tag, **({"screenshot": ss} if ss else {})},
         ))
+
+    def _take_screenshot(self, label: str) -> str | None:
+        """결함 발견 시점 스크린샷 저장. 경로 반환 (실패 시 None)."""
+        try:
+            from pathlib import Path
+            from datetime import datetime
+            ss_dir = Path("reports/screenshots")
+            ss_dir.mkdir(parents=True, exist_ok=True)
+            ts   = datetime.now().strftime("%H%M%S_%f")[:9]
+            safe = "".join(c if c.isalnum() or c in "_-" else "_" for c in label)[:35]
+            path = ss_dir / f"BUG_{safe}_{ts}.png"
+            self.page.screenshot(path=str(path))
+            return str(path)
+        except Exception:
+            return None

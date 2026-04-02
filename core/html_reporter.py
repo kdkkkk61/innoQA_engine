@@ -176,6 +176,23 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             steps      = _reproduce_steps(r)
             expected, actual = _expected_vs_actual(r)
             severity   = "높음" if r.status in ("fail", "error") else "낮음"
+            ss_path    = r.extra.get("screenshot") if r.extra else None
+            ss_html    = ""
+            if ss_path:
+                from pathlib import Path as _Path
+                ss_abs = _Path(ss_path).resolve()
+                if ss_abs.exists():
+                    ss_uri = ss_abs.as_posix()
+                    ss_html = f"""
+            <tr>
+              <th>스크린샷</th>
+              <td>
+                <details>
+                  <summary class="ss-toggle">📷 스크린샷 보기</summary>
+                  <img src="{ss_uri}" class="ss-img" alt="{html.escape(r.label)}">
+                </details>
+              </td>
+            </tr>"""
             defects.append(f"""
         <div class="defect-card defect-{css}">
           <div class="defect-header">
@@ -189,6 +206,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             <tr><th>재현 방법</th><td>{steps}</td></tr>
             <tr><th>기댓값</th><td>{html.escape(expected)}</td></tr>
             <tr><th>실제 결과</th><td>{html.escape(actual)}</td></tr>
+            {ss_html}
           </table>
         </div>""")
 
@@ -274,6 +292,11 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 /* 스크린샷 */
 .screenshot { margin-top: 10px; }
 .screenshot img { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; }
+.ss-toggle { cursor: pointer; color: #1e3a5f; font-weight: 600; font-size: 13px;
+  padding: 4px 0; display: inline-block; }
+.ss-toggle:hover { text-decoration: underline; }
+.ss-img { max-width: 100%; margin-top: 10px; border: 1px solid #ddd;
+  border-radius: 4px; display: block; }
 """
 
 
