@@ -27,6 +27,14 @@ _LIST_SCENARIO_THRESHOLDS = [
     (100, "시나리오 3: CRUD"),
 ]
 
+# list_page 전용 패턴 — 이 중 하나라도 있으면 list_page 모드로 판단
+_LIST_PAGE_PATTERNS = {
+    "list_tab", "list_button", "list_table", "list_search",
+    "list_modal", "list_modal_required", "list_modal_overflow",
+    "list_crud", "list_modify", "list_modify_save",
+    "list_modify_verify", "list_modify_bug",
+}
+
 _STATUS_BADGE = {
     "pass":      ('<span class="badge pass">✅ PASS</span>', "pass"),
     "fail":      ('<span class="badge fail">❌ FAIL</span>', "fail"),
@@ -120,27 +128,35 @@ def _render_summary_card(page_id: str, report: PageScanReport) -> str:
 
 def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
     rows = []
-    for r in sorted(report.results, key=lambda x: (x.order or 9999, x.phase)):
+    prev_scenario = None
+    for r in sorted(report.results, key=lambda x: (x.order or 9999, x.phase or 0)):
         badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
         scenario   = _scenario_label(r, is_list_page)
         expected, actual = _expected_vs_actual(r)
+
+        # 시나리오 구분 헤더 행
+        if scenario != prev_scenario:
+            rows.append(f"""
+        <tr class="scenario-header">
+          <td colspan="5">{html.escape(scenario)}</td>
+        </tr>""")
+            prev_scenario = scenario
+
         rows.append(f"""
         <tr class="row-{css}">
-          <td class="col-scenario">{html.escape(scenario)}</td>
-          <td class="col-label">{html.escape(r.label)}</td>
+          <td class="col-label" colspan="1">{html.escape(r.label)}</td>
           <td class="col-status">{badge}</td>
           <td class="col-expected">{html.escape(expected)}</td>
-          <td class="col-actual">{html.escape(actual)}</td>
+          <td class="col-actual" colspan="2">{html.escape(actual)}</td>
         </tr>""")
     return f"""
     <table class="result-table">
       <thead>
         <tr>
-          <th>시나리오</th>
           <th>검증 항목</th>
           <th>결과</th>
           <th>기댓값</th>
-          <th>실제값</th>
+          <th colspan="2">실제값</th>
         </tr>
       </thead>
       <tbody>{''.join(rows)}</tbody>
@@ -152,8 +168,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
     defects = []
     for page_id, report in all_reports:
         label      = _PAGE_LABELS.get(page_id, page_id)
-        is_list    = any(r.order is not None and r.order < 1000 for r in report.results
-                         if r.pattern.startswith("list_"))
+        is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
         bug_items  = [r for r in report.results if r.status in ("known_bug", "fail", "error")]
         for r in bug_items:
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
@@ -220,13 +235,16 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .result-table th { background: #f0f4f8; padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; }
 .result-table td { padding: 9px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
 .result-table tr:hover td { background: #fafbfc; }
-.col-scenario { width: 18%; color: #555; }
-.col-label    { width: 30%; }
+.col-label    { width: 42%; }
 .col-status   { width: 10%; text-align: center; }
-.col-expected, .col-actual { width: 21%; font-size: 12px; color: #555; }
+.col-expected, .col-actual { width: 24%; font-size: 12px; color: #555; }
 .row-fail td  { background: #fff8f8; }
 .row-bug td   { background: #fffdf0; }
 .row-error td { background: #fff5f5; }
+/* 시나리오 구분 헤더 */
+.scenario-header td { background: #e8f0f8; color: #1e3a5f; font-weight: 700;
+  font-size: 13px; padding: 8px 14px; border-top: 2px solid #b8cfe8;
+  border-bottom: 1px solid #b8cfe8; letter-spacing: 0.3px; }
 
 /* 배지 */
 .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -286,7 +304,7 @@ def generate_html_report(
     page_sections = []
     for page_id, report in reports:
         label      = _PAGE_LABELS.get(page_id, page_id)
-        is_list    = any(r.pattern.startswith("list_") for r in report.results)
+        is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
         table_html = _render_results_table(report, is_list)
         p, f, k, e = (len(report.passed), len(report.failed),
                       len(report.known_bugs), len(report.errors))
