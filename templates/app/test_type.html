@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block step %}② 테스트 선택{% endblock %}
+
+{% block body %}
+<div class="card">
+  <div class="card-title">테스트 종류 선택</div>
+  <div class="select-grid">
+    <div class="select-card selected" data-id="uiux" onclick="selectType(this)">
+      <div class="card-label">UI/UX 테스트</div>
+      <div class="card-desc">탭 · 버튼 · 모달 · CRUD 검증</div>
+    </div>
+    <div class="select-card disabled">
+      <div class="card-label">정책 적용 테스트</div>
+      <div class="badge-coming">🔒 준비 중</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">테스트 대상 페이지</div>
+  <div style="display:flex; flex-direction:column; gap:10px;">
+    {% for p in pages %}
+    <label style="display:flex; align-items:center; gap:10px; cursor:pointer;
+                  padding:12px 16px; border:2px solid #e0e0e0; border-radius:8px;
+                  transition:border-color .15s;" class="page-row">
+      <input type="checkbox" value="{{ p.id }}" checked
+             style="width:16px;height:16px;cursor:pointer;" onchange="updateNext()">
+      <span style="font-weight:600;">{{ p.label }}</span>
+    </label>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block footer %}
+  <a href="/" class="btn btn-secondary">← 뒤로</a>
+  <button class="btn btn-primary" id="nextBtn" onclick="next()">다음 →</button>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let testType = 'uiux';
+  function selectType(el) {
+    if (el.classList.contains('disabled')) return;
+    document.querySelectorAll('.select-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    testType = el.dataset.id;
+  }
+  function updateNext() {
+    const any = [...document.querySelectorAll('input[type=checkbox]')].some(c => c.checked);
+    document.getElementById('nextBtn').disabled = !any;
+  }
+  function next() {
+    const checked = [...document.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+    if (!checked.length) return;
+    location.href = '/run-setup?' + checked.map(p => 'pages=' + p).join('&');
+  }
+</script>
+{% endblock %}

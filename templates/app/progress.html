@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block step %}④ 테스트 진행{% endblock %}
+
+{% block head %}
+<style>
+  .page-card {
+    border: 2px solid #e0e0e0; border-radius: 8px;
+    overflow: hidden; transition: border-color .2s;
+  }
+  .page-card.running { border-color: #1e3a5f; }
+  .page-card.done    { border-color: #27ae60; }
+  .page-card.error   { border-color: #e74c3c; }
+
+  .page-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 18px; background: white;
+  }
+  .page-header.running { background: #f0f4fa; }
+  .page-header.done    { background: #f0faf4; }
+  .page-header.error   { background: #fff5f5; }
+
+  .page-title { font-weight: 600; font-size: 14px; flex: 1; }
+  .page-badge {
+    font-size: 11px; font-weight: 700; padding: 3px 10px;
+    border-radius: 10px;
+  }
+  .page-badge.waiting { background: #f0f0f0; color: #999; }
+  .page-badge.running { background: #dce8fa; color: #1e3a5f; }
+  .page-badge.done    { background: #d4f5e2; color: #1a7a45; }
+  .page-badge.error   { background: #fde8e8; color: #c0392b; }
+
+  /* 시나리오 서브 행 */
+  .sc-list {
+    border-top: 1px solid #eee;
+    padding: 8px 0;
+    background: #fafafa;
+  }
+  .sc-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 18px 6px 36px;
+    font-size: 12px; color: #555;
+  }
+  .sc-icon { width: 18px; text-align: center; flex-shrink: 0; }
+  .sc-label { flex: 1; }
+  .sc-status {
+    font-size: 11px; font-weight: 600; color: #999;
+  }
+  .sc-status.running { color: #1e3a5f; }
+  .sc-status.done    { color: #27ae60; }
+  .sc-status.pending { color: #bbb; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="card">
+  <div class="card-title">진행 상황</div>
+  <div id="pageList" style="display:flex; flex-direction:column; gap:10px;">
+    {% for pid in pages %}
+    <div class="page-card waiting" id="card-{{ pid }}">
+      <div class="page-header waiting" id="hdr-{{ pid }}">
+        <div class="status-icon" id="icon-{{ pid }}">⏳</div>
+        <div class="page-title">{{ pid }}</div>
+        <span class="page-badge waiting" id="badge-{{ pid }}">대기 중</span>
+      </div>
+      <div class="sc-list" id="sclist-{{ pid }}" style="display:none;"></div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card" id="errorCard" style="display:none; border-left:4px solid #e74c3c;">
+  <div class="card-title" style="color:#e74c3c;">오류 발생</div>
+  <pre id="errorLog" style="font-size:12px; color:#555; white-space:pre-wrap; margin:0;"></pre>
+</div>
+{% endblock %}
+
+{% block footer %}
+  <button class="btn btn-danger" id="stopBtn" onclick="stopTest()">중단</button>
+  <button class="btn btn-primary" id="reportBtn" style="display:none"
+          onclick="location.href='/report'">리포트 보기 →</button>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const SC_ICON   = {pending: '○', running: '🔄', done: '✅'};
+  const SC_TEXT   = {pending: '예정', running: '실행 중', done: '완료'};
+  const SC_COLOR  = {pending: '#bbb',   running: '#1e3a5f', done: '#27ae60'};
+  const PG_ICON   = {waiting: '⏳', running: '🔄', done: '✅', error: '❌'};
+  const PG_BADGE  = {waiting: '대기 중', running: '실행 중', done: '완료', error: '오류'};
+
+  let pollTimer = null;
+
+  function updatePage(pid, st) {
+    const card  = document.getElementById('card-' + pid);
+    const hdr   = document.getElementById('hdr-'  + pid);
+    const icon  = document.getElementById('icon-' + pid);
+    const badge = document.getElementById('badge-'+ pid);
+    if (!card) return;
+
+    ['waiting','running','done','error'].forEach(c => {
+      card.classList.remove(c);
+      hdr.classList.remove(c);
+      badge.classList.remove(c);
+    });
+    card.classList.add(st);
+    hdr.classList.add(st);
+    badge.classList.add(st);
+    icon.textContent  = PG_ICON[st]  || '?';
+    badge.textContent = PG_BADGE[st] || st;
+
+    // running/done/error 상태면 시나리오 목록 항상 표시
+    const scList = document.getElementById('sclist-' + pid);
+    if (scList && st !== 'waiting') scList.style.display = 'block';
+  }
+
+  function updateScenarios(pid, scList) {
+    const container = document.getElementById('sclist-' + pid);
+    if (!container) return;
+    if (!scList || scList.length === 0) return;
+
+    // 시나리오 목록은 항상 표시 (waiting 상태 포함)
+    container.style.display = 'block';
+    container.innerHTML = scList.map(sc => `
+      <div class="sc-row">
+        <span class="sc-icon" style="color:${SC_COLOR[sc.status]||'#bbb'}">
+          ${SC_ICON[sc.status] || '○'}
+        </span>
+        <span class="sc-label" style="color:${sc.status==='pending'?'#aaa':'inherit'}">
+          ${sc.label}
+        </span>
+        <span class="sc-status ${sc.status}">${SC_TEXT[sc.status] || ''}</span>
+      </div>
+    `).join('');
+  }
+
+  async function poll() {
+    try {
+      const res  = await fetch('/status');
+      const data = await res.json();
+
+      const pgStatus = data.page_status     || {};
+      const scStatus = data.scenario_status || {};
+
+      for (const [pid, st] of Object.entries(pgStatus)) {
+        updatePage(pid, st);
+      }
+      for (const [pid, scList] of Object.entries(scStatus)) {
+        updateScenarios(pid, scList);
+        // pending이 없고 전부 done일 때만 페이지 완료 표시
+        const hasPending = scList.some(sc => sc.status === 'pending');
+        const allDone    = scList.every(sc => sc.status === 'done');
+        if (!hasPending && allDone) {
+          const curSt = pgStatus[pid];
+          if (curSt === 'running' || curSt === 'waiting') {
+            updatePage(pid, 'done');
+          }
+        }
+      }
+
+      if (data.status === 'done') {
+        clearInterval(pollTimer);
+        document.getElementById('stopBtn').style.display  = 'none';
+        document.getElementById('reportBtn').style.display = 'inline-block';
+      } else if (data.status === 'error') {
+        clearInterval(pollTimer);
+        document.getElementById('stopBtn').style.display = 'none';
+        if (data.error_log) {
+          document.getElementById('errorCard').style.display = 'block';
+          document.getElementById('errorLog').textContent    = data.error_log;
+        }
+      }
+    } catch(e) { /* 네트워크 오류 무시 */ }
+  }
+
+  async function stopTest() {
+    clearInterval(pollTimer);
+    await fetch('/stop', {method: 'POST'});
+    location.href = '/';
+  }
+
+  pollTimer = setInterval(poll, 1000);
+  poll();
+</script>
+{% endblock %}

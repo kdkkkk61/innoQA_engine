@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block step %}① 제품 선택{% endblock %}
+
+{% block body %}
+<div class="card">
+  <div class="card-title">테스트할 제품을 선택하세요</div>
+  <div class="select-grid">
+    {% for p in products %}
+    <div class="select-card {% if not p.active %}disabled{% endif %}"
+         data-id="{{ p.id }}" onclick="select(this)">
+      <div class="card-label">{{ p.label }}</div>
+      {% if p.active %}
+        <div class="card-desc">UI/UX 테스트 가능</div>
+      {% else %}
+        <div class="badge-coming">🔒 준비 중</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block footer %}
+  <button class="btn btn-primary" id="nextBtn" disabled
+          onclick="next()">다음 →</button>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let selected = null;
+  function select(el) {
+    if (el.classList.contains('disabled')) return;
+    document.querySelectorAll('.select-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    selected = el.dataset.id;
+    document.getElementById('nextBtn').disabled = false;
+  }
+  function next() {
+    if (selected) location.href = '/test-type?product=' + selected;
+  }
+</script>
+{% endblock %}

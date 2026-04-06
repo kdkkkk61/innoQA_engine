@@ -200,7 +200,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
               </td>
             </tr>"""
             defects.append(f"""
-        <div class="defect-card defect-{css}">
+        <div class="defect-card defect-{css}" data-page-key="{html.escape(label)}">
           <div class="defect-header">
             {badge}
             <span class="defect-page">{html.escape(label)}</span>
@@ -218,7 +218,8 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
 
     if not defects:
         return '<p class="no-defect">🎉 발견된 결함 없음</p>'
-    return ''.join(defects)
+    # tab-no-defect: 탭 필터로 결함 없을 때 JS가 show
+    return ''.join(defects) + '\n<p class="tab-no-defect" id="tab-no-defect">✅ 해당 페이지에 결함이 없습니다</p>'
 
 
 # ── CSS ──────────────────────────────────────────────────────────
@@ -227,6 +228,26 @@ _CSS = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #333; font-size: 14px; }
 .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+/* 페이지 탭 바 */
+.tab-bar { display: flex; gap: 6px; background: white; border-radius: 8px;
+           padding: 12px 16px; box-shadow: 0 1px 4px rgba(0,0,0,.1);
+           margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.tab-bar-label { font-size: 12px; font-weight: 600; color: #999;
+                 margin-right: 6px; text-transform: uppercase; letter-spacing: .4px; }
+.tab-btn { padding: 6px 16px; border: 1px solid #dde4ee; border-radius: 20px;
+           background: white; color: #666; font-size: 13px; font-weight: 500;
+           cursor: pointer; transition: all .15s; }
+.tab-btn:hover { border-color: #1e3a5f; color: #1e3a5f; }
+.tab-btn.active { background: #1e3a5f; color: white; border-color: #1e3a5f; font-weight: 600; }
+
+/* 직접 등록 배지 */
+.manual-badge { display: inline-block; font-size: 11px; font-weight: 600;
+                background: #eef6ff; color: #2980b9;
+                border: 1px solid #bee3f8;
+                border-radius: 10px; padding: 1px 8px; margin-left: 6px; }
+/* 탭 필터 적용 시 결함 없음 메시지 */
+.tab-no-defect { color: #27ae60; font-weight: 600; padding: 20px; text-align: center; display: none; }
 
 /* 헤더 */
 .report-header { background: #1e3a5f; color: white; padding: 24px 32px; border-radius: 8px; margin-bottom: 24px; }
@@ -330,6 +351,20 @@ def generate_html_report(
         _render_summary_card(pid, rep) for pid, rep in reports
     )
 
+    # ── 페이지 탭 바 ──────────────────────────────────────────────
+    pages_for_tabs = [_PAGE_LABELS.get(pid, pid) for pid, _ in reports]
+    tab_buttons = '\n    '.join(
+        f'<button class="tab-btn{" active" if i == 0 else ""}" '
+        f'data-tab="{html.escape(lbl)}" '
+        f'onclick="switchTab(this,\'{html.escape(lbl)}\')">'
+        f'{html.escape(lbl)}</button>'
+        for i, lbl in enumerate(['전체'] + pages_for_tabs)
+    )
+    tab_html = f"""<div class="tab-bar">
+    <span class="tab-bar-label">페이지</span>
+    {tab_buttons}
+  </div>"""
+
     # ── 페이지별 결과 테이블 ──────────────────────────────────────
     page_sections = []
     for page_id, report in reports:
@@ -339,12 +374,14 @@ def generate_html_report(
         p, f, k, e = (len(report.passed), len(report.failed),
                       len(report.known_bugs), len(report.errors))
         page_sections.append(f"""
-        <div class="page-label">{html.escape(label)}
-          <span style="font-weight:400;font-size:13px;color:#666;margin-left:10px;">
-            ✅ {p}  ❌ {f}  ⚠️ {k}  💥 {e}
-          </span>
-        </div>
-        {table_html}""")
+        <div class="page-result-section" data-page-key="{html.escape(label)}">
+          <div class="page-label">{html.escape(label)}
+            <span style="font-weight:400;font-size:13px;color:#666;margin-left:10px;">
+              ✅ {p}  ❌ {f}  ⚠️ {k}  💥 {e}
+            </span>
+          </div>
+          {table_html}
+        </div>""")
 
     # ── 결함 목록 ─────────────────────────────────────────────────
     defect_html = _render_defect_section(reports)
@@ -398,22 +435,73 @@ def generate_html_report(
     <div class="summary-grid">{summary_cards}</div>
   </div>
 
-  <div class="section">
-    <div class="section-title">📋 검증 결과 상세</div>
-    {''.join(page_sections)}
-  </div>
+  {tab_html}
 
+  <!-- DEFECT_SECTION_START -->
   <div class="section">
     <div class="section-title">🐛 발견된 결함 ({total_f + total_k + total_e}건)</div>
     {defect_html}
+  </div>
+  <!-- DEFECT_SECTION_END -->
+
+  <div class="section">
+    <div class="section-title">📋 전체 테스트 결과</div>
+    {''.join(page_sections)}
   </div>
 
   {screenshot_html}
 
 </div>
+<script>
+function switchTab(btn, key) {{
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  var anyDefect = false;
+  document.querySelectorAll('[data-page-key]').forEach(function(el) {{
+    var show = key === '전체' || el.dataset.pageKey === key;
+    el.style.display = show ? '' : 'none';
+    if (show && el.classList.contains('defect-card')) anyDefect = true;
+  }});
+  var noDefEl = document.getElementById('tab-no-defect');
+  if (noDefEl) noDefEl.style.display = anyDefect ? 'none' : '';
+}}
+</script>
 </body>
 </html>"""
 
     out_path.write_text(html_content, encoding="utf-8")
     print(f"\n[HTML 리포트] {out_path}")
+
+    # ── JSON 요약 저장 (app.py 리포트 화면용) ─────────────────────
+    import json as _json
+    json_data = {
+        "generated_at": now.isoformat(),
+        "html_path":    str(out_path.resolve()),
+        "pages": [
+            {
+                "page_id": pid,
+                "label":   _PAGE_LABELS.get(pid, pid),
+                "is_list": any(r.pattern in _LIST_PAGE_PATTERNS for r in rep.results),
+                "results": [
+                    {
+                        "phase":        r.phase,
+                        "order":        r.order or 9999,
+                        "pattern":      r.pattern,
+                        "label":        r.label,
+                        "status":       r.status,
+                        "detail":       r.detail,
+                        "screenshot":   (r.extra or {}).get("screenshot"),
+                        "scenario_tag": (r.extra or {}).get("scenario_tag"),
+                    }
+                    for r in rep.results
+                ],
+            }
+            for pid, rep in reports
+        ],
+    }
+    last_json = Path(output_dir) / "last_report.json"
+    last_json.write_text(
+        _json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
     return out_path

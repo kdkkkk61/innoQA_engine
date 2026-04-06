@@ -1,0 +1,618 @@
+{% extends "base.html" %}
+{% block step %}⑤ 1차 리포트{% endblock %}
+
+{% block head %}
+<style>
+  .app-body { flex: 1; padding: 20px 24px; gap: 16px; display: flex; flex-direction: column; overflow-y: auto; }
+
+  /* ── 헤더 ── */
+  .report-header { display: flex; align-items: center; gap: 10px; }
+  .report-title  { font-size: 17px; font-weight: 700; color: #1e3a5f; }
+  .defect-badge  {
+    background: #e74c3c; color: white;
+    border-radius: 10px; padding: 2px 9px; font-size: 11px; font-weight: 700;
+  }
+
+  /* ── 섹션 카드 ── */
+  .section-card { background: white; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.07); }
+  .section-head {
+    padding: 14px 20px 0; border-bottom: 2px solid #e8eef5;
+    display: flex; align-items: flex-end; gap: 0;
+  }
+  .section-label { font-size: 14px; font-weight: 700; color: #1e3a5f; padding-bottom: 12px; flex: 1; }
+
+  /* ── 탭 ── */
+  .page-tab {
+    padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+    border: none; background: none; color: #999;
+    border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color .15s;
+  }
+  .page-tab.active { color: #1e3a5f; border-bottom-color: #1e3a5f; }
+  .page-tab-pane { display: none; padding: 16px 20px; }
+  .page-tab-pane.active { display: block; }
+
+  /* ── 결함 테이블 ── */
+  .defect-wrap { padding: 16px 20px; }
+  .defect-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .defect-table th {
+    background: #1e3a5f; color: white; padding: 9px 10px; text-align: left; font-weight: 600;
+  }
+  .defect-table td { padding: 8px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+  .defect-table tbody tr:last-child td { border-bottom: none; }
+  .defect-table tr.manual-row td { background: #fffdf0; }
+
+  /* 의견 영역 */
+  .opinion-qa {
+    font-size: 12px; color: #555; line-height: 1.5;
+    background: #f8f9fa; border-radius: 4px; padding: 4px 6px; margin-bottom: 6px;
+  }
+  .opinion-qa-label {
+    font-size: 10px; font-weight: 700; color: #888;
+    text-transform: uppercase; letter-spacing: .4px; margin-bottom: 3px;
+  }
+  .opinion-user-label {
+    font-size: 10px; font-weight: 700; color: #1e7dcc;
+    text-transform: uppercase; letter-spacing: .4px; margin-bottom: 3px;
+  }
+  .opinion-user [contenteditable="true"] {
+    display: block; min-height: 28px; font-size: 12px; color: #1e3a5f;
+    line-height: 1.5; outline: none; border-radius: 4px; padding: 3px 6px;
+    border: 1px solid transparent; transition: border-color .1s, background .1s;
+  }
+  .opinion-user [contenteditable="true"]:empty::before {
+    content: attr(data-placeholder); color: #bbb; pointer-events: none;
+  }
+  .opinion-user [contenteditable="true"]:focus { background: #f0f6ff; border-color: #1e3a5f44; }
+
+  /* 배지 */
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px;
+           font-size: 11px; font-weight: 700; cursor: pointer; user-select: none; }
+  .badge-pass { background: #e8f8f0; color: #27ae60; border: 1px solid #a8dfb8; }
+  .badge-bug  { background: #fff3cd; color: #d68000; border: 1px solid #ffc107; }
+  .badge-fail { background: #fde8e8; color: #c0392b; border: 1px solid #f5b7b1; }
+
+  /* 버튼 */
+  .add-row-btn {
+    opacity: 0; transition: opacity .15s; cursor: pointer;
+    background: #eef3fa; border: none; border-radius: 4px;
+    color: #1e3a5f; font-size: 11px; padding: 2px 8px; margin-top: 4px; display: block;
+  }
+  .defect-table tr:hover .add-row-btn { opacity: 1; }
+
+  .del-btn { cursor: pointer; background: none; border: none; color: #ccc; font-size: 16px; padding: 0 4px; }
+  .del-btn:hover { color: #e74c3c; }
+
+  .ss-cell img { max-width: 90px; max-height: 58px; border-radius: 4px;
+                 cursor: pointer; border: 1px solid #ddd; display: block; }
+
+  /* 확정 모드 */
+  .finalized .add-row-btn,
+  .finalized .del-btn,
+  .finalized .ss-upload-label { display: none !important; }
+  .finalized [contenteditable] { pointer-events: none; }
+  .finalized .badge { cursor: default; }
+
+  /* 결과 테이블 */
+  .sc-section { margin-bottom: 14px; }
+  .sc-header { background: #1e3a5f; color: white; padding: 6px 14px;
+               font-size: 12px; font-weight: 700; border-radius: 6px 6px 0 0; }
+  .result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .result-table th { background: #f5f7fa; color: #555; padding: 7px 10px;
+                     text-align: left; border-bottom: 1px solid #e0e0e0; font-weight: 600; }
+  .result-table td { padding: 6px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  .result-table tr:last-child td { border-bottom: none; }
+  .st-pass  { color: #27ae60; font-weight: 700; }
+  .st-fail  { color: #c0392b; font-weight: 700; }
+  .st-bug   { color: #d68000; font-weight: 700; }
+  .st-error { color: #8e44ad; font-weight: 700; }
+  .st-skip  { color: #999; }
+
+  .empty-tip    { color: #aaa; text-align: center; padding: 32px; font-size: 13px; }
+  .no-defect-tip { color: #27ae60; text-align: center; padding: 20px; font-size: 13px; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block body %}
+<!-- 헤더 -->
+<div class="report-header">
+  <span class="report-title">QA 리포트</span>
+  <span class="defect-badge" id="defectCount">0</span>
+  <span style="font-size:12px; color:#aaa;">건의 결함</span>
+</div>
+
+<!-- ① 결함 목록 카드 — 단일 테이블 + 행 레벨 필터 -->
+<div class="section-card">
+  <div class="section-head" id="defectTabHead">
+    <span class="section-label">결함 목록</span>
+  </div>
+  <div class="defect-wrap" id="defectWrap">
+    <table class="defect-table">
+      <colgroup>
+        <col style="width:12%"><col style="width:20%"><col style="width:8%">
+        <col style="width:42%"><col style="width:12%"><col style="width:6%">
+      </colgroup>
+      <thead><tr>
+        <th>페이지</th><th>항목명</th><th>상태</th>
+        <th>의견</th><th>스크린샷</th><th></th>
+      </tr></thead>
+      <tbody id="tbody-defect-all">
+        <tr id="no-defect-row">
+          <td colspan="6"><div class="empty-tip">데이터를 불러오는 중...</div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ② 전체 테스트 결과 카드 -->
+<div class="section-card">
+  <div class="section-head" id="resultTabHead">
+    <span class="section-label">전체 테스트 결과</span>
+  </div>
+  <div id="resultTabPanes">
+    <div class="page-tab-pane active" id="result-pane-all">
+      <div class="empty-tip">데이터를 불러오는 중...</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block footer %}
+  <a href="/" class="btn btn-secondary">← 처음으로</a>
+  <button class="btn btn-primary" id="openReportBtn" onclick="openReport()" style="display:none">🌐 HTML 리포트 열기</button>
+  <button class="btn btn-primary" id="finalizeBtn" onclick="finalize()">확정 →</button>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const ICON       = {pass:'✅', fail:'❌', known_bug:'⚠️', error:'💥', skip:'⏭️'};
+  const ICON_CLASS = {pass:'st-pass', fail:'st-fail', known_bug:'st-bug', error:'st-error', skip:'st-skip'};
+  const BADGE_CLASS = {pass:'badge-pass', bug:'badge-bug', fail:'badge-fail'};
+  const BADGE_LABEL = {pass:'PASS', bug:'BUG', fail:'FAIL'};
+  const CYCLE = ['pass', 'bug', 'fail'];
+
+  let rowCounter = 0;
+  let finalized  = false;
+  let _pages     = [];   // [{label, pageKey}, ...]
+  let _defectTabKey = 'all';  // 현재 결함 탭 키
+
+  /* ════════════════════════════════════════════
+     탭 — 결함 (행 레벨 필터링)
+  ════════════════════════════════════════════ */
+  function buildDefectTabs(headEl, pages) {
+    // key = label 로 통일 (행의 data-page-key도 label 기준)
+    const tabs = [{ key: 'all', label: '전체' }, ...pages.map(p => ({ key: p.label, label: p.label }))];
+    tabs.forEach((t, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'page-tab' + (i === 0 ? ' active' : '');
+      btn.textContent = t.label;
+      btn.dataset.key = t.key;
+      btn.onclick = () => switchDefectTab(t.key, headEl);
+      headEl.appendChild(btn);
+    });
+  }
+
+  function switchDefectTab(key, headEl) {
+    _defectTabKey = key;
+    headEl.querySelectorAll('.page-tab').forEach(b =>
+      b.classList.toggle('active', b.dataset.key === key)
+    );
+    const tbody = document.getElementById('tbody-defect-all');
+    let anyData = false;
+    tbody.querySelectorAll('tr').forEach(tr => {
+      if (tr.id === 'no-defect-row') return;
+      const pk   = tr.dataset.pageKey || '';
+      const show = (key === 'all') || (pk === key);
+      tr.style.display = show ? '' : 'none';
+      if (show) anyData = true;
+    });
+    const noRow = document.getElementById('no-defect-row');
+    if (noRow) {
+      noRow.style.display = anyData ? 'none' : '';
+      if (!anyData) noRow.innerHTML =
+        '<td colspan="6"><div class="no-defect-tip">✅ 해당 페이지에 결함이 없습니다</div></td>';
+    }
+  }
+
+  /* ════════════════════════════════════════════
+     탭 — 결과 (패널 전환, 읽기 전용)
+  ════════════════════════════════════════════ */
+  function buildResultTabs(headEl, paneContainerEl, pages) {
+    const tabs = [{ key: 'all', label: '전체' }, ...pages.map(p => ({ key: p.pageKey, label: p.label }))];
+    tabs.forEach((t, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'page-tab' + (i === 0 ? ' active' : '');
+      btn.textContent = t.label;
+      btn.dataset.key = t.key;
+      btn.onclick = () => switchResultTab(t.key, headEl, paneContainerEl);
+      headEl.appendChild(btn);
+    });
+  }
+
+  function switchResultTab(key, headEl, paneContainer) {
+    headEl.querySelectorAll('.page-tab').forEach(b =>
+      b.classList.toggle('active', b.dataset.key === key)
+    );
+    paneContainer.querySelectorAll('.page-tab-pane').forEach(p =>
+      p.classList.toggle('active', p.id === `result-pane-${key}`)
+    );
+  }
+
+  /* ════════════════════════════════════════════
+     데이터 로드
+  ════════════════════════════════════════════ */
+  async function loadData() {
+    try {
+      const res  = await fetch('/report-data');
+      const data = await res.json();
+
+      if (!data.pages || data.pages.length === 0) {
+        document.getElementById('no-defect-row').innerHTML =
+          '<td colspan="6"><div class="empty-tip">스캔 결과가 없습니다. 테스트를 먼저 실행하세요.</div></td>';
+        document.getElementById('result-pane-all').innerHTML =
+          '<div class="empty-tip">스캔 결과가 없습니다.</div>';
+        return;
+      }
+
+      _pages = data.pages.map(p => ({ pageKey: p.page_id, label: p.label }));
+
+      // 탭 생성
+      buildDefectTabs(document.getElementById('defectTabHead'), _pages);
+      buildResultTabs(
+        document.getElementById('resultTabHead'),
+        document.getElementById('resultTabPanes'),
+        _pages
+      );
+
+      // 결과 탭 패널 생성
+      for (const pg of data.pages) {
+        const rp = document.createElement('div');
+        rp.className = 'page-tab-pane';
+        rp.id = `result-pane-${pg.page_id}`;
+        document.getElementById('resultTabPanes').appendChild(rp);
+      }
+
+      // ① 결함 채우기 (단일 테이블)
+      const tbody     = document.getElementById('tbody-defect-all');
+      const noDefRow  = document.getElementById('no-defect-row');
+      let   defectCnt = 0;
+
+      for (const pg of data.pages) {
+        const defects = (pg.results || []).filter(r =>
+          ['fail', 'known_bug', 'error'].includes(r.status)
+        );
+        for (const r of defects) {
+          appendRow({
+            page:       pg.label,
+            pageKey:    pg.page_id,
+            label:      r.label,
+            status:     r.status === 'known_bug' ? 'bug' : r.status,
+            detail:     r.detail,
+            screenshot: r.screenshot || '',
+          }, tbody);
+          defectCnt++;
+        }
+      }
+
+      // 결함 없으면 no-defect-row 표시
+      if (defectCnt === 0) {
+        noDefRow.innerHTML =
+          '<td colspan="6"><div class="no-defect-tip">✅ 결함이 없습니다</div></td>';
+        noDefRow.style.display = '';
+      } else {
+        noDefRow.style.display = 'none';
+      }
+      document.getElementById('defectCount').textContent = defectCnt;
+
+      // ② 전체 결과 채우기
+      const allResultPane = document.getElementById('result-pane-all');
+      allResultPane.innerHTML = '';
+      for (const pg of data.pages) {
+        allResultPane.innerHTML += renderPageResults(pg);
+      }
+      for (const pg of data.pages) {
+        const pane = document.getElementById(`result-pane-${pg.page_id}`);
+        if (pane) pane.innerHTML = renderPageResults(pg);
+      }
+
+      if (data.html_path) {
+        document.getElementById('openReportBtn').style.display = 'inline-block';
+      }
+    } catch(e) {
+      document.getElementById('no-defect-row').innerHTML =
+        '<td colspan="6"><div class="empty-tip">데이터 로드 실패: ' + e.message + '</div></td>';
+    }
+  }
+
+  /* ════════════════════════════════════════════
+     행 추가 — 단일 테이블
+  ════════════════════════════════════════════ */
+  function appendRow(d, tbody, afterTr = null) {
+    const id        = ++rowCounter;
+    const statusVal = d.status || 'fail';
+    // data-page-key: 탭 필터링에 사용 (label 기준)
+    const pageKey   = d.page || '';
+
+    const tr  = document.createElement('tr');
+    tr.id     = `tr-${id}`;
+    tr.dataset.pageKey = pageKey;
+    if (d.manual) tr.className = 'manual-row';
+
+    tr.innerHTML = `
+      <td><div style="font-weight:600;font-size:12px;" contenteditable="true"
+               oninput="this.closest('tr').dataset.pageKey=this.textContent.trim()"
+          >${esc(d.page||'')}</div></td>
+      <td>
+        <div contenteditable="true">${esc(d.label||'')}</div>
+        <button class="add-row-btn" onclick="insertRowBelow(${id})">+ 아래 행 추가</button>
+      </td>
+      <td>
+        <span class="badge ${BADGE_CLASS[statusVal]||'badge-fail'}" id="badge-${id}"
+              onclick="cycleStatus(${id})">${BADGE_LABEL[statusVal]||'FAIL'}</span>
+      </td>
+      <td>
+        <div class="opinion-qa-label">QA Tool 결과</div>
+        <div class="opinion-qa">${esc(d.detail||'')}</div>
+        <div class="opinion-user">
+          <div class="opinion-user-label">담당자 의견</div>
+          <div contenteditable="true" id="opinion-${id}"
+               data-placeholder="의견을 입력하세요..."></div>
+        </div>
+      </td>
+      <td class="ss-cell" id="ss-${id}">
+        ${d.screenshot
+          ? `<img src="/screenshot?path=${encodeURIComponent(d.screenshot)}"
+                  onclick="openImg(this.src)" title="클릭하여 원본 보기">`
+          : ''}
+        <label class="ss-upload-label" style="margin-top:4px;display:block;">
+          <span style="cursor:pointer;font-size:11px;color:#888;">📎 첨부</span>
+          <input type="file" accept="image/*" style="display:none;"
+                 onchange="uploadShot(${id},this)">
+        </label>
+      </td>
+      <td style="text-align:center;">
+        <button class="del-btn" onclick="deleteRow(${id})" title="삭제">✕</button>
+      </td>`;
+
+    if (afterTr) {
+      afterTr.insertAdjacentElement('afterend', tr);
+    } else {
+      tbody.appendChild(tr);
+    }
+
+    // 현재 탭 필터 적용 — 다른 페이지 탭에서 추가된 행은 숨김
+    if (_defectTabKey !== 'all' && pageKey !== _defectTabKey) {
+      tr.style.display = 'none';
+    }
+
+    updateDefectCount();
+    return tr;
+  }
+
+  /* ════════════════════════════════════════════
+     행 조작
+  ════════════════════════════════════════════ */
+  function cycleStatus(id) {
+    if (finalized) return;
+    const badge = document.getElementById('badge-' + id);
+    if (!badge) return;
+    const cur  = CYCLE.indexOf(
+      Object.entries(BADGE_CLASS).find(([, v]) => badge.classList.contains(v))?.[0] || 'fail'
+    );
+    const next = CYCLE[(cur + 1) % CYCLE.length];
+    badge.className  = `badge ${BADGE_CLASS[next]}`;
+    badge.textContent = BADGE_LABEL[next];
+  }
+
+  function insertRowBelow(id) {
+    if (finalized) return;
+    const tr = document.getElementById('tr-' + id);
+    if (!tr) return;
+    const tbody    = tr.closest('tbody');
+    const pageKey  = tr.dataset.pageKey || '';
+    const newRow   = appendRow({ manual: true, status: 'fail', page: pageKey }, tbody, tr);
+    // 새 행은 현재 탭에서 항상 보이게
+    if (newRow) newRow.style.display = '';
+  }
+
+  function addNewDefect() {
+    if (finalized) return;
+    const tbody  = document.getElementById('tbody-defect-all');
+    if (!tbody) return;
+
+    // no-defect-row 숨기기
+    const noRow = document.getElementById('no-defect-row');
+    if (noRow) noRow.style.display = 'none';
+
+    // 현재 탭 기준 페이지명
+    const pg      = _defectTabKey !== 'all'
+      ? _pages.find(p => p.pageKey === _defectTabKey)
+      : null;
+    const newRow  = appendRow({ manual: true, status: 'fail', page: pg?.label || '' }, tbody);
+    if (newRow) newRow.style.display = '';  // 현재 탭 필터 무시하고 표시
+  }
+
+  function deleteRow(id) {
+    if (finalized) return;
+    if (!confirm('이 행을 삭제할까요?')) return;
+    document.getElementById('tr-' + id)?.remove();
+    updateDefectCount();
+  }
+
+  async function uploadShot(id, input) {
+    const file = input.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    const res  = await fetch('/upload-screenshot', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.ok) {
+      const cell = document.getElementById('ss-' + id);
+      if (!cell) return;
+      let img = cell.querySelector('img');
+      if (!img) {
+        img = document.createElement('img');
+        img.onclick = () => openImg(img.src);
+        cell.insertBefore(img, cell.firstChild);
+      }
+      img.src = data.url;
+    }
+  }
+
+  function updateDefectCount() {
+    const tbody = document.getElementById('tbody-defect-all');
+    const n = tbody
+      ? tbody.querySelectorAll('tr[id^="tr-"]').length
+      : 0;
+    document.getElementById('defectCount').textContent = n;
+  }
+
+  /* ════════════════════════════════════════════
+     결과 렌더링
+  ════════════════════════════════════════════ */
+  function renderPageResults(pg) {
+    const groups = groupByScenario(pg.results || [], pg.is_list);
+    let html = `<div style="margin-bottom:8px;font-size:13px;font-weight:700;color:#1e3a5f;">${esc(pg.label)}</div>`;
+    for (const [scLabel, items] of groups) {
+      html += `<div class="sc-section">
+        <div class="sc-header">${esc(scLabel)}</div>
+        <table class="result-table">
+          <thead><tr>
+            <th style="width:8%">상태</th>
+            <th style="width:30%">항목명</th>
+            <th>내용</th>
+          </tr></thead><tbody>`;
+      for (const r of items) {
+        const iconCls = ICON_CLASS[r.status] || '';
+        const icon    = ICON[r.status] || '?';
+        html += `<tr>
+          <td class="${iconCls}" style="text-align:center;">${icon}</td>
+          <td>${esc(r.label)}<br>
+            <span style="font-size:10px;color:#bbb;">[${esc(r.pattern)}]</span>
+          </td>
+          <td style="color:#555;">${esc(r.detail)}${r.screenshot
+            ? `<br><img src="/screenshot?path=${encodeURIComponent(r.screenshot)}"
+                style="max-width:80px;max-height:50px;margin-top:4px;border-radius:3px;
+                       cursor:pointer;border:1px solid #ddd;" onclick="openImg(this.src)">`
+            : ''}</td>
+        </tr>`;
+      }
+      html += '</tbody></table></div>';
+    }
+    return html;
+  }
+
+  function groupByScenario(results, isList) {
+    const sorted = [...results].sort((a, b) =>
+      isList
+        ? (a.order || 9999) - (b.order || 9999)
+        : (a.phase - b.phase) || ((a.order || 9999) - (b.order || 9999))
+    );
+    const modalLabels = {
+      1: '시나리오 1: 구조 확인  (초기값 + 필수입력 검증)',
+      2: '시나리오 2: 동작 검증  (UI 인터랙션 + 중복 처리)',
+      3: '시나리오 3: 수정 시나리오  (저장값 로드 + 재확인)',
+      4: '시나리오 4: 케이스 검증  (Case A 전체 ON / Case B 전체 OFF)',
+    };
+    const listThresh = [
+      [0,   '시나리오 1: UI 구조  (탭 · 버튼 · 테이블)'],
+      [45,  '시나리오 2: 입력 동작  (모달 필드 · 필수입력 검증)'],
+      [100, '시나리오 3: CRUD  (추가 · 수정 · 검색 · 삭제)'],
+    ];
+    const map = new Map();
+    for (const r of sorted) {
+      let label;
+      if (isList) {
+        const thr = [...listThresh].reverse().find(([t]) => (r.order || 9999) >= t);
+        label = thr ? thr[1] : listThresh[0][1];
+      } else {
+        label = modalLabels[r.phase] || `시나리오 ${r.phase}`;
+      }
+      if (!map.has(label)) map.set(label, []);
+      map.get(label).push(r);
+    }
+    return map;
+  }
+
+  /* ════════════════════════════════════════════
+     확정
+  ════════════════════════════════════════════ */
+  async function finalize() {
+    if (!confirm('확정하면 편집 모드가 종료됩니다.\nHTML 리포트에 현재 결함 목록이 반영됩니다.')) return;
+    finalized = true;
+    document.getElementById('defectWrap').classList.add('finalized');
+    document.getElementById('finalizeBtn').disabled    = true;
+    document.getElementById('finalizeBtn').textContent = '✅ 확정 완료';
+
+    // 단일 테이블에서 모든 데이터 수집
+    const items = [];
+    document.querySelectorAll('#tbody-defect-all tr[id^="tr-"]').forEach(tr => {
+      const cells     = tr.querySelectorAll('td');
+      const badge     = tr.querySelector('.badge');
+      const img       = tr.querySelector('.ss-cell img');
+      const rowId     = tr.id.replace('tr-', '');
+      const opinionEl = document.getElementById('opinion-' + rowId);
+      items.push({
+        page:         cells[0]?.querySelector('[contenteditable]')?.textContent?.trim() || '',
+        pattern:      '',
+        label:        cells[1]?.querySelector('[contenteditable]')?.textContent?.trim() || '',
+        status:       badge?.textContent?.trim()?.toLowerCase() || 'fail',
+        detail:       cells[3]?.querySelector('.opinion-qa')?.textContent?.trim() || '',
+        user_opinion: opinionEl?.textContent?.trim() || '',
+        screenshot:   img ? decodeURIComponent(img.src.replace(/.*\?path=/, '')) : '',
+        manual:       tr.classList.contains('manual-row'),
+      });
+    });
+
+    try {
+      const res  = await fetch('/finalize', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({items}),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        document.getElementById('openReportBtn').style.display = 'inline-block';
+        const uploadBtn = document.createElement('button');
+        uploadBtn.className   = 'btn btn-secondary';
+        uploadBtn.textContent = '☁️ 서버에 업로드';
+        uploadBtn.title       = '준비 중 — 웹 리포트 서버 연동 예정';
+        uploadBtn.onclick     = () => alert('서버 연동 기능은 준비 중입니다.\n현재는 HTML 리포트 열기로 공유하세요.');
+        document.getElementById('finalizeBtn').replaceWith(uploadBtn);
+      } else {
+        alert('확정 실패: ' + (data.error || ''));
+        finalized = false;
+        document.getElementById('defectWrap').classList.remove('finalized');
+        document.getElementById('finalizeBtn').disabled    = false;
+        document.getElementById('finalizeBtn').textContent = '확정 →';
+      }
+    } catch(e) {
+      alert('확정 실패: ' + e.message);
+      finalized = false;
+      document.getElementById('defectWrap').classList.remove('finalized');
+      document.getElementById('finalizeBtn').disabled    = false;
+      document.getElementById('finalizeBtn').textContent = '확정 →';
+    }
+  }
+
+  async function openReport() {
+    const res  = await fetch('/open-report');
+    const data = await res.json();
+    if (!data.ok) alert('리포트 파일을 찾을 수 없습니다: ' + (data.error || ''));
+  }
+
+  function openImg(src) {
+    const w = window.open('', '_blank', 'width=1000,height=700');
+    w.document.write(`<body style="margin:0;background:#111;display:flex;align-items:center;
+      justify-content:center;min-height:100vh;">
+      <img src="${src}" style="max-width:100%;max-height:100vh;"></body>`);
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  loadData();
+</script>
+{% endblock %}

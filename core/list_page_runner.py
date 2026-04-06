@@ -37,30 +37,25 @@ class ListPageRunner:
     # ── 공개 API ──────────────────────────────────────────────────
 
     def run(self) -> PageScanReport:
+        # 시나리오 헤더를 스캔 시작 시점에 출력 → app.py가 실시간으로 감지
+        print(f"\n  시나리오 1: UI 구조  (탭 · 버튼 · 테이블)", flush=True)
         self._scan_tabs()       # 탭 전환
         self._scan_buttons()    # 버튼 존재
         self._scan_table()      # 테이블 컬럼
+
+        print(f"\n  시나리오 2: 입력 동작  (모달 필드 · 필수입력 검증)", flush=True)
         self._scan_modal()      # 모달 필드 + 필수 입력 검증
+
+        print(f"\n  시나리오 3: CRUD  (추가 · 수정 · 검색 · 삭제)", flush=True)
         self._scan_crud()       # 추가 → 수정(값 검증) → 검색(항목 존재 상태) → 삭제
         self._scan_search()     # URL 파라미터 구조 확인 (항목 없어도 가능)
 
-        # 결과 출력
+        # 결과 출력 (헤더 없이 — 헤더는 스캔 시작 시점에 이미 출력됨)
         print(f"\n{'═' * 60}")
-        print("  목록 페이지 스캔")
+        print("  목록 페이지 스캔 완료")
         print(f"{'═' * 60}")
         print(f"  {self.report.summary()}")
-        current_scenario = -1
         for r in sorted(self.report.results, key=lambda r: r.order or 9_999):
-            order = r.order or 9_999
-            scenario_idx = sum(
-                1 for threshold, _ in _SCENARIO_THRESHOLDS if order >= threshold
-            ) - 1
-            if scenario_idx > current_scenario:
-                _, header = _SCENARIO_THRESHOLDS[scenario_idx]
-                print(f"\n  {'─' * 56}")
-                print(f"  {header}")
-                print(f"  {'─' * 56}")
-                current_scenario = scenario_idx
             icon = _STATUS_ICON.get(r.status, "?")
             print(f"  {icon} [{r.pattern}] {r.label}: {r.detail}")
         print_combined_report(self.report)

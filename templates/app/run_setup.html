@@ -1,0 +1,554 @@
+{% extends "base.html" %}
+{% block step %}③ 실행 설정{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+<style>
+  /* app-body 중앙 정렬 */
+  .app-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 20px;
+  }
+
+  /* ── 전체 wrapper (원본: 350px) ── */
+  .loginWrapper {
+    width: 350px;
+  }
+
+  /* ── 파란 헤더 (원본: h=80, padding=20, radius=20 20 5 5) ── */
+  .loginWrapper > h1 {
+    position: relative;
+    background-color: rgb(32, 143, 246);
+    padding: 20px;
+    border-radius: 20px 20px 5px 5px;
+    text-align: center;
+    margin: 0;
+    line-height: 1;
+  }
+  .loginWrapper > h1 img {
+    width: 264px;
+    height: 40px;
+    display: block;
+    margin: 0 auto;
+  }
+  /* 파란 캐럿 — 헤더↔카드 연결 (원본: bottom=-17, font-size=30) */
+  .loginWrapper > h1 > span > i {
+    display: inline-block;
+    position: absolute;
+    bottom: -17px;
+    left: 0;
+    width: 100%;
+    color: rgb(32, 143, 246);
+    font-size: 30px;
+    text-align: center;
+    line-height: 1;
+  }
+
+  /* ── 흰 카드 (원본: padding=40, mt=30, radius=5 5 20 20) ── */
+  .loginPage {
+    position: relative;
+    padding: 40px;
+    margin-top: 30px;
+    border-radius: 5px 5px 20px 20px;
+    background-color: #fff;
+    box-shadow: rgba(0, 0, 0, 0.1) 1px 1px 10px;
+    text-align: center;
+    box-sizing: border-box;
+  }
+
+  /* ── 백그라운드 진행 카드 (progress.html 동일 스타일) ── */
+  .bg-page-card { border:2px solid #e0e0e0; border-radius:8px; overflow:hidden; transition:border-color .2s; }
+  .bg-page-card.running { border-color:#1e3a5f; }
+  .bg-page-card.done    { border-color:#27ae60; }
+  .bg-page-card.error   { border-color:#e74c3c; }
+  .bg-page-hdr { display:flex;align-items:center;gap:10px;padding:12px 16px;background:white; }
+  .bg-page-hdr.running { background:#f0f4fa; }
+  .bg-page-hdr.done    { background:#f0faf4; }
+  .bg-page-hdr.error   { background:#fff5f5; }
+  .bg-page-badge { font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px; }
+  .bg-page-badge.waiting { background:#f0f0f0;color:#999; }
+  .bg-page-badge.running { background:#dce8fa;color:#1e3a5f; }
+  .bg-page-badge.done    { background:#d4f5e2;color:#1a7a45; }
+  .bg-page-badge.error   { background:#fde8e8;color:#c0392b; }
+  .bg-sc-list { border-top:1px solid #eee;padding:6px 0;background:#fafafa; }
+  .bg-sc-row  { display:flex;align-items:center;gap:10px;padding:5px 16px 5px 32px; }
+
+  /* ── 우상단 영역 (라벨 + 토글) ── */
+  .agtDown-area {
+    position: absolute;
+    top: 15px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    color: rgba(32, 143, 246, 0.7);
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+
+  /* 진행화면 토글 스위치 */
+  .view-toggle { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .view-toggle-label { font-size: 10px; color: #aaa; font-weight: 500; letter-spacing: 0; }
+  .toggle-track {
+    position: relative; width: 32px; height: 17px;
+    background: #ddd; border-radius: 9px;
+    transition: background .2s; flex-shrink: 0;
+  }
+  .toggle-track.on { background: rgba(32,143,246,0.55); }
+  .toggle-thumb {
+    position: absolute; top: 2px; left: 2px;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: white; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+    transition: left .2s;
+  }
+  .toggle-track.on .toggle-thumb { left: 17px; }
+
+  /* ── form / fieldset ── */
+  .loginPage form { display: block; }
+  .loginPage fieldset { border: 0; padding: 0; margin: 0; }
+  .loginPage legend {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden; clip: rect(0,0,0,0);
+  }
+
+  /* ── dl (원본: padding-top=15, mb=20, width=270) ── */
+  .loginPage dl {
+    padding-top: 15px;
+    margin-bottom: 20px;
+    text-align: left;
+  }
+  .loginPage dl dt.skip {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden; clip: rect(0,0,0,0);
+  }
+  /* dd (원본: position=relative, mb=0, + 5px 간격은 input mb=5) */
+  .loginPage dl dd {
+    position: relative;
+    margin-bottom: 0;
+  }
+
+  /* ── 필드 아이콘 ::before (원본: top=8, left=17~18, font-size=21, color=rgba(32,143,246,0.5)) ── */
+  .loginPage dd.userId::before {
+    content: "\f007";           /* fa-user */
+    font-family: "Font Awesome 5 Free";
+    font-weight: 900;
+    position: absolute;
+    top: 12px; left: 17px;
+    font-size: 18px;
+    color: rgba(32, 143, 246, 0.5);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .loginPage dd.userPw::before {
+    content: "\f023";           /* fa-lock */
+    font-family: "Font Awesome 5 Free";
+    font-weight: 900;
+    position: absolute;
+    top: 12px; left: 17px;
+    font-size: 18px;
+    color: rgba(32, 143, 246, 0.5);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ── 입력 필드 (원본: h=45, padding=5 5 5 45, border=rgba(32,143,246,0.4), radius=10, mb=5) ── */
+  .loginPage dd input[type="text"],
+  .loginPage dd input[type="password"] {
+    width: 100%;
+    height: 45px;
+    padding: 5px 40px 5px 45px;
+    box-sizing: border-box;
+    background-color: transparent;
+    border: 1px solid rgba(32, 143, 246, 0.4);
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    margin-bottom: 5px;
+    transition: border-color .15s;
+  }
+  .loginPage dd input[type="text"]:focus,
+  .loginPage dd input[type="password"]:focus {
+    border-color: rgba(32, 143, 246, 0.8);
+  }
+  /* placeholder (원본: rgba(245,176,114,0.6), font-weight=600) */
+  .loginPage dd input::placeholder {
+    color: rgba(245, 176, 114, 0.8);
+    font-weight: 600;
+  }
+
+  /* ── 비밀번호 눈 아이콘 (원본: right=14, top=16, font-size=14, color=rgb(112,112,112)) ── */
+  .loginPage dd.userPw .pw-eye {
+    position: absolute;
+    right: 14px;
+    top: 16px;
+    font-size: 14px;
+    color: rgb(112, 112, 112);
+    cursor: pointer;
+    z-index: 1;
+  }
+  .loginPage dd.userPw .pw-eye:hover { color: rgb(32, 143, 246); }
+  /* Edge/Chrome 브라우저 기본 비밀번호 보기 버튼 제거 */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear { display: none; }
+  input[type="password"]::-webkit-credentials-auto-fill-button { display: none; }
+
+  /* ── CapsLock 경고 (원본: border=1px solid #fdc424, bg=#fffadc, font-size=11px) ── */
+  .c-caps-lock-layer {
+    display: none;
+    margin-top: 4px;
+    text-align: left;
+  }
+  .c-caps-lock-layer.visible { display: block; }
+  .c-caps-lock-layer-box {
+    font-size: 11px;
+    padding: 5px 6px;
+    letter-spacing: -0.5px;
+    color: rgb(119, 119, 119);
+    border: 1px solid rgb(253, 196, 36);
+    background: rgb(255, 250, 220);
+    border-radius: 3px;
+    line-height: 1.5;
+  }
+
+  /* ── 테스트 시작 버튼 (원본: h=45, bg=rgba(32,143,246,0.6), radius=8, color=rgba(255,255,255,0.8), font-size=25) ── */
+  .loginPage p { margin: 0; }
+  .loginPage p input[type="button"] {
+    width: 100%;
+    height: 45px;
+    background-color: rgba(32, 143, 246, 0.6);
+    border-radius: 8px;
+    border: 1px solid rgba(32, 143, 246, 0.8);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 22px;
+    cursor: pointer;
+    transition: background-color .15s, color .15s;
+  }
+  .loginPage p input[type="button"]:hover:not(:disabled) {
+    background-color: rgba(32, 143, 246, 0.85);
+    color: #fff;
+  }
+  .loginPage p input[type="button"]:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* ── 테스트 대상 — 사이드바 스타일 카드 ── */
+  .target-menu {
+    margin-top: 14px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: rgba(0,0,0,0.07) 1px 1px 8px;
+    overflow: hidden;
+  }
+  .target-menu-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: #1e3a5f;
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .target-menu-header i { font-size: 15px; opacity: .85; }
+  .target-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 16px 9px 22px;
+    font-size: 13px;
+    border-bottom: 1px solid #f0f2f5;
+    color: #bbb;
+  }
+  .target-menu-item:last-child { border-bottom: none; }
+  .target-menu-item.selected {
+    color: rgb(32, 143, 246);
+    font-weight: 600;
+  }
+  .target-menu-item .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #ddd;
+    flex-shrink: 0;
+  }
+  .target-menu-item.selected .dot {
+    background: rgb(32, 143, 246);
+  }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="loginWrapper">
+
+  <!-- 파란 헤더 -->
+  <h1>
+    <img src="/static/images/login_logo.png" alt="Inno Smart Platform">
+    <span><i class="fa fa-caret-down"></i></span>
+  </h1>
+
+  <!-- 흰 카드 -->
+  <div class="loginPage">
+
+    <!-- 우상단 안내 -->
+    <div class="agtDown-area">
+      <span>QA 자동화 테스트</span>
+      <label class="view-toggle" title="진행 화면 표시 여부">
+        <span class="view-toggle-label" id="toggleLabel">화면 ON</span>
+        <div class="toggle-track on" id="toggleTrack">
+          <div class="toggle-thumb"></div>
+        </div>
+      </label>
+    </div>
+
+    <form onsubmit="return false;">
+      <fieldset>
+        <legend>로그인</legend>
+        <dl>
+          <!-- 아이디 -->
+          <dt class="skip">아이디</dt>
+          <dd class="userId">
+            <input type="text" id="testId" placeholder="memberId" maxlength="50"
+                   autocomplete="username"
+                   oninput="updateBtn()"
+                   onkeydown="if(event.key==='Enter') document.getElementById('testPw').focus()">
+          </dd>
+
+          <!-- 비밀번호 -->
+          <dt class="skip">비밀번호</dt>
+          <dd class="userPw">
+            <input type="password" id="testPw" placeholder="password" maxlength="100"
+                   autocomplete="current-password"
+                   oninput="updateBtn()"
+                   onkeyup="checkCaps(event)"
+                   onkeydown="if(event.key==='Enter') startTest()">
+            <i class="fas fa-eye pw-eye" id="pwEye" onclick="togglePw()"></i>
+          </dd>
+
+          <!-- CapsLock 경고 -->
+          <div class="c-caps-lock-layer" id="capsLockWarningLayer">
+            <div class="c-caps-lock-layer-box">
+              <strong>Caps Lock</strong> 이 켜져 있습니다.
+            </div>
+          </div>
+        </dl>
+
+        <p>
+          <input type="button" id="nextBtn" value="테스트 시작" disabled onclick="startTest()">
+        </p>
+      </fieldset>
+    </form>
+  </div>
+
+  <!-- 테스트 대상 — 사이드바 스타일 -->
+  <div class="target-menu">
+    <div class="target-menu-header">
+      <i class="fas fa-shield-alt"></i>
+      {{ product_label }}
+    </div>
+    {% for p in pages_info %}
+    <div class="target-menu-item {% if p.selected %}selected{% endif %}">
+      <span class="dot"></span>
+      {{ p.label }}
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block footer %}
+  <a href="/test-type?product={{ product_id }}" class="btn btn-secondary">← 뒤로</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let pwVisible = false;
+
+  function updateBtn() {
+    const id = document.getElementById('testId').value.trim();
+    const pw = document.getElementById('testPw').value;
+    document.getElementById('nextBtn').disabled = !(id && pw);
+  }
+
+  function togglePw() {
+    pwVisible = !pwVisible;
+    const input = document.getElementById('testPw');
+    const eye   = document.getElementById('pwEye');
+    input.type    = pwVisible ? 'text' : 'password';
+    eye.className = pwVisible ? 'fas fa-eye-slash pw-eye' : 'fas fa-eye pw-eye';
+  }
+
+  function checkCaps(e) {
+    const layer = document.getElementById('capsLockWarningLayer');
+    if (e.getModifierState && e.getModifierState('CapsLock')) {
+      layer.classList.add('visible');
+    } else {
+      layer.classList.remove('visible');
+    }
+  }
+
+  /* ── 선택된 페이지 목록 (Jinja → JS) ── */
+  const _BG_PAGES = [
+    {% for p in pages_info %}{% if p.selected %}
+    { id: "{{ p.id }}", label: "{{ p.label }}" },
+    {% endif %}{% endfor %}
+  ];
+
+  /* ── 진행 상태 상수 (progress.html과 동일) ── */
+  const SC_ICON  = {pending:'○', running:'🔄', done:'✅'};
+  const SC_TEXT  = {pending:'예정', running:'실행 중', done:'완료'};
+  const SC_COLOR = {pending:'#bbb', running:'#1e3a5f', done:'#27ae60'};
+  const PG_ICON  = {waiting:'⏳', running:'🔄', done:'✅', error:'❌'};
+  const PG_BADGE = {waiting:'대기 중', running:'실행 중', done:'완료', error:'오류'};
+
+  let _bgPollTimer = null;
+
+  function _bgUpdatePage(pid, st) {
+    const card  = document.getElementById('bgcard-'  + pid);
+    const hdr   = document.getElementById('bghdr-'   + pid);
+    const icon  = document.getElementById('bgicon-'  + pid);
+    const badge = document.getElementById('bgbadge-' + pid);
+    if (!card) return;
+    ['waiting','running','done','error'].forEach(c => {
+      card.classList.remove(c); hdr.classList.remove(c); badge.classList.remove(c);
+    });
+    card.classList.add(st); hdr.classList.add(st); badge.classList.add(st);
+    icon.textContent  = PG_ICON[st]  || '?';
+    badge.textContent = PG_BADGE[st] || st;
+    const scList = document.getElementById('bgsclist-' + pid);
+    if (scList && st !== 'waiting') scList.style.display = 'block';
+  }
+
+  function _bgUpdateScenarios(pid, scList) {
+    const container = document.getElementById('bgsclist-' + pid);
+    if (!container || !scList || scList.length === 0) return;
+    container.style.display = 'block';
+    container.innerHTML = scList.map(sc => `
+      <div class="bg-sc-row">
+        <span style="width:18px;text-align:center;flex-shrink:0;color:${SC_COLOR[sc.status]||'#bbb'}">
+          ${SC_ICON[sc.status] || '○'}
+        </span>
+        <span style="flex:1;color:${sc.status==='pending'?'#aaa':'inherit'};font-size:12px">
+          ${sc.label}
+        </span>
+        <span style="font-size:11px;font-weight:600;color:${SC_COLOR[sc.status]||'#bbb'}">
+          ${SC_TEXT[sc.status] || ''}
+        </span>
+      </div>`).join('');
+  }
+
+  /* ── 백그라운드 실행: 폼 → 진행 카드 뷰로 교체 ── */
+  function showBgRunning() {
+    document.querySelector('form').style.display = 'none';
+
+    // 레이아웃 보정 — 카드가 많아지면 세로 중앙 정렬로 위쪽 잘리는 현상 방지
+    const appBody = document.querySelector('.app-body');
+    if (appBody) {
+      appBody.style.alignItems = 'flex-start';
+      appBody.style.overflowY  = 'auto';
+    }
+
+    // 페이지 카드 HTML 생성
+    const cards = _BG_PAGES.map(p => `
+      <div class="bg-page-card waiting" id="bgcard-${p.id}">
+        <div class="bg-page-hdr waiting" id="bghdr-${p.id}">
+          <span id="bgicon-${p.id}">⏳</span>
+          <span style="flex:1;font-weight:600;font-size:13px">${p.label}</span>
+          <span class="bg-page-badge waiting" id="bgbadge-${p.id}">대기 중</span>
+        </div>
+        <div class="bg-sc-list" id="bgsclist-${p.id}" style="display:none"></div>
+      </div>`).join('');
+
+    const wrap = document.createElement('div');
+    wrap.id = 'bg-running-wrap';
+    wrap.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:8px;padding:16px 0 8px">
+        ${cards}
+      </div>
+      <div id="bg-done-area" style="display:none;text-align:center;padding:12px 0 4px">
+        <button onclick="location.href='/report'"
+          style="padding:9px 28px;border:none;border-radius:6px;background:#1e3a5f;
+                 color:white;font-size:13px;font-weight:600;cursor:pointer;">
+          리포트 보기 →
+        </button>
+      </div>`;
+    document.querySelector('.loginPage').appendChild(wrap);
+
+    // 폴링 (1초 간격, progress.html과 동일)
+    async function bgPoll() {
+      try {
+        const res  = await fetch('/status');
+        const data = await res.json();
+        const pgSt = data.page_status     || {};
+        const scSt = data.scenario_status || {};
+
+        for (const [pid, st] of Object.entries(pgSt)) _bgUpdatePage(pid, st);
+        for (const [pid, scList] of Object.entries(scSt)) {
+          _bgUpdateScenarios(pid, scList);
+          const hasPending = scList.some(sc => sc.status === 'pending');
+          const allDone    = scList.every(sc => sc.status === 'done');
+          if (!hasPending && allDone && (pgSt[pid] === 'running' || pgSt[pid] === 'waiting')) {
+            _bgUpdatePage(pid, 'done');
+          }
+        }
+
+        if (data.status === 'done' || data.status === 'error') {
+          clearInterval(_bgPollTimer);
+          localStorage.removeItem('qa_bg_running');
+          if (data.status === 'done') {
+            document.getElementById('bg-done-area').style.display = 'block';
+          }
+        }
+      } catch(e) {}
+    }
+
+    _bgPollTimer = setInterval(bgPoll, 1000);
+    bgPoll();
+  }
+
+  /* ── 브라우저 화면 토글 (ON = Chrome 창 표시 / OFF = headless) ── */
+  let _headed = true;   // true: 화면 ON (headed), false: 화면 OFF (headless)
+
+  document.getElementById('toggleTrack').addEventListener('click', function() {
+    _headed = !_headed;
+    this.classList.toggle('on', _headed);
+    document.getElementById('toggleLabel').textContent = _headed ? '화면 ON' : '화면 OFF';
+  });
+
+  async function startTest() {
+    const id = document.getElementById('testId').value.trim();
+    const pw = document.getElementById('testPw').value;
+    if (!id || !pw) return;
+
+    const btn    = document.getElementById('nextBtn');
+    btn.disabled = true;
+    btn.value    = '연결 중...';
+
+    try {
+      const res  = await fetch('/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({test_id: id, test_pw: pw, headless: !_headed}),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        // 화면 ON/OFF 관계없이 항상 진행 화면으로 이동
+        location.href = '/progress';
+      } else {
+        alert('오류: ' + (data.error || '알 수 없는 오류'));
+        btn.disabled = false;
+        btn.value    = '테스트 시작';
+      }
+    } catch(e) {
+      alert('서버 연결 오류: ' + e.message);
+      btn.disabled = false;
+      btn.value    = '테스트 시작';
+    }
+  }
+</script>
+{% endblock %}

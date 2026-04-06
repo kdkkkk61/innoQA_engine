@@ -30,8 +30,10 @@ class _TeeOutput:
 
     def write(self, data):
         self._orig.write(data)
+        self._orig.flush()          # 파이프 버퍼 즉시 flush → 실시간 출력 보장
         try:
             self._file.write(data)
+            self._file.flush()
         except Exception:
             pass
 
@@ -251,7 +253,7 @@ def pytest_unconfigure(config):
                 _scan_reports,
                 product_name=product_name,
                 output_dir="reports",
-                screenshot_dir="reports/screenshots",
+                screenshot_dir=None,   # 별도 스크린샷 섹션 제거 (결함 카드에 포함됨)
             )
             # stdout이 아직 Tee 상태일 수 있으므로 직접 write
             sys.stdout.write(f"\n[HTML 리포트] {html_path}\n")
@@ -314,7 +316,15 @@ def playwright_instance():
 @pytest.fixture(scope="session")
 def browser(playwright_instance, settings):
     browser_cfg = settings.get("browser", {})
-    headless = browser_cfg.get("headless", False)
+    # TEST_HEADLESS 환경변수가 명시적으로 설정된 경우 우선 적용
+    # (app.py 에서 화면 ON/OFF 토글 결과를 전달함)
+    env_headless = os.environ.get("TEST_HEADLESS", "").strip()
+    if env_headless == "1":
+        headless = True
+    elif env_headless == "0":
+        headless = False
+    else:
+        headless = browser_cfg.get("headless", False)
     slow_mo  = browser_cfg.get("slow_mo", 0)
 
     br = playwright_instance.chromium.launch(headless=headless, slow_mo=slow_mo)
