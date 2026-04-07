@@ -16,7 +16,8 @@
 #
 # [required_submit]
 # - 정책 이름만 필수 (step 1→2 저장 성공)
-# - 연결설정 미선택 상태로도 저장 가능 (연결 상태: 제한, 적용시간: 00:00~00:00)
+# - 연결설정(isConnect) 라디오 선택 필수 — 미선택 시 저장 불가 (제품 JS 검증)
+#   Phase 1은 radio scan을 건너뛰므로 save_policy()에서 isDenyConnect 기본 선택 처리
 
 page_id: "rdp_policy"
 modal_id: "addItemModal"

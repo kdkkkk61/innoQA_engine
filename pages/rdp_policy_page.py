@@ -358,7 +358,16 @@ class RdpPolicyPage(BasePage):
     AUTO_NAME_PREFIX = "[AUTO]_rdp"
 
     def save_policy(self, name: str) -> None:
-        """Phase 1/2 완료 후 정책 저장 (이름만 필수)."""
+        """Phase 1/2 완료 후 정책 저장 (이름 + 연결 설정 라디오 필수).
+
+        연결 설정 라디오(isConnect)가 미선택 상태이면 '연결 자단'을 기본으로 선택.
+        Phase 1은 radio scan을 건너뛰므로 라디오가 null 상태로 남아 저장 불가.
+        """
+        deny_radio = self.page.locator("input#isDenyConnect")
+        allow_radio = self.page.locator("input#isAllowConnect")
+        if not deny_radio.is_checked() and not allow_radio.is_checked():
+            deny_radio.evaluate("el => el.click()")
+            self.page.wait_for_timeout(200)
         self.fill(self.SEL_POLICY_NAME, name)
         self.click_attached(self.SEL_REGISTER_BTN)
         self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).wait_for(
