@@ -286,7 +286,17 @@ class CommonProcessPage(BasePage):
     def _restore_page_size(self) -> None:
         if "pageSize=100" in self.page.url:
             return
-        self.page.evaluate(f"window.location.hash = '{self._HASH_EXCEPT}';")
+        # 현재 탭(processType) 보존 — 차단 탭에서 호출해도 예외 탭으로 이동하지 않음
+        process_type = (
+            "DENY_PROCESS"
+            if "processType=DENY_PROCESS" in self.page.url
+            else "EXCEPT_PROCESS"
+        )
+        hash_url = (
+            "#!/managerRansomCruncherCommonProcess"
+            f"?pageNo=1&pageSize=100&searchText=&processType={process_type}"
+        )
+        self.page.evaluate(f"window.location.hash = '{hash_url}';")
         self.wait_for(self.SEL_ADD_BTN)
         try:
             self.page.locator(self.SEL_TABLE_ROW).first.wait_for(
