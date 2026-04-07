@@ -1,22 +1,32 @@
 scan_mode: list_page
 page_id: common_process
 
-# ── 탭 구조 ──────────────────────────────────────────────────────
-tabs:
-  - label: "예외 프로세스"
-    param_key: processType
-    param_value: EXCEPT_PROCESS
-  - label: "차단 프로세스"
-    param_key: processType
-    param_value: DENY_PROCESS    # Chrome MCP 확인 2026-03-26 (BLOCK_PROCESS 아님)
+# ── 시나리오 1: UI 구조 (탭 · 테이블 · 검색) ────────────────────
+# Chrome MCP 확인 (2026-03-26)
+list_ui:
+  tabs:
+    - label: "예외 프로세스"
+      param_key: processType
+      param_value: EXCEPT_PROCESS
+    - label: "차단 프로세스"
+      param_key: processType
+      param_value: DENY_PROCESS    # Chrome MCP 확인 2026-03-26 (BLOCK_PROCESS 아님)
 
-# ── 검색창 ───────────────────────────────────────────────────────
-search:
-  selector: "input#searchText"
-  label: "프로세스 이름 검색"
-  maxlength: 20   # DOM maxlength 속성 확인됨 (Chrome MCP 2026-03-26)
+  search:
+    input:     "input#searchText"
+    button:    null                # Enter 키로 검색 (버튼 없음)
+    maxlength: 20                  # DOM maxlength 속성 확인됨 (Chrome MCP 2026-03-26)
+    label:     "프로세스 이름 검색"
 
-# ── 액션 버튼 ────────────────────────────────────────────────────
+  table:
+    headers:
+      - "프로세스 이름"
+      - "전자서명"
+      - "SHA2"
+      - "등록일"
+      - "수정일"
+
+# ── 액션 버튼 (시나리오 1 보조 — 동작은 시나리오 3에서) ──────────
 action_buttons:
   - label: "프로세스 추가"
     selector: "button#addItemBtn"
@@ -34,7 +44,15 @@ action_buttons:
     selector: "button#importFileBtn"
     order: 34
 
-# ── 테이블 컬럼 ──────────────────────────────────────────────────
+# ── 하위 호환: list_page_runner 일부 메서드가 아직 참조하는 구조 ──
+tabs:
+  - label: "예외 프로세스"
+    param_key: processType
+    param_value: EXCEPT_PROCESS
+  - label: "차단 프로세스"
+    param_key: processType
+    param_value: DENY_PROCESS
+
 table_columns:
   order: 40
   headers:

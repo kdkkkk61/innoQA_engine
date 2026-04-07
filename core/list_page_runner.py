@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from core.models import ScanResult, PageScanReport
 from core.reporter import print_combined_report
+from validators.list_ui import scan_list_ui
 
 _STATUS_ICON = {
     "pass": "✅", "fail": "❌", "known_bug": "⚠️", "skip": "⏭", "error": "💥",
@@ -39,10 +40,9 @@ class ListPageRunner:
     def run(self) -> PageScanReport:
         # 시나리오 헤더를 스캔 시작 시점에 출력 → app.py가 실시간으로 감지
         # CLAUDE.md 시나리오 번호 표준 준수: 1~6 고정, 없는 항목은 ⏭ 출력
-        print(f"\n  시나리오 1: UI 구조  (탭 · 버튼 · 테이블 · 검색)", flush=True)
-        self._scan_tabs()       # 탭 전환
-        self._scan_buttons()    # 버튼 존재
-        self._scan_table()      # 테이블 컬럼
+        print(f"\n  시나리오 1: UI 구조  (탭 · 테이블 · 검색)", flush=True)
+        scan_list_ui(self.page, self.hints, self.report)  # 탭/검색/테이블 공통 스캔
+        self._scan_buttons()    # 버튼 존재 (시나리오 1 보조 — 동작은 시나리오 3에서)
 
         print(f"\n  시나리오 2: 입력 구조  (모달 필드 · 필수입력 검증)", flush=True)
         self._scan_modal()      # 모달 필드 + 필수 입력 검증

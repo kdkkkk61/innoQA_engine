@@ -23,6 +23,28 @@
 page_id: "ransom_detect_policy"
 modal_id: "addItemModal"
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 시나리오 1: UI 구조 (탭 · 테이블 헤더 · 검색)
+# Chrome MCP 확인 (2026-04-07)
+# ──────────────────────────────────────────────────────────────────────────────
+list_ui:
+  tabs: []   # 탭 없음 (단일 뷰) → ⏭ skip
+
+  search:
+    input:     "input#searchText"
+    button:    "button#searchBtn"
+    maxlength: 20    # DOM maxlength=20 확인 (Chrome MCP 2026-04-07)
+    label:     "정책 이름 검색창"
+
+  table:
+    headers:
+      - "정책 이름"
+      - "소프트웨어 인증"
+      - "차단등급"
+      - "롤백기능"
+      - "등록일"
+      - "수정일"
+
 # 모달 진입점 — AngularJS ng-click 방식, data-toggle 없음
 modal_trigger:
   add:    "button#addItemBtn"

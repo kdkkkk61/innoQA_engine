@@ -27,6 +27,7 @@ from core.models            import PageScanReport, ScanResult
 from core.reporter          import print_phase_report, print_combined_report
 from pages.registry         import PAGE_REGISTRY
 from validators.overflow    import scan_overflow_tests
+from validators.list_ui     import scan_list_ui
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -392,10 +393,27 @@ def run_3phase_scan(
     p2_name = f"{prefix}_p2"
 
     # ─────────────────────────────────────────────────────────────
-    # 시나리오 1: UI 구조 — modal_form은 목록 화면 UI 스캔 미구현 → 스킵 출력
-    # (향후 list_ui YAML 섹션 추가 시 이 블록을 실제 스캔으로 교체)
+    # 시나리오 1: UI 구조 (탭 · 테이블 헤더 · 검색창)
+    # list_ui YAML 섹션이 있으면 실행, 없으면 스킵 출력
     # ─────────────────────────────────────────────────────────────
-    print(f"\n  ⏭ 시나리오 1: UI 구조 — 해당 없음 (modal_form: 목록 화면 UI 스캔 미구현)")
+    hints_path = Path(config_dir) / "scan_hints" / f"{page_id}.yaml"
+    try:
+        with open(hints_path, encoding="utf-8") as _f:
+            _hints = yaml.safe_load(_f) or {}
+    except FileNotFoundError:
+        _hints = {}
+
+    report1: PageScanReport | None = None
+    if _hints.get("list_ui"):
+        try:
+            report1 = PageScanReport(page_id=page_id)
+            page_obj.navigate_to()
+            scan_list_ui(playwright_page, _hints, report1)
+            print_phase_report(report1, 1)
+        except Exception as e:
+            print(f"  💥 [{page_id}] 시나리오 1 실행 중 예외: {e}")
+    else:
+        print(f"\n  ⏭ 시나리오 1: UI 구조 — 해당 없음 (list_ui 섹션 없음)")
 
     # ─────────────────────────────────────────────────────────────
     # 시나리오 2: 입력 구조 (초기값 스냅샷 + 필수입력 검증)
@@ -511,7 +529,7 @@ def run_3phase_scan(
     # ─────────────────────────────────────────────────────────────
     # 결합 리포트
     # ─────────────────────────────────────────────────────────────
-    reports = [r for r in (report2, report3, report4, report5) if r is not None]
+    reports = [r for r in (report1, report2, report3, report4, report5) if r is not None]
     if not reports:
         raise RuntimeError(f"[{page_id}] 스캔 결과 없음 — 모든 시나리오 실패")
 
