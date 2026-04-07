@@ -53,6 +53,7 @@ class ListPageRunner:
 
         print(f"\n  ⏭ 시나리오 4: 수정 시나리오 — CRUD 내 수정 검증으로 통합", flush=True)
         print(f"\n  ⏭ 시나리오 5: 케이스 검증 — 해당 없음 (list_page)", flush=True)
+        # 시나리오 3 내 오버플로는 향후 list_page에도 추가 예정 (overflow_tests YAML 섹션)
 
         # 결과 출력 (헤더 없이 — 헤더는 스캔 시작 시점에 이미 출력됨)
         print(f"\n{'═' * 60}")

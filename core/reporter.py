@@ -14,12 +14,11 @@ from __future__ import annotations
 from core.models import PageScanReport
 
 _PHASE_LABEL: dict[int, str] = {
-    1: "시나리오 1: UI 구조       (탭 · 버튼 · 테이블 · 검색)",
+    1: "시나리오 1: UI 구조       (탭 · 테이블 · 검색)",
     2: "시나리오 2: 입력 구조     (모달 필드 · 초기값 · 필수입력)",
-    3: "시나리오 3: 동작 검증     (CRUD · 중복 처리)",
+    3: "시나리오 3: 동작 검증     (CRUD · 복사 · 오버플로 · 중복 처리)",
     4: "시나리오 4: 수정 시나리오 (저장값 로드 · 재확인)",
     5: "시나리오 5: 케이스 검증   (제품 설정 ON/OFF 프로파일)",
-    6: "시나리오 6: 오버플로 검증 (입력 길이 제한 미적용 여부)",
 }
 
 _STATUS_ICON: dict[str, str] = {

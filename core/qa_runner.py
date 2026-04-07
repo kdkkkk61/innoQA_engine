@@ -438,6 +438,26 @@ def run_3phase_scan(
         context_extra=context2,
     )
     _append_list_check(report3, page_obj, p2_name, phase=3, order=9990)
+
+    # 시나리오 3 연장: 오버플로 검증 (overflow_tests 섹션 있을 때)
+    # 정상 추가(p2) 직후 → 오버플로 시도 → 시나리오 4(수정) 전 정리
+    hints_path = Path(config_dir) / "scan_hints" / f"{page_id}.yaml"
+    try:
+        with open(hints_path, encoding="utf-8") as _f:
+            _hints = yaml.safe_load(_f) or {}
+    except FileNotFoundError:
+        _hints = {}
+
+    if _hints.get("overflow_tests"):
+        try:
+            page_obj.navigate_to()
+            scan_overflow_tests(
+                playwright_page, _hints, report3,
+                open_modal_fn=page_obj.open_add_modal,
+            )
+        except Exception as e:
+            print(f"  💥 [{page_id}] 시나리오 3 오버플로 실행 중 예외: {e}")
+
     print_phase_report(report3, 3)
 
     # ─────────────────────────────────────────────────────────────
@@ -489,40 +509,9 @@ def run_3phase_scan(
             pass
 
     # ─────────────────────────────────────────────────────────────
-    # 시나리오 6: 오버플로 검증 (입력 길이 제한 미적용 여부)
-    # ─────────────────────────────────────────────────────────────
-    report6: PageScanReport | None = None
-    hints_path = Path(config_dir) / "scan_hints" / f"{page_id}.yaml"
-    try:
-        with open(hints_path, encoding="utf-8") as _f:
-            _hints = yaml.safe_load(_f) or {}
-    except FileNotFoundError:
-        _hints = {}
-
-    if _hints.get("overflow_tests"):
-        try:
-            report6 = PageScanReport(page_id=page_id)
-            page_obj.navigate_to()
-            scan_overflow_tests(
-                playwright_page, _hints, report6,
-                open_modal_fn=page_obj.open_add_modal,
-            )
-            print_phase_report(report6, 6)
-        except Exception as e:
-            print(f"  💥 [{page_id}] 시나리오 6 실행 중 예외: {e}")
-        finally:
-            try:
-                page_obj.navigate_to()
-                page_obj.delete_all_auto_policies()
-            except Exception:
-                pass
-    else:
-        print(f"\n  ⏭ 시나리오 6: 오버플로 검증 — 해당 없음 (overflow_tests 섹션 없음)")
-
-    # ─────────────────────────────────────────────────────────────
     # 결합 리포트
     # ─────────────────────────────────────────────────────────────
-    reports = [r for r in (report2, report3, report4, report5, report6) if r is not None]
+    reports = [r for r in (report2, report3, report4, report5) if r is not None]
     if not reports:
         raise RuntimeError(f"[{page_id}] 스캔 결과 없음 — 모든 시나리오 실패")
 
