@@ -179,10 +179,14 @@ class UIScanner:
         if original_tab:
             ctx.activate_tab(original_tab)
 
-        run_initial       = phase in (0, 1)        # 초기값 스냅샷 (터치 전, ADD만)
-        run_verify_loaded = phase == 3             # EDIT 모달 저장값 로드 확인
-        run_ui            = phase in (0, 2, 3)    # UI 요소 동작 검증 (ADD + EDIT)
-        run_submit        = phase in (0, 1, 2, 3) # 필수입력 검증 — 전 Phase 실행
+        # 시나리오 번호 기준 (CLAUDE.md 시나리오 표준)
+        # 2 = 입력 구조 (초기값 + 필수입력)
+        # 3 = 동작 검증 (UI 인터랙션 + 중복 처리)
+        # 4 = 수정 시나리오 (저장값 로드 + 재확인)
+        run_initial       = phase in (0, 2)        # 초기값 스냅샷 (터치 전, ADD만)
+        run_verify_loaded = phase == 4             # EDIT 모달 저장값 로드 확인
+        run_ui            = phase in (0, 3, 4)     # UI 요소 동작 검증 (ADD + EDIT)
+        run_submit        = phase in (0, 2, 3, 4)  # 필수입력 검증 — 전 시나리오 실행
 
         if run_initial:
             scan_initial_state(ctx, hints, report)

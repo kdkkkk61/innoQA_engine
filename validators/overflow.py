@@ -43,7 +43,7 @@ _SERVER_ERROR_KW = ["서버에서 오류", "오류가 발생", "Error", "실패"
 # 저장 확인 다이얼로그로 판단하는 키워드
 _CONFIRM_KW = ["저장하시겠습니까", "확인하시겠습니까", "등록하시겠습니까"]
 
-_PHASE = 5  # 오버플로 시나리오는 Phase 5로 고정
+_PHASE = 6  # 오버플로 시나리오는 시나리오 6으로 고정 (CLAUDE.md 표준)
 
 
 def scan_overflow_tests(

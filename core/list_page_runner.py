@@ -38,17 +38,21 @@ class ListPageRunner:
 
     def run(self) -> PageScanReport:
         # 시나리오 헤더를 스캔 시작 시점에 출력 → app.py가 실시간으로 감지
-        print(f"\n  시나리오 1: UI 구조  (탭 · 버튼 · 테이블)", flush=True)
+        # CLAUDE.md 시나리오 번호 표준 준수: 1~6 고정, 없는 항목은 ⏭ 출력
+        print(f"\n  시나리오 1: UI 구조  (탭 · 버튼 · 테이블 · 검색)", flush=True)
         self._scan_tabs()       # 탭 전환
         self._scan_buttons()    # 버튼 존재
         self._scan_table()      # 테이블 컬럼
 
-        print(f"\n  시나리오 2: 입력 동작  (모달 필드 · 필수입력 검증)", flush=True)
+        print(f"\n  시나리오 2: 입력 구조  (모달 필드 · 필수입력 검증)", flush=True)
         self._scan_modal()      # 모달 필드 + 필수 입력 검증
 
-        print(f"\n  시나리오 3: CRUD  (추가 · 수정 · 검색 · 삭제)", flush=True)
+        print(f"\n  시나리오 3: 동작 검증  (CRUD · 추가 · 수정 · 검색 · 삭제)", flush=True)
         self._scan_crud()       # 추가 → 수정(값 검증) → 검색(항목 존재 상태) → 삭제
         self._scan_search()     # URL 파라미터 구조 확인 (항목 없어도 가능)
+
+        print(f"\n  ⏭ 시나리오 4: 수정 시나리오 — CRUD 내 수정 검증으로 통합", flush=True)
+        print(f"\n  ⏭ 시나리오 5: 케이스 검증 — 해당 없음 (list_page)", flush=True)
 
         # 결과 출력 (헤더 없이 — 헤더는 스캔 시작 시점에 이미 출력됨)
         print(f"\n{'═' * 60}")

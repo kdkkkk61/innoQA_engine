@@ -392,7 +392,13 @@ def run_3phase_scan(
     p2_name = f"{prefix}_p2"
 
     # ─────────────────────────────────────────────────────────────
-    # Phase 1: 초기값 스냅샷 + 필수입력 검증
+    # 시나리오 1: UI 구조 — modal_form은 목록 화면 UI 스캔 미구현 → 스킵 출력
+    # (향후 list_ui YAML 섹션 추가 시 이 블록을 실제 스캔으로 교체)
+    # ─────────────────────────────────────────────────────────────
+    print(f"\n  ⏭ 시나리오 1: UI 구조 — 해당 없음 (modal_form: 목록 화면 UI 스캔 미구현)")
+
+    # ─────────────────────────────────────────────────────────────
+    # 시나리오 2: 입력 구조 (초기값 스냅샷 + 필수입력 검증)
     # ─────────────────────────────────────────────────────────────
     p1_saved = False
 
@@ -401,17 +407,16 @@ def run_3phase_scan(
         page_obj.save_policy(p1_name)
         p1_saved = True
 
-    report1 = scanner.scan(
-        page_id, phase=1,
+    report2 = scanner.scan(
+        page_id, phase=2,
         modal_open_fn=page_obj.open_add_modal,
         modal_close_fn=close_phase1,
     )
-    # 목록 확인: 시나리오 1 저장 후 정책이 목록에 나타나는지
-    _append_list_check(report1, page_obj, p1_name, phase=1, order=9990)
-    print_phase_report(report1, 1)
+    _append_list_check(report2, page_obj, p1_name, phase=2, order=9990)
+    print_phase_report(report2, 2)
 
     # ─────────────────────────────────────────────────────────────
-    # Phase 2: UI 요소 동작 검증
+    # 시나리오 3: 동작 검증 (UI 인터랙션 + 중복 처리)
     # ─────────────────────────────────────────────────────────────
     p2_saved = False
 
@@ -424,38 +429,36 @@ def run_3phase_scan(
     if p1_saved:
         context2["existing_name"] = p1_name
     else:
-        print(f"  ⏭ [{page_id}] Phase 2: existing_name 스킵 — Phase 1 저장 실패")
+        print(f"  ⏭ [{page_id}] 시나리오 3: existing_name 스킵 — 시나리오 2 저장 실패")
 
-    report2 = scanner.scan(
-        page_id, phase=2,
+    report3 = scanner.scan(
+        page_id, phase=3,
         modal_open_fn=page_obj.open_add_modal,
         modal_close_fn=close_phase2,
         context_extra=context2,
     )
-    # 목록 확인: 시나리오 2 저장 후 정책이 목록에 나타나는지
-    _append_list_check(report2, page_obj, p2_name, phase=2, order=9990)
-    print_phase_report(report2, 2)
+    _append_list_check(report3, page_obj, p2_name, phase=3, order=9990)
+    print_phase_report(report3, 3)
 
     # ─────────────────────────────────────────────────────────────
-    # Phase 3: 수정 시나리오 검증
+    # 시나리오 4: 수정 시나리오 (저장값 로드 + 재확인)
     # ─────────────────────────────────────────────────────────────
-    report3: PageScanReport | None = None
+    report4: PageScanReport | None = None
 
     if not p2_saved:
-        print(f"  ⏭ [{page_id}] Phase 3 스킵 — Phase 2 저장 실패 (p2 정책 없음)")
+        print(f"  ⏭ 시나리오 4: 수정 시나리오 스킵 — 시나리오 3 저장 실패 (p2 정책 없음)")
     else:
         try:
-            report3 = scanner.scan(
-                page_id, phase=3,
+            report4 = scanner.scan(
+                page_id, phase=4,
                 modal_open_fn=lambda: page_obj.open_modify_modal(p2_name),
                 modal_close_fn=page_obj.close_edit_modal,
                 context_extra={"verify_values": page_obj.get_verify_values(p2_name)},
             )
-            # 목록 확인: 시나리오 3 닫기 후 정책이 목록에 남아있는지
-            _append_list_check(report3, page_obj, p2_name, phase=3, order=9990)
-            print_phase_report(report3, 3)
+            _append_list_check(report4, page_obj, p2_name, phase=4, order=9990)
+            print_phase_report(report4, 4)
         except Exception as e:
-            print(f"  💥 [{page_id}] Phase 3 실행 중 예외: {e}")
+            print(f"  💥 [{page_id}] 시나리오 4 실행 중 예외: {e}")
         finally:
             try:
                 page_obj.navigate_to()
@@ -466,21 +469,18 @@ def run_3phase_scan(
                     f"잔여 [AUTO] 정책이 남아있을 수 있습니다: {e}"
                 )
 
-    if report3 is None and p2_saved:
-        print(f"  ⏭ [{page_id}] Phase 3 실행되지 않음")
-
     # ─────────────────────────────────────────────────────────────
-    # Phase 4: test_profiles가 있으면 Case A / Case B 두 케이스 검증
+    # 시나리오 5: 케이스 검증 (제품 설정 ON/OFF 프로파일)
     # ─────────────────────────────────────────────────────────────
-    report4: PageScanReport | None = None
+    report5: PageScanReport | None = None
     try:
-        report4 = run_phase3_cases(playwright_page, settings, page_id, page_obj)
-        if report4:
-            print_phase_report(report4, 4)
+        report5 = run_phase3_cases(playwright_page, settings, page_id, page_obj)
+        if report5:
+            print_phase_report(report5, 5)
         else:
-            print(f"\n  ⏭ [{page_id}] 시나리오 4 스킵 — test_profiles/{page_id}.yaml 없음")
+            print(f"\n  ⏭ 시나리오 5: 케이스 검증 — 해당 없음 (test_profiles/{page_id}.yaml 없음)")
     except Exception as e:
-        print(f"  💥 [{page_id}] 시나리오 4 실행 중 예외: {e}")
+        print(f"  💥 [{page_id}] 시나리오 5 실행 중 예외: {e}")
     finally:
         try:
             page_obj.navigate_to()
@@ -489,10 +489,9 @@ def run_3phase_scan(
             pass
 
     # ─────────────────────────────────────────────────────────────
-    # Phase 5: 오버플로 시나리오 (overflow_tests YAML 섹션 기반)
-    # 태그 입력 영역에 매우 긴 값을 추가 후 등록 → 서버 오류 여부 확인
+    # 시나리오 6: 오버플로 검증 (입력 길이 제한 미적용 여부)
     # ─────────────────────────────────────────────────────────────
-    report5: PageScanReport | None = None
+    report6: PageScanReport | None = None
     hints_path = Path(config_dir) / "scan_hints" / f"{page_id}.yaml"
     try:
         with open(hints_path, encoding="utf-8") as _f:
@@ -502,15 +501,15 @@ def run_3phase_scan(
 
     if _hints.get("overflow_tests"):
         try:
-            report5 = PageScanReport(page_id=page_id)
+            report6 = PageScanReport(page_id=page_id)
             page_obj.navigate_to()
             scan_overflow_tests(
-                playwright_page, _hints, report5,
+                playwright_page, _hints, report6,
                 open_modal_fn=page_obj.open_add_modal,
             )
-            print_phase_report(report5, 5)
+            print_phase_report(report6, 6)
         except Exception as e:
-            print(f"  💥 [{page_id}] Phase 5 실행 중 예외: {e}")
+            print(f"  💥 [{page_id}] 시나리오 6 실행 중 예외: {e}")
         finally:
             try:
                 page_obj.navigate_to()
@@ -518,14 +517,14 @@ def run_3phase_scan(
             except Exception:
                 pass
     else:
-        print(f"\n  ⏭ [{page_id}] Phase 5 스킵 — overflow_tests 섹션 없음")
+        print(f"\n  ⏭ 시나리오 6: 오버플로 검증 — 해당 없음 (overflow_tests 섹션 없음)")
 
     # ─────────────────────────────────────────────────────────────
     # 결합 리포트
     # ─────────────────────────────────────────────────────────────
-    reports = [r for r in (report1, report2, report3, report4, report5) if r is not None]
+    reports = [r for r in (report2, report3, report4, report5, report6) if r is not None]
     if not reports:
-        raise RuntimeError(f"[{page_id}] 스캔 결과 없음 — 모든 Phase 실패")
+        raise RuntimeError(f"[{page_id}] 스캔 결과 없음 — 모든 시나리오 실패")
 
     combined = PageScanReport.merge(*reports)
     print_combined_report(combined)
