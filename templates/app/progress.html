@@ -45,9 +45,11 @@
   .sc-status {
     font-size: 11px; font-weight: 600; color: #999;
   }
-  .sc-status.running { color: #1e3a5f; }
-  .sc-status.done    { color: #27ae60; }
-  .sc-status.pending { color: #bbb; }
+  .sc-status.running  { color: #1e3a5f; }
+  .sc-status.done     { color: #27ae60; }
+  .sc-status.pending  { color: #bbb; }
+  .sc-status.error    { color: #e74c3c; }
+  .sc-status.stopped  { color: #999; }
 </style>
 {% endblock %}
 
@@ -82,9 +84,9 @@
 
 {% block scripts %}
 <script>
-  const SC_ICON   = {pending: '○', running: '🔄', done: '✅'};
-  const SC_TEXT   = {pending: '예정', running: '실행 중', done: '완료'};
-  const SC_COLOR  = {pending: '#bbb',   running: '#1e3a5f', done: '#27ae60'};
+  const SC_ICON   = {pending: '○', running: '🔄', done: '✅', error: '⚠️', stopped: '🚫'};
+  const SC_TEXT   = {pending: '예정', running: '실행 중', done: '완료', error: '오류', stopped: '중지'};
+  const SC_COLOR  = {pending: '#bbb', running: '#1e3a5f', done: '#27ae60', error: '#e74c3c', stopped: '#999'};
   const PG_ICON   = {waiting: '⏳', running: '🔄', done: '✅', error: '❌'};
   const PG_BADGE  = {waiting: '대기 중', running: '실행 중', done: '완료', error: '오류'};
 

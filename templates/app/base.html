@@ -54,32 +54,12 @@
     .app-footer { padding: 16px 40px; background: white; border-top: 1px solid #eee;
                   display: flex; gap: 12px; justify-content: flex-end; flex-shrink: 0; }
 
-    /* 백그라운드 실행 상태 배지 */
-    #hdr-badge {
-      display: none; align-items: center; gap: 8px;
-      background: rgba(255,255,255,.15); border-radius: 20px;
-      padding: 5px 14px; font-size: 12px; font-weight: 600; color: white;
-      cursor: default; transition: background .2s;
-    }
-    #hdr-badge.done { background: rgba(39,174,96,.35); cursor: pointer; }
-    #hdr-badge.done:hover { background: rgba(39,174,96,.55); }
-    #hdr-badge .hdr-spinner {
-      width: 12px; height: 12px; border-radius: 50%;
-      border: 2px solid rgba(255,255,255,.4); border-top-color: white;
-      animation: spin .8s linear infinite; flex-shrink: 0;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
   {% block head %}{% endblock %}
 </head>
 <body>
   <div class="app-header">
     <h1>🔍 QA Tool</h1>
-    <!-- 백그라운드 실행 상태 배지 (모든 화면 공통) -->
-    <div id="hdr-badge" onclick="hdrBadgeClick()">
-      <div class="hdr-spinner" id="hdr-spinner"></div>
-      <span id="hdr-badge-text">테스트 실행 중...</span>
-    </div>
     <span class="step">{% block step %}{% endblock %}</span>
   </div>
   <div class="app-body">
@@ -90,70 +70,5 @@
   </div>
   {% block scripts %}{% endblock %}
 
-  <!-- 백그라운드 실행 상태 폴링 (모든 화면 공통) -->
-  <script>
-  (function() {
-    var badge   = document.getElementById('hdr-badge');
-    var spinner = document.getElementById('hdr-spinner');
-    var text    = document.getElementById('hdr-badge-text');
-    var timer   = null;
-
-    function showBadge(running) {
-      badge.style.display = 'flex';
-      if (running) {
-        badge.classList.remove('done');
-        spinner.style.display = '';
-        text.textContent = '테스트 실행 중...';
-      } else {
-        badge.classList.add('done');
-        spinner.style.display = 'none';
-        text.textContent = '✅ 완료 — 리포트 보기';
-      }
-    }
-
-    function hideBadge() {
-      badge.style.display = 'none';
-      badge.classList.remove('done');
-    }
-
-    function poll() {
-      fetch('/status').then(function(r){ return r.json(); }).then(function(d) {
-        if (d.status === 'running') {
-          showBadge(true);
-          timer = setTimeout(poll, 2000);
-        } else if (d.status === 'done' || d.status === 'error') {
-          localStorage.removeItem('qa_bg_running');
-          if (d.status === 'done') {
-            showBadge(false);
-          } else {
-            hideBadge();
-          }
-        } else {
-          // idle
-          hideBadge();
-        }
-      }).catch(function() {
-        timer = setTimeout(poll, 3000);
-      });
-    }
-
-    window.hdrBadgeClick = function() {
-      if (badge.classList.contains('done')) {
-        location.href = '/report';
-      }
-    };
-
-    // 백그라운드 모드로 시작했거나 이미 실행 중이면 폴링 시작
-    if (localStorage.getItem('qa_bg_running') === '1') {
-      poll();
-    } else {
-      // 혹시 서버가 실행 중인 상태라면 배지 표시 (새로고침 대응)
-      fetch('/status').then(function(r){ return r.json(); }).then(function(d) {
-        if (d.status === 'running') showBadge(true), poll();
-        else if (d.status === 'done') showBadge(false);
-      }).catch(function(){});
-    }
-  })();
-  </script>
 </body>
 </html>

@@ -16,10 +16,10 @@
   /* ── 섹션 카드 ── */
   .section-card { background: white; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.07); }
   .section-head {
-    padding: 14px 20px 0; border-bottom: 2px solid #e8eef5;
+    padding: 0 20px 0; border-bottom: 2px solid #e8eef5;
     display: flex; align-items: flex-end; gap: 0;
   }
-  .section-label { font-size: 14px; font-weight: 700; color: #1e3a5f; padding-bottom: 12px; flex: 1; }
+  .section-label { font-size: 14px; font-weight: 700; color: #1e3a5f; padding: 14px 0 12px; flex: 1; }
 
   /* ── 탭 ── */
   .page-tab {
@@ -117,13 +117,12 @@
 <div class="report-header">
   <span class="report-title">QA 리포트</span>
   <span class="defect-badge" id="defectCount">0</span>
-  <span style="font-size:12px; color:#aaa;">건의 결함</span>
+  <span id="defectSubText" style="font-size:12px; color:#aaa;">건의 결함</span>
 </div>
 
 <!-- ① 결함 목록 카드 — 단일 테이블 + 행 레벨 필터 -->
 <div class="section-card">
   <div class="section-head" id="defectTabHead">
-    <span class="section-label">결함 목록</span>
   </div>
   <div class="defect-wrap" id="defectWrap">
     <table class="defect-table">
@@ -198,20 +197,24 @@
       b.classList.toggle('active', b.dataset.key === key)
     );
     const tbody = document.getElementById('tbody-defect-all');
-    let anyData = false;
-    tbody.querySelectorAll('tr').forEach(tr => {
-      if (tr.id === 'no-defect-row') return;
+    // tr[id^="tr-"] 로 데이터 행만 선택 (no-defect-row 제외)
+    tbody.querySelectorAll('tr[id^="tr-"]').forEach(tr => {
       const pk   = tr.dataset.pageKey || '';
       const show = (key === 'all') || (pk === key);
       tr.style.display = show ? '' : 'none';
-      if (show) anyData = true;
     });
+    // no-defect-row 처리
     const noRow = document.getElementById('no-defect-row');
     if (noRow) {
-      noRow.style.display = anyData ? 'none' : '';
-      if (!anyData) noRow.innerHTML =
+      const visibleDataRows = tbody.querySelectorAll('tr[id^="tr-"]').length;
+      const visibleNow = Array.from(tbody.querySelectorAll('tr[id^="tr-"]'))
+                              .filter(tr => tr.style.display !== 'none').length;
+      noRow.style.display = visibleNow > 0 ? 'none' : '';
+      if (visibleNow === 0) noRow.innerHTML =
         '<td colspan="6"><div class="no-defect-tip">✅ 해당 페이지에 결함이 없습니다</div></td>';
     }
+    // 탭별 결함 수 업데이트 (updateDefectCount 재사용)
+    updateDefectCount();
   }
 
   /* ════════════════════════════════════════════
@@ -411,25 +414,11 @@
     const tbody    = tr.closest('tbody');
     const pageKey  = tr.dataset.pageKey || '';
     const newRow   = appendRow({ manual: true, status: 'fail', page: pageKey }, tbody, tr);
-    // 새 행은 현재 탭에서 항상 보이게
-    if (newRow) newRow.style.display = '';
-  }
-
-  function addNewDefect() {
-    if (finalized) return;
-    const tbody  = document.getElementById('tbody-defect-all');
-    if (!tbody) return;
-
-    // no-defect-row 숨기기
-    const noRow = document.getElementById('no-defect-row');
-    if (noRow) noRow.style.display = 'none';
-
-    // 현재 탭 기준 페이지명
-    const pg      = _defectTabKey !== 'all'
-      ? _pages.find(p => p.pageKey === _defectTabKey)
-      : null;
-    const newRow  = appendRow({ manual: true, status: 'fail', page: pg?.label || '' }, tbody);
-    if (newRow) newRow.style.display = '';  // 현재 탭 필터 무시하고 표시
+    // 새 행은 현재 탭에서 항상 보이게 + 카운트 재갱신
+    if (newRow) {
+      newRow.style.display = '';
+      updateDefectCount();
+    }
   }
 
   function deleteRow(id) {
@@ -460,11 +449,21 @@
   }
 
   function updateDefectCount() {
+    // 현재 탭 필터 기준으로 visible 행만 카운트
     const tbody = document.getElementById('tbody-defect-all');
-    const n = tbody
-      ? tbody.querySelectorAll('tr[id^="tr-"]').length
-      : 0;
-    document.getElementById('defectCount').textContent = n;
+    if (!tbody) return;
+    let visible = 0;
+    tbody.querySelectorAll('tr[id^="tr-"]').forEach(tr => {
+      if (tr.style.display !== 'none') visible++;
+    });
+    const total = tbody.querySelectorAll('tr[id^="tr-"]').length;
+    document.getElementById('defectCount').textContent = visible;
+    const subText = document.getElementById('defectSubText');
+    if (subText) {
+      subText.textContent = (_defectTabKey === 'all')
+        ? '건의 결함'
+        : `건 (전체 ${total}건)`;
+    }
   }
 
   /* ════════════════════════════════════════════

@@ -233,8 +233,6 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .tab-bar { display: flex; gap: 6px; background: white; border-radius: 8px;
            padding: 12px 16px; box-shadow: 0 1px 4px rgba(0,0,0,.1);
            margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
-.tab-bar-label { font-size: 12px; font-weight: 600; color: #999;
-                 margin-right: 6px; text-transform: uppercase; letter-spacing: .4px; }
 .tab-btn { padding: 6px 16px; border: 1px solid #dde4ee; border-radius: 20px;
            background: white; color: #666; font-size: 13px; font-weight: 500;
            cursor: pointer; transition: all .15s; }
@@ -361,7 +359,6 @@ def generate_html_report(
         for i, lbl in enumerate(['전체'] + pages_for_tabs)
     )
     tab_html = f"""<div class="tab-bar">
-    <span class="tab-bar-label">페이지</span>
     {tab_buttons}
   </div>"""
 
@@ -439,7 +436,7 @@ def generate_html_report(
 
   <!-- DEFECT_SECTION_START -->
   <div class="section">
-    <div class="section-title">🐛 발견된 결함 ({total_f + total_k + total_e}건)</div>
+    <div class="section-title">🐛 확정된 결함 (<span id="defect-count">{total_f + total_k + total_e}</span>건)</div>
     {defect_html}
   </div>
   <!-- DEFECT_SECTION_END -->
@@ -456,14 +453,16 @@ def generate_html_report(
 function switchTab(btn, key) {{
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  var anyDefect = false;
+  var defectCount = 0;
   document.querySelectorAll('[data-page-key]').forEach(function(el) {{
     var show = key === '전체' || el.dataset.pageKey === key;
     el.style.display = show ? '' : 'none';
-    if (show && el.classList.contains('defect-card')) anyDefect = true;
+    if (show && el.classList.contains('defect-card')) defectCount++;
   }});
   var noDefEl = document.getElementById('tab-no-defect');
-  if (noDefEl) noDefEl.style.display = anyDefect ? 'none' : '';
+  if (noDefEl) noDefEl.style.display = defectCount > 0 ? 'none' : '';
+  var countEl = document.getElementById('defect-count');
+  if (countEl) countEl.textContent = defectCount;
 }}
 </script>
 </body>

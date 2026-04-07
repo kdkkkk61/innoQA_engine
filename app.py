@@ -248,8 +248,9 @@ def start():
                     if f"test_page_scan[{pid}]" in line:
                         if current_page and current_page != pid:
                             for sc in _state["scenario_status"].get(current_page, []):
-                                if sc["status"] != "done":
-                                    sc["status"] = "done"
+                                # error/stopped는 유지, pending만 stopped로 정리
+                                if sc["status"] == "pending":
+                                    sc["status"] = "stopped"
                         if current_page != pid:
                             log.info(f"페이지 전환: {current_page} → {pid}")
                         current_page = pid
@@ -277,16 +278,26 @@ def start():
                         log.info(f"  [{current_page}] 시나리오 {sc_num} 시작: {sc_label}")
 
                 # pytest 결과 줄 감지
-                if current_page and "test_page_scan" in line:
-                    if line.lstrip().startswith("PASSED"):
+                # pytest -v -s 출력 형식:
+                #   단독 라인: "PASSED" 또는 "FAILED"
+                #   요약 라인: "FAILED tests/.../test_page_scan[pid] - ..."
+                if current_page:
+                    bare        = line.strip()
+                    in_summary  = "test_page_scan" in line
+                    is_passed   = bare == "PASSED"
+                    is_failed   = bare == "FAILED" or (in_summary and line.lstrip().startswith("FAILED"))
+
+                    if is_passed:
                         for sc in _state["scenario_status"].get(current_page, []):
                             sc["status"] = "done"
                         _state["page_status"][current_page] = "done"
                         log.info(f"  [{current_page}] PASSED ✅")
-                    elif line.lstrip().startswith("FAILED"):
+                    elif is_failed:
                         for sc in _state["scenario_status"].get(current_page, []):
-                            if sc["status"] in ("running", "pending"):
-                                sc["status"] = "done"
+                            if sc["status"] == "running":
+                                sc["status"] = "error"    # 실행 중 실패한 시나리오
+                            elif sc["status"] == "pending":
+                                sc["status"] = "stopped"  # 미실행 시나리오 → 중지
                         _state["page_status"][current_page] = "error"
                         log.warning(f"  [{current_page}] FAILED ❌")
 
