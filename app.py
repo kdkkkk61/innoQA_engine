@@ -301,6 +301,16 @@ def start():
                         _state["page_status"][current_page] = "error"
                         log.warning(f"  [{current_page}] FAILED ❌")
 
+                # HTML 리포트 경로 감지 (conftest pytest_unconfigure가 출력)
+                if "[HTML 리포트]" in line:
+                    html_path = line.split("[HTML 리포트]", 1)[1].strip()
+                    p = Path(html_path)
+                    if not p.is_absolute():
+                        p = BASE_DIR / p
+                    if p.exists():
+                        _state["report_path"] = str(p)
+                        log.info(f"HTML 리포트 경로 설정: {p}")
+
                 # 오류/예외 줄 수집 + 로그 기록
                 if any(kw in line for kw in ("ERROR", "Error:", "Traceback", "Exception", "AssertionError")):
                     log.error(f"[오류줄] {line}")
@@ -332,6 +342,16 @@ def start():
                         _state["page_status"][pid] = "done"
             else:
                 _state["status"] = "error"
+                # 오류 발생 시에도 HTML 리포트가 생성됐을 수 있으므로 경로 재확인
+                if not _state.get("report_path"):
+                    reports = sorted(
+                        BASE_DIR.glob("reports/QA_*.html"),
+                        key=lambda p: p.stat().st_mtime,
+                        reverse=True,
+                    )
+                    if reports:
+                        _state["report_path"] = str(reports[0])
+                        log.info(f"HTML 리포트 (오류 후 재탐색): {reports[0]}")
 
         except Exception as e:
             log.exception(f"_run() 예외 발생: {e}")
