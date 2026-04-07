@@ -22,10 +22,11 @@ import yaml
 from datetime import datetime
 from pathlib  import Path
 
-from core.ui_scanner import UIScanner
-from core.models     import PageScanReport, ScanResult
-from core.reporter   import print_phase_report, print_combined_report
-from pages.registry  import PAGE_REGISTRY
+from core.ui_scanner        import UIScanner
+from core.models            import PageScanReport, ScanResult
+from core.reporter          import print_phase_report, print_combined_report
+from pages.registry         import PAGE_REGISTRY
+from validators.overflow    import scan_overflow_tests
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -488,9 +489,41 @@ def run_3phase_scan(
             pass
 
     # ─────────────────────────────────────────────────────────────
+    # Phase 5: 오버플로 시나리오 (overflow_tests YAML 섹션 기반)
+    # 태그 입력 영역에 매우 긴 값을 추가 후 등록 → 서버 오류 여부 확인
+    # ─────────────────────────────────────────────────────────────
+    report5: PageScanReport | None = None
+    hints_path = Path(config_dir) / "scan_hints" / f"{page_id}.yaml"
+    try:
+        with open(hints_path, encoding="utf-8") as _f:
+            _hints = yaml.safe_load(_f) or {}
+    except FileNotFoundError:
+        _hints = {}
+
+    if _hints.get("overflow_tests"):
+        try:
+            report5 = PageScanReport(page_id=page_id)
+            page_obj.navigate_to()
+            scan_overflow_tests(
+                playwright_page, _hints, report5,
+                open_modal_fn=page_obj.open_add_modal,
+            )
+            print_phase_report(report5, 5)
+        except Exception as e:
+            print(f"  💥 [{page_id}] Phase 5 실행 중 예외: {e}")
+        finally:
+            try:
+                page_obj.navigate_to()
+                page_obj.delete_all_auto_policies()
+            except Exception:
+                pass
+    else:
+        print(f"\n  ⏭ [{page_id}] Phase 5 스킵 — overflow_tests 섹션 없음")
+
+    # ─────────────────────────────────────────────────────────────
     # 결합 리포트
     # ─────────────────────────────────────────────────────────────
-    reports = [r for r in (report1, report2, report3, report4) if r is not None]
+    reports = [r for r in (report1, report2, report3, report4, report5) if r is not None]
     if not reports:
         raise RuntimeError(f"[{page_id}] 스캔 결과 없음 — 모든 Phase 실패")
 

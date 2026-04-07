@@ -290,6 +290,79 @@ toggle_checkboxes:
         onpaste_blocked:  true   # onpaste="return false" DOM 확인
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 오버플로 시나리오 (Phase 5)
+# 태그 입력 영역에 매우 긴 값을 추가 후 등록 → 서버 오류 여부 확인
+# Chrome MCP 실증 (2026-04-07): 500자 태그 추가 → 등록 즉시 "서버에서 오류가 발생 하였습니다."
+# ──────────────────────────────────────────────────────────────────────────────
+overflow_tests:
+  confirm_modal: "div#__globalMessageModal.in"
+  confirm_btn:   "div#__globalMessageModal button:has-text('확인')"
+  cancel_btn:    "div#addItemModal button.btn-default"   # 닫기 버튼
+  register_btn:  "button[add-btn]"
+
+  cases:
+    # ── 보호할 확장자 ──────────────────────────────────────────────
+    - label:           "보호할 확장자 오버플로"
+      overflow_length: 500
+      tag_input:
+        input:     "input#protectExtension"
+        add_btn:   "button#extensionAttachBtn"
+        container: "div#protectExtensionList"
+      fill_required:
+        - { selector: "input#rcDetectPolicyName", value: "[AUTO]_overflow" }
+      order: 500
+
+    # ── 파일경로 예외처리 ──────────────────────────────────────────
+    # 예외처리 토글(isExceptDetect) ON 상태 필요
+    # fill_required에서 toggle_on 타입으로 활성화 후 태그 추가
+    - label:           "파일경로 예외처리 오버플로"
+      overflow_length: 500
+      tag_input:
+        input:     "input#exceptFilePath"
+        add_btn:   "button#addExceptFilePath"
+        container: "ul#exceptFilePathList"
+      fill_required:
+        - { selector: "input#rcDetectPolicyName", value: "[AUTO]_overflow" }
+        - { type: "tag_add",
+            tag_input_sel: "input#protectExtension",
+            tag_btn_sel:   "button#extensionAttachBtn",
+            tag_value:     "txt" }
+        - { type: "toggle_on", selector: "input#isExceptDetect" }
+      order: 510
+
+    # ── 프로세스경로 예외처리 ──────────────────────────────────────
+    - label:           "프로세스경로 예외처리 오버플로"
+      overflow_length: 500
+      tag_input:
+        input:     "input#exceptProcessPath"
+        add_btn:   "button#addExceptProcessPath"
+        container: "ul#exceptProcessPathList"
+      fill_required:
+        - { selector: "input#rcDetectPolicyName", value: "[AUTO]_overflow" }
+        - { type: "tag_add",
+            tag_input_sel: "input#protectExtension",
+            tag_btn_sel:   "button#extensionAttachBtn",
+            tag_value:     "txt" }
+        - { type: "toggle_on", selector: "input#isExceptDetect" }
+      order: 520
+
+    # ── 전자서명 예외처리 ──────────────────────────────────────────
+    - label:           "전자서명 예외처리 오버플로"
+      overflow_length: 500
+      tag_input:
+        input:     "input#exceptDigitalSign"
+        add_btn:   "button#addExceptDigitalSign"
+        container: "ul#exceptDigitalSignList"
+      fill_required:
+        - { selector: "input#rcDetectPolicyName", value: "[AUTO]_overflow" }
+        - { type: "tag_add",
+            tag_input_sel: "input#protectExtension",
+            tag_btn_sel:   "button#extensionAttachBtn",
+            tag_value:     "txt" }
+        - { type: "toggle_on", selector: "input#isExceptDetect" }
+      order: 530
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 모달 액션 버튼
 # ──────────────────────────────────────────────────────────────────────────────
 modal_actions:
