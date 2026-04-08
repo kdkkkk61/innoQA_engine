@@ -174,43 +174,26 @@ def _run_case(
     label        = case.get("label", "오버플로 테스트")
     overflow_len = case.get("overflow_length", 500)
     order        = case.get("order", 500)
-    tag_cfg      = case.get("tag_input", {})
-    inp_sel      = tag_cfg.get("input", "")
-    add_btn_sel  = tag_cfg.get("add_btn", "")
-    cont_sel     = tag_cfg.get("container", "")
+    text_cfg     = case.get("text_input", {})
+    tag_cfg      = case.get("tag_input",  {})
+
+    # text_input / tag_input 분기
+    if text_cfg:
+        return _run_text_input_case(
+            page, case, text_cfg,
+            confirm_modal_sel, confirm_btn_sel,
+            cancel_btn_sel, register_btn_sel,
+            label, overflow_len, order,
+        )
+
+    # tag_input (기존 로직)
+    inp_sel     = tag_cfg.get("input", "")
+    add_btn_sel = tag_cfg.get("add_btn", "")
+    cont_sel    = tag_cfg.get("container", "")
 
     try:
         # ── 1. 필수 필드 채우기 ───────────────────────────────────────
-        for field in case.get("fill_required", []):
-            ftype = field.get("type", "text")
-            sel   = field.get("selector", "")
-            val   = field.get("value", "")
-
-            # tag_add: selector 없이 tag_input_sel / tag_btn_sel 사용
-            if ftype == "tag_add":
-                t_inp = field.get("tag_input_sel", "")
-                t_btn = field.get("tag_btn_sel", "")
-                t_val = field.get("tag_value", "txt")
-                if t_inp and t_btn:
-                    _fill_tag(page, t_inp, t_btn, t_val)
-                continue
-
-            # toggle_on: 체크박스/토글 클릭 (fill 호출 금지)
-            if ftype == "toggle_on":
-                if sel:
-                    tog = page.locator(sel).first
-                    if tog.count() > 0 and not tog.is_checked():
-                        tog.evaluate("el => el.click()")
-                        page.wait_for_timeout(300)
-                continue
-
-            # 일반 text 입력
-            if not sel:
-                continue
-            loc = page.locator(sel).first
-            if loc.count() > 0:
-                loc.fill(val)
-                page.wait_for_timeout(150)
+        _fill_required_fields(page, case.get("fill_required", []))
 
         # ── 2. 긴 값 태그 추가 ────────────────────────────────────────
         long_val = "a" * overflow_len
@@ -254,46 +237,10 @@ def _run_case(
         page.wait_for_timeout(1500)
 
         # ── 4. 모달 감지 및 판단 ──────────────────────────────────────
-        is_error = _handle_modal(
-            page, confirm_modal_sel, confirm_btn_sel
-        )
+        is_error = _handle_modal(page, confirm_modal_sel, confirm_btn_sel)
 
         # ── 5. 결과 기록 ──────────────────────────────────────────────
-        if is_error is True:
-            ss = _take_screenshot(page, label)
-            return ScanResult(
-                pattern="overflow", selector=inp_sel, label=label,
-                status="known_bug",
-                detail=(
-                    f"클라이언트 글자수 제한 없음 — {overflow_len}자 태그 추가 후 "
-                    "등록 시 서버 오류 발생 (클라이언트 측 입력 길이 검증 누락)"
-                ),
-                extra={"screenshot": ss} if ss else {},
-                order=order, phase=_PHASE,
-            )
-        elif is_error is False:
-            # 오류 없이 등록 성공 — 서버도 제한 없음
-            ss = _take_screenshot(page, label)
-            return ScanResult(
-                pattern="overflow", selector=inp_sel, label=label,
-                status="known_bug",
-                detail=(
-                    f"클라이언트/서버 모두 글자수 제한 없음 — "
-                    f"{overflow_len}자 태그 등록 성공 (DB/서버 측 검증도 누락)"
-                ),
-                extra={"screenshot": ss} if ss else {},
-                order=order, phase=_PHASE,
-            )
-        else:
-            # 모달 미출현
-            ss = _take_screenshot(page, label)
-            return ScanResult(
-                pattern="overflow", selector=inp_sel, label=label,
-                status="error",
-                detail="등록 후 응답 모달이 나타나지 않음 (타임아웃 또는 다른 UI 처리)",
-                extra={"screenshot": ss} if ss else {},
-                order=order, phase=_PHASE,
-            )
+        return _make_tag_overflow_result(inp_sel, label, overflow_len, is_error, order, page)
 
     except Exception as e:
         ss = _take_screenshot(page, label)
@@ -306,6 +253,186 @@ def _run_case(
     finally:
         # ── 정리: 추가 모달 닫기 ─────────────────────────────────────
         _safe_close_modal(page, cancel_btn_sel)
+
+
+def _run_text_input_case(
+    page,
+    case: dict,
+    text_cfg: dict,
+    confirm_modal_sel: str,
+    confirm_btn_sel: str,
+    cancel_btn_sel: str,
+    register_btn_sel: str,
+    label: str,
+    overflow_len: int,
+    order: int,
+) -> ScanResult:
+    """일반 text_input 필드에 긴 값을 입력 후 저장 시도 → 오류 감지."""
+    inp_sel = text_cfg.get("input", "")
+
+    try:
+        # ── 1. 필수 필드 채우기 (이름 필드 자체는 오버플로 값으로 덮을 것이므로 제외) ──
+        _fill_required_fields(page, case.get("fill_required", []))
+
+        # ── 2. 대상 필드에 긴 값 입력 ────────────────────────────────
+        long_val = "a" * overflow_len
+        loc = page.locator(inp_sel).first
+
+        if loc.count() == 0:
+            return ScanResult(
+                pattern="overflow", selector=inp_sel, label=label,
+                status="skip", detail=f"입력 요소 없음: {inp_sel}",
+                order=order, phase=_PHASE,
+            )
+
+        # Playwright fill — AngularJS ng-model 동기화
+        loc.fill(long_val)
+        page.wait_for_timeout(200)
+
+        # 클라이언트가 maxlength로 잘랐는지 확인
+        actual_val = loc.input_value()
+        if len(actual_val) < overflow_len:
+            return ScanResult(
+                pattern="overflow", selector=inp_sel, label=label,
+                status="pass",
+                detail=(
+                    f"클라이언트에서 {overflow_len}자 입력 차단 "
+                    f"(실제 입력값 {len(actual_val)}자로 제한됨)"
+                ),
+                order=order, phase=_PHASE,
+            )
+
+        # ── 3. 저장 버튼 클릭 ─────────────────────────────────────────
+        page.locator(register_btn_sel).first.evaluate("el => el.click()")
+        page.wait_for_timeout(1500)
+
+        # ── 4. 모달 감지 ──────────────────────────────────────────────
+        is_error = _handle_modal(page, confirm_modal_sel, confirm_btn_sel)
+
+        # ── 5. 결과 기록 ──────────────────────────────────────────────
+        return _make_text_overflow_result(inp_sel, label, overflow_len, is_error, order, page)
+
+    except Exception as e:
+        ss = _take_screenshot(page, label)
+        return ScanResult(
+            pattern="overflow", selector=inp_sel, label=label,
+            status="error", detail=str(e),
+            extra={"screenshot": ss} if ss else {},
+            order=order, phase=_PHASE,
+        )
+    finally:
+        _safe_close_modal(page, cancel_btn_sel)
+
+
+def _fill_required_fields(page, fields: list) -> None:
+    """fill_required 목록을 순서대로 처리 (tag_add / toggle_on / text)."""
+    for field in fields:
+        ftype = field.get("type", "text")
+        sel   = field.get("selector", "")
+        val   = field.get("value", "")
+
+        if ftype == "tag_add":
+            t_inp = field.get("tag_input_sel", "")
+            t_btn = field.get("tag_btn_sel", "")
+            t_val = field.get("tag_value", "txt")
+            if t_inp and t_btn:
+                _fill_tag(page, t_inp, t_btn, t_val)
+            continue
+
+        if ftype == "toggle_on":
+            if sel:
+                tog = page.locator(sel).first
+                if tog.count() > 0 and not tog.is_checked():
+                    tog.evaluate("el => el.click()")
+                    page.wait_for_timeout(300)
+            continue
+
+        if not sel:
+            continue
+        loc = page.locator(sel).first
+        if loc.count() > 0:
+            loc.fill(val)
+            page.wait_for_timeout(150)
+
+
+def _make_tag_overflow_result(
+    inp_sel: str, label: str, overflow_len: int,
+    is_error, order: int, page,
+) -> ScanResult:
+    """tag_input 오버플로 결과 생성."""
+    if is_error is True:
+        ss = _take_screenshot(page, label)
+        return ScanResult(
+            pattern="overflow", selector=inp_sel, label=label,
+            status="known_bug",
+            detail=(
+                f"클라이언트 글자수 제한 없음 — {overflow_len}자 태그 추가 후 "
+                "등록 시 서버 오류 발생 (클라이언트 측 입력 길이 검증 누락)"
+            ),
+            extra={"screenshot": ss} if ss else {},
+            order=order, phase=_PHASE,
+        )
+    elif is_error is False:
+        ss = _take_screenshot(page, label)
+        return ScanResult(
+            pattern="overflow", selector=inp_sel, label=label,
+            status="known_bug",
+            detail=(
+                f"클라이언트/서버 모두 글자수 제한 없음 — "
+                f"{overflow_len}자 태그 등록 성공 (DB/서버 측 검증도 누락)"
+            ),
+            extra={"screenshot": ss} if ss else {},
+            order=order, phase=_PHASE,
+        )
+    else:
+        ss = _take_screenshot(page, label)
+        return ScanResult(
+            pattern="overflow", selector=inp_sel, label=label,
+            status="error",
+            detail="등록 후 응답 모달이 나타나지 않음 (타임아웃 또는 다른 UI 처리)",
+            extra={"screenshot": ss} if ss else {},
+            order=order, phase=_PHASE,
+        )
+
+
+def _make_text_overflow_result(
+    inp_sel: str, label: str, overflow_len: int,
+    is_error, order: int, page,
+) -> ScanResult:
+    """text_input 오버플로 결과 생성."""
+    if is_error is True:
+        ss = _take_screenshot(page, label)
+        return ScanResult(
+            pattern="overflow", selector=inp_sel, label=label,
+            status="known_bug",
+            detail=(
+                f"클라이언트 글자수 제한 없음 — {overflow_len}자 입력 후 "
+                "저장 시 서버 오류 발생 (클라이언트 측 입력 길이 검증 누락)"
+            ),
+            extra={"screenshot": ss} if ss else {},
+            order=order, phase=_PHASE,
+        )
+    elif is_error is False:
+        ss = _take_screenshot(page, label)
+        return ScanResult(
+            pattern="overflow", selector=inp_sel, label=label,
+            status="known_bug",
+            detail=(
+                f"클라이언트/서버 모두 글자수 제한 없음 — "
+                f"{overflow_len}자 입력 저장 성공 (DB/서버 측 검증도 누락)"
+            ),
+            extra={"screenshot": ss} if ss else {},
+            order=order, phase=_PHASE,
+        )
+    else:
+        ss = _take_screenshot(page, label)
+        return ScanResult(
+            pattern="overflow", selector=inp_sel, label=label,
+            status="error",
+            detail="저장 후 응답 모달이 나타나지 않음 (타임아웃 또는 다른 UI 처리)",
+            extra={"screenshot": ss} if ss else {},
+            order=order, phase=_PHASE,
+        )
 
 
 def _fill_tag(page, inp_sel: str, btn_sel: str, value: str) -> None:

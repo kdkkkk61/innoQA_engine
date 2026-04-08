@@ -318,3 +318,22 @@ modal_actions:
   submit_add:    "button[add-btn]"
   submit_modify: "button[modify-btn]"
   close:         "button[data-dismiss='modal']"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 오버플로 시나리오 (시나리오 3: 동작 검증)
+# 정책 이름에 500자 입력 후 저장 → 서버 오류 발생 확인 (사용자 직접 확인 2026-04-08)
+# DOM maxlength 없음 (Chrome MCP 2026-03-25) → 클라이언트 검증 부재
+# ──────────────────────────────────────────────────────────────────────────────
+overflow_tests:
+  confirm_modal:  "div#__globalMessageModal.in"
+  confirm_btn:    "div#__globalMessageModal button:has-text('확인')"
+  cancel_btn:     "button[data-dismiss='modal']"
+  register_btn:   "button[add-btn]"
+
+  cases:
+    - label:           "정책 이름 오버플로"
+      overflow_length: 500
+      text_input:
+        input: "input#rcRdpPolicyName"
+      fill_required: []   # 이름 필드 자체가 테스트 대상 — 추가 필수 입력 없음
+      order: 500
