@@ -335,5 +335,8 @@ overflow_tests:
       overflow_length: 500
       text_input:
         input: "input#rcRdpPolicyName"
-      fill_required: []   # 이름 필드 자체가 테스트 대상 — 추가 필수 입력 없음
+      fill_required:
+        # 연결설정 라디오 필수 선택 — 미선택 시 JS 클라이언트 검증에서 차단돼 서버 미도달
+        # save_policy()가 내부적으로 isDenyConnect 기본 선택하는 것과 동일한 처리
+        - { type: "radio_select", selector: "input#isDenyConnect" }
       order: 500

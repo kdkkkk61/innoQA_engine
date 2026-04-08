@@ -347,6 +347,13 @@ def _fill_required_fields(page, fields: list) -> None:
                     page.wait_for_timeout(300)
             continue
 
+        # radio_select: 라디오 버튼 클릭 (fill 호출 금지)
+        if ftype == "radio_select":
+            if sel:
+                page.locator(sel).first.evaluate("el => el.click()")
+                page.wait_for_timeout(200)
+            continue
+
         if not sel:
             continue
         loc = page.locator(sel).first
