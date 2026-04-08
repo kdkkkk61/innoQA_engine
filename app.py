@@ -58,16 +58,21 @@ _proc: subprocess.Popen | None = None
 
 # ── 시나리오 사전 정의 ──────────────────────────────────────────────
 
+# CLAUDE.md 시나리오 번호 표준: 1~5 고정 (없는 항목은 ⏭ skip 출력)
+# modal_form / list_page 모두 동일 번호 사용
 _MODAL_SCENARIOS = [
-    {"num": 1, "label": "시나리오 1: 구조 확인  (초기값 + 필수입력 검증)", "status": "pending"},
-    {"num": 2, "label": "시나리오 2: 동작 검증  (UI 인터랙션 + 중복 처리)", "status": "pending"},
-    {"num": 3, "label": "시나리오 3: 수정 시나리오  (저장값 로드 + 재확인)", "status": "pending"},
-    {"num": 4, "label": "시나리오 4: 케이스 검증  (Case A 전체 ON / Case B 전체 OFF)", "status": "pending"},
+    {"num": 1, "label": "시나리오 1: UI 구조  (탭 · 테이블 · 검색)", "status": "pending"},
+    {"num": 2, "label": "시나리오 2: 입력 구조  (모달 필드 · 초기값 · 필수입력)", "status": "pending"},
+    {"num": 3, "label": "시나리오 3: 동작 검증  (CRUD · 오버플로 · 중복 처리)", "status": "pending"},
+    {"num": 4, "label": "시나리오 4: 수정 시나리오  (저장값 로드 · 재확인)", "status": "pending"},
+    {"num": 5, "label": "시나리오 5: 케이스 검증  (제품 설정 ON/OFF 프로파일)", "status": "pending"},
 ]
 _LIST_SCENARIOS = [
-    {"num": 1, "label": "시나리오 1: UI 구조  (탭 · 버튼 · 테이블)", "status": "pending"},
-    {"num": 2, "label": "시나리오 2: 입력 동작  (모달 필드 · 필수입력 검증)", "status": "pending"},
-    {"num": 3, "label": "시나리오 3: CRUD  (추가 · 수정 · 검색 · 삭제)", "status": "pending"},
+    {"num": 1, "label": "시나리오 1: UI 구조  (탭 · 테이블 · 검색)", "status": "pending"},
+    {"num": 2, "label": "시나리오 2: 입력 구조  (모달 필드 · 필수입력 검증)", "status": "pending"},
+    {"num": 3, "label": "시나리오 3: 동작 검증  (CRUD · 추가 · 수정 · 삭제)", "status": "pending"},
+    {"num": 4, "label": "시나리오 4: 수정 시나리오  — CRUD 내 통합", "status": "pending"},
+    {"num": 5, "label": "시나리오 5: 케이스 검증  — 해당 없음 (list_page)", "status": "pending"},
 ]
 
 
@@ -215,7 +220,10 @@ def start():
 
     def _run():
         import re as _re
-        _SC_RE = _re.compile(r'시나리오\s+(\d+)\s*[:\uff1a]\s*(.+)')
+        # 시나리오 N: ... 헤더 감지 (일반 실행)
+        _SC_RE   = _re.compile(r'시나리오\s+(\d+)\s*[:\uff1a]\s*(.+)')
+        # ⏭ 시나리오 N: ... — 해당 없음 (skip 출력)
+        _SKIP_RE = _re.compile(r'[⏭]\s*시나리오\s+(\d+)')
 
         global _proc
         try:
@@ -258,24 +266,36 @@ def start():
 
                 # 시나리오 헤더 감지
                 if current_page:
-                    m = _SC_RE.search(line)
-                    if m:
-                        sc_num   = int(m.group(1))
-                        sc_label = m.group(2).strip().strip("─═ \t")
-                        sc_list  = _state["scenario_status"][current_page]
-                        for sc in sc_list:
-                            if sc["status"] == "running":
-                                sc["status"] = "done"
+                    sc_list = _state["scenario_status"][current_page]
+
+                    # ⏭ skip 감지 — 해당 시나리오를 stopped로 표시
+                    ms = _SKIP_RE.search(line)
+                    if ms:
+                        sc_num = int(ms.group(1))
                         existing = next((s for s in sc_list if s["num"] == sc_num), None)
-                        if existing:
-                            existing["status"] = "running"
-                        else:
-                            sc_list.append({
-                                "num":    sc_num,
-                                "label":  f"시나리오 {sc_num}: {sc_label}",
-                                "status": "running",
-                            })
-                        log.info(f"  [{current_page}] 시나리오 {sc_num} 시작: {sc_label}")
+                        if existing and existing["status"] == "pending":
+                            existing["status"] = "stopped"
+                        log.info(f"  [{current_page}] 시나리오 {sc_num} 스킵")
+
+                    # 일반 시나리오 헤더 감지 (⏭가 없는 줄만)
+                    elif "⏭" not in line:
+                        m = _SC_RE.search(line)
+                        if m:
+                            sc_num   = int(m.group(1))
+                            sc_label = m.group(2).strip().strip("─═ \t")
+                            for sc in sc_list:
+                                if sc["status"] == "running":
+                                    sc["status"] = "done"
+                            existing = next((s for s in sc_list if s["num"] == sc_num), None)
+                            if existing:
+                                existing["status"] = "running"
+                            else:
+                                sc_list.append({
+                                    "num":    sc_num,
+                                    "label":  f"시나리오 {sc_num}: {sc_label}",
+                                    "status": "running",
+                                })
+                            log.info(f"  [{current_page}] 시나리오 {sc_num} 시작: {sc_label}")
 
                 # pytest 결과 줄 감지
                 # pytest -v -s 출력 형식:
@@ -568,6 +588,59 @@ def finalize():
         )
     if patched == original:
         patched = original.replace("</body>", new_section + "\n</body>")
+
+    # ── 수동 이슈 → 요약 카드 패치 ───────────────────────────────────
+    # data-page-id 카드를 찾아서 fail/bug/total 카운트에 수동 항목 합산
+    manual_by_page: dict[str, dict] = {}
+    page_label_rev = {v: k for k, v in {
+        "ransom_detect_policy": "탐지정책",
+        "rdp_policy":           "RDP 정책",
+        "common_process":       "공통 프로세스",
+    }.items()}
+    for it in items:
+        if not it.get("manual"):
+            continue
+        pg_label = it.get("page", "")
+        pid = page_label_rev.get(pg_label, pg_label)
+        st  = it.get("status", "fail")
+        if pid not in manual_by_page:
+            manual_by_page[pid] = {"fail": 0, "bug": 0}
+        if st == "fail":
+            manual_by_page[pid]["fail"] += 1
+        elif st == "bug":
+            manual_by_page[pid]["bug"] += 1
+
+    if manual_by_page:
+        import re as _re2
+        def _patch_card(m):
+            pid_match = _re2.search(r'data-page-id="([^"]+)"', m.group(0))
+            if not pid_match:
+                return m.group(0)
+            pid = pid_match.group(1)
+            mc  = manual_by_page.get(pid)
+            if not mc:
+                return m.group(0)
+            card = m.group(0)
+            # auto 카운트 추출
+            auto_fail = int((_re2.search(r'data-auto-fail="(\d+)"', card) or type('', (), {'group': lambda *_: '0'})()).group(1))
+            auto_bug  = int((_re2.search(r'data-auto-bug="(\d+)"',  card) or type('', (), {'group': lambda *_: '0'})()).group(1))
+            auto_tot  = int((_re2.search(r'data-auto-total="(\d+)"', card) or type('', (), {'group': lambda *_: '0'})()).group(1))
+            new_fail  = auto_fail + mc["fail"]
+            new_bug   = auto_bug  + mc["bug"]
+            m_cnt     = mc["fail"] + mc["bug"]
+            # fail 카운트 업데이트
+            card = _re2.sub(r'(<span class="cnt fail"[^>]*>)❌ \d+', f'\\g<1>❌ {new_fail}', card)
+            card = _re2.sub(r'(<span class="cnt bug"[^>]*>)⚠️ \d+',  f'\\g<1>⚠️ {new_bug}',  card)
+            card = _re2.sub(r'자동 \d+건 검증', f'자동 {auto_tot}건 + 수동 {m_cnt}건', card)
+            # has-fail 클래스 업데이트
+            if new_fail > 0 and 'has-fail' not in card:
+                card = card.replace('has-bug', 'has-fail').replace('all-pass', 'has-fail')
+                card = card.replace('🟡 버그 추적 중', '🔴 결함 있음').replace('🟢 정상', '🔴 결함 있음')
+            return card
+        patched = _re2.sub(
+            r'<div class="summary-card[^"]*"[^>]*data-page-id="[^"]*".*?</div>',
+            _patch_card, patched, flags=_re2.DOTALL,
+        )
 
     Path(html_path).write_text(patched, encoding="utf-8")
     log.info(f"확정 완료 → {html_path}")

@@ -317,10 +317,12 @@ toggle_checkboxes:
 # Chrome MCP 실증 (2026-04-07): 500자 태그 추가 → 등록 즉시 "서버에서 오류가 발생 하였습니다."
 # ──────────────────────────────────────────────────────────────────────────────
 overflow_tests:
-  confirm_modal: "div#__globalMessageModal.in"
-  confirm_btn:   "div#__globalMessageModal button:has-text('확인')"
-  cancel_btn:    "div#addItemModal button.btn-default"   # 닫기 버튼
-  register_btn:  "button[add-btn]"
+  confirm_modal:      "div#__globalMessageModal.in"
+  confirm_btn:        "div#__globalMessageModal button:has-text('확인')"
+  cancel_btn:         "div#addItemModal button.btn-default"   # ADD 모달 닫기 버튼
+  register_btn:       "button[add-btn]"
+  edit_register_btn:  "button[modify-btn]"                    # EDIT 모달 저장 버튼
+  edit_cancel_btn:    "button[data-dismiss='modal']"          # EDIT 모달 닫기 버튼
 
   cases:
     # ── 보호할 확장자 ──────────────────────────────────────────────
@@ -335,52 +337,41 @@ overflow_tests:
       order: 500
 
     # ── 파일경로 예외처리 ──────────────────────────────────────────
-    # 예외처리 토글(isExceptDetect) ON 상태 필요
-    # fill_required에서 toggle_on 타입으로 활성화 후 태그 추가
+    # 추가 모달에서 예외처리 탭 접근 불가 (제품 정책: "정책 정보를 먼저 등록")
+    # → p2 수정 모달에서 실행 (modal: "edit")
+    # toggle_on: 예외처리 리스트 토글(isExceptDetect) 활성화 필요
     - label:           "파일경로 예외처리 오버플로"
+      modal:           "edit"    # ADD 모달 접근 불가 → open_edit_modal_fn 사용
       overflow_length: 500
       tag_input:
         input:     "input#exceptFilePath"
         add_btn:   "button#addExceptFilePath"
         container: "ul#exceptFilePathList"
       fill_required:
-        - { selector: "input#rcDetectPolicyName", value: "[AUTO]_overflow" }
-        - { type: "tag_add",
-            tag_input_sel: "input#protectExtension",
-            tag_btn_sel:   "button#extensionAttachBtn",
-            tag_value:     "txt" }
         - { type: "toggle_on", selector: "input#isExceptDetect" }
       order: 510
 
     # ── 프로세스경로 예외처리 ──────────────────────────────────────
     - label:           "프로세스경로 예외처리 오버플로"
+      modal:           "edit"
       overflow_length: 500
       tag_input:
         input:     "input#exceptProcessPath"
         add_btn:   "button#addExceptProcessPath"
         container: "ul#exceptProcessPathList"
       fill_required:
-        - { selector: "input#rcDetectPolicyName", value: "[AUTO]_overflow" }
-        - { type: "tag_add",
-            tag_input_sel: "input#protectExtension",
-            tag_btn_sel:   "button#extensionAttachBtn",
-            tag_value:     "txt" }
         - { type: "toggle_on", selector: "input#isExceptDetect" }
       order: 520
 
     # ── 전자서명 예외처리 ──────────────────────────────────────────
     - label:           "전자서명 예외처리 오버플로"
+      modal:           "edit"
       overflow_length: 500
       tag_input:
         input:     "input#exceptDigitalSign"
         add_btn:   "button#addExceptDigitalSign"
         container: "ul#exceptDigitalSignList"
       fill_required:
-        - { selector: "input#rcDetectPolicyName", value: "[AUTO]_overflow" }
-        - { type: "tag_add",
-            tag_input_sel: "input#protectExtension",
-            tag_btn_sel:   "button#extensionAttachBtn",
-            tag_value:     "txt" }
         - { type: "toggle_on", selector: "input#isExceptDetect" }
       order: 530
 

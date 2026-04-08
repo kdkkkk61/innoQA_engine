@@ -501,32 +501,29 @@
     return html;
   }
 
+  // CLAUDE.md 시나리오 번호 표준 (1~5 고정)
+  const SCENARIO_LABELS = {
+    1: '시나리오 1: UI 구조',
+    2: '시나리오 2: 입력 구조',
+    3: '시나리오 3: 동작 검증',
+    4: '시나리오 4: 수정 시나리오',
+    5: '시나리오 5: 케이스 검증',
+  };
+
   function groupByScenario(results, isList) {
-    const sorted = [...results].sort((a, b) =>
-      isList
-        ? (a.order || 9999) - (b.order || 9999)
-        : (a.phase - b.phase) || ((a.order || 9999) - (b.order || 9999))
-    );
-    const modalLabels = {
-      1: '시나리오 1: 구조 확인  (초기값 + 필수입력 검증)',
-      2: '시나리오 2: 동작 검증  (UI 인터랙션 + 중복 처리)',
-      3: '시나리오 3: 수정 시나리오  (저장값 로드 + 재확인)',
-      4: '시나리오 4: 케이스 검증  (Case A 전체 ON / Case B 전체 OFF)',
-    };
-    const listThresh = [
-      [0,   '시나리오 1: UI 구조  (탭 · 버튼 · 테이블)'],
-      [45,  '시나리오 2: 입력 동작  (모달 필드 · 필수입력 검증)'],
-      [100, '시나리오 3: CRUD  (추가 · 수정 · 검색 · 삭제)'],
-    ];
+    // 정렬: (scenario, order) — scenario 번호 안에서 UI 위→아래 순서
+    const sorted = [...results].sort((a, b) => {
+      const sa = a.scenario || a.phase || 0;
+      const sb = b.scenario || b.phase || 0;
+      return sa !== sb ? sa - sb : (a.order || 9999) - (b.order || 9999);
+    });
+
     const map = new Map();
     for (const r of sorted) {
-      let label;
-      if (isList) {
-        const thr = [...listThresh].reverse().find(([t]) => (r.order || 9999) >= t);
-        label = thr ? thr[1] : listThresh[0][1];
-      } else {
-        label = modalLabels[r.phase] || `시나리오 ${r.phase}`;
-      }
+      // ① extra.scenario 우선 (qa_runner/_tag_scenario 부여)
+      // ② 폴백: phase 번호
+      const num   = r.scenario || r.phase || 0;
+      const label = SCENARIO_LABELS[num] || `시나리오 ${num}`;
       if (!map.has(label)) map.set(label, []);
       map.get(label).push(r);
     }

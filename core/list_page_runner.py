@@ -37,19 +37,32 @@ class ListPageRunner:
 
     # ── 공개 API ──────────────────────────────────────────────────
 
+    def _tag_scenario(self, scenario: int, from_idx: int) -> None:
+        """from_idx 이후 추가된 결과에 extra['scenario'] = N 태깅.
+        HTML 리포트에서 시나리오별 그룹핑의 기준이 된다.
+        """
+        for r in self.report.results[from_idx:]:
+            r.extra["scenario"] = scenario
+
     def run(self) -> PageScanReport:
         # 시나리오 헤더를 스캔 시작 시점에 출력 → app.py가 실시간으로 감지
-        # CLAUDE.md 시나리오 번호 표준 준수: 1~6 고정, 없는 항목은 ⏭ 출력
+        # CLAUDE.md 시나리오 번호 표준 준수: 1~5 고정, 없는 항목은 ⏭ 출력
         print(f"\n  시나리오 1: UI 구조  (탭 · 테이블 · 검색)", flush=True)
+        c0 = len(self.report.results)
         scan_list_ui(self.page, self.hints, self.report)  # 탭/검색/테이블 공통 스캔
         self._scan_buttons()    # 버튼 존재 (시나리오 1 보조 — 동작은 시나리오 3에서)
+        self._tag_scenario(1, c0)
 
         print(f"\n  시나리오 2: 입력 구조  (모달 필드 · 필수입력 검증)", flush=True)
+        c1 = len(self.report.results)
         self._scan_modal()      # 모달 필드 + 필수 입력 검증
+        self._tag_scenario(2, c1)
 
         print(f"\n  시나리오 3: 동작 검증  (CRUD · 추가 · 수정 · 검색 · 삭제)", flush=True)
+        c2 = len(self.report.results)
         self._scan_crud()       # 추가 → 수정(값 검증) → 검색(항목 존재 상태) → 삭제
         self._scan_search()     # URL 파라미터 구조 확인 (항목 없어도 가능)
+        self._tag_scenario(3, c2)
 
         print(f"\n  ⏭ 시나리오 4: 수정 시나리오 — CRUD 내 수정 검증으로 통합", flush=True)
         print(f"\n  ⏭ 시나리오 5: 케이스 검증 — 해당 없음 (list_page)", flush=True)

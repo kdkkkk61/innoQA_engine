@@ -295,12 +295,18 @@ def _append_list_check(
     phase: int,
     order: int,
 ) -> None:
-    """저장/닫기 후 해당 이름이 목록에 나타나는지 확인하고 결과를 report에 추가."""
+    """저장/닫기 후 해당 이름이 목록에 나타나는지 확인하고 결과를 report에 추가.
+
+    모달 닫힘 직후 AngularJS 목록 갱신 타이밍 문제 방지:
+    navigate_to()로 페이지를 명시적으로 새로고침 후 조회한다.
+    """
     get_names = getattr(page_obj, "get_policy_names", None) or \
                 getattr(page_obj, "get_item_names",   None)
     if get_names is None:
         return
     try:
+        # 목록 갱신 대기 — navigate_to()로 페이지 재진입 후 조회
+        page_obj.navigate_to()
         names = get_names()
         if name in names:
             report.results.append(ScanResult(
@@ -365,6 +371,16 @@ def run_list_page_scan(
     return report
 
 
+def _tag_scenario(report: PageScanReport | None, scenario: int) -> None:
+    """report의 모든 결과에 extra['scenario'] = N 을 태깅.
+    HTML 리포트에서 시나리오별 그룹핑의 기준이 된다.
+    """
+    if report is None:
+        return
+    for r in report.results:
+        r.extra["scenario"] = scenario
+
+
 def run_3phase_scan(
     playwright_page,
     settings: dict,
@@ -409,6 +425,7 @@ def run_3phase_scan(
             report1 = PageScanReport(page_id=page_id)
             page_obj.navigate_to()
             scan_list_ui(playwright_page, _hints, report1)
+            _tag_scenario(report1, 1)
             print_phase_report(report1, 1)
         except Exception as e:
             print(f"  💥 [{page_id}] 시나리오 1 실행 중 예외: {e}")
@@ -431,6 +448,7 @@ def run_3phase_scan(
         modal_close_fn=close_phase1,
     )
     _append_list_check(report2, page_obj, p1_name, phase=2, order=9990)
+    _tag_scenario(report2, 2)
     print_phase_report(report2, 2)
 
     # ─────────────────────────────────────────────────────────────
@@ -472,10 +490,15 @@ def run_3phase_scan(
             scan_overflow_tests(
                 playwright_page, _hints, report3,
                 open_modal_fn=page_obj.open_add_modal,
+                open_edit_modal_fn=(
+                    (lambda: page_obj.open_modify_modal(p2_name))
+                    if p2_saved else None
+                ),
             )
         except Exception as e:
             print(f"  💥 [{page_id}] 시나리오 3 오버플로 실행 중 예외: {e}")
 
+    _tag_scenario(report3, 3)
     print_phase_report(report3, 3)
 
     # ─────────────────────────────────────────────────────────────
@@ -494,6 +517,7 @@ def run_3phase_scan(
                 context_extra={"verify_values": page_obj.get_verify_values(p2_name)},
             )
             _append_list_check(report4, page_obj, p2_name, phase=4, order=9990)
+            _tag_scenario(report4, 4)
             print_phase_report(report4, 4)
         except Exception as e:
             print(f"  💥 [{page_id}] 시나리오 4 실행 중 예외: {e}")
@@ -514,6 +538,7 @@ def run_3phase_scan(
     try:
         report5 = run_phase3_cases(playwright_page, settings, page_id, page_obj)
         if report5:
+            _tag_scenario(report5, 5)
             print_phase_report(report5, 5)
         else:
             print(f"\n  ⏭ 시나리오 5: 케이스 검증 — 해당 없음 (test_profiles/{page_id}.yaml 없음)")

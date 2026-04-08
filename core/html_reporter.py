@@ -20,11 +20,20 @@ _PAGE_LABELS: dict[str, str] = {
     "common_process":       "공통 프로세스",
 }
 
-# ── 시나리오 경계 (list_page 기준) ─────────────────────────────────
+# ── 시나리오 번호 → 표시 라벨 (extra["scenario"] 태깅 기준) ────────
+_SCENARIO_LABELS: dict[int, str] = {
+    1: "시나리오 1: UI 구조",
+    2: "시나리오 2: 입력 구조",
+    3: "시나리오 3: 동작 검증",
+    4: "시나리오 4: 수정 시나리오",
+    5: "시나리오 5: 케이스 검증",
+}
+
+# ── list_page order 임계값 (extra["scenario"] 없을 때 폴백용) ────────
 _LIST_SCENARIO_THRESHOLDS = [
     (0,   "시나리오 1: UI 구조"),
-    (45,  "시나리오 2: 입력 동작"),
-    (100, "시나리오 3: CRUD"),
+    (45,  "시나리오 2: 입력 구조"),
+    (100, "시나리오 3: 동작 검증"),
 ]
 
 # list_page 전용 패턴 — 이 중 하나라도 있으면 list_page 모드로 판단
@@ -90,18 +99,20 @@ def _expected_vs_actual(r: ScanResult) -> tuple[str, str]:
 # ── 시나리오 레이블 결정 ───────────────────────────────────────────
 
 def _scenario_label(r: ScanResult, is_list_page: bool) -> str:
+    # ① extra["scenario"] 명시 태깅 우선 — qa_runner / list_page_runner가 부여
+    scenario_num = (r.extra or {}).get("scenario")
+    if scenario_num is not None:
+        return _SCENARIO_LABELS.get(scenario_num, f"시나리오 {scenario_num}")
+
+    # ② 폴백: order 임계값 (구버전 호환 / 태깅 없는 결과)
     if is_list_page:
         order = r.order or 9999
         idx = sum(1 for t, _ in _LIST_SCENARIO_THRESHOLDS if order >= t) - 1
         idx = max(0, min(idx, len(_LIST_SCENARIO_THRESHOLDS) - 1))
         return _LIST_SCENARIO_THRESHOLDS[idx][1]
-    phase_map = {
-        1: "시나리오 1: 구조 확인",
-        2: "시나리오 2: 동작 검증",
-        3: "시나리오 3: 수정 시나리오",
-        4: "시나리오 4: 케이스 검증",
-    }
-    return phase_map.get(r.phase, f"시나리오 {r.phase}")
+
+    # ③ 폴백: phase 번호 (modal_form 구버전)
+    return _SCENARIO_LABELS.get(r.phase, f"시나리오 {r.phase}")
 
 
 # ── HTML 조각 생성 ─────────────────────────────────────────────────
@@ -112,29 +123,34 @@ def _render_summary_card(page_id: str, report: PageScanReport) -> str:
     k, e   = len(report.known_bugs), len(report.errors)
     total  = p + f + k + e
     status = "🔴 결함 있음" if (f + e) > 0 else ("🟡 버그 추적 중" if k > 0 else "🟢 정상")
+    # data-page-id: finalize 후 JS가 수동 이슈 카운트를 업데이트할 때 사용
     return f"""
-    <div class="summary-card {'has-fail' if f+e > 0 else ('has-bug' if k > 0 else 'all-pass')}">
+    <div class="summary-card {'has-fail' if f+e > 0 else ('has-bug' if k > 0 else 'all-pass')}"
+         data-page-id="{html.escape(page_id)}"
+         data-auto-total="{total}" data-auto-fail="{f}" data-auto-bug="{k}">
       <div class="card-title">{html.escape(label)}</div>
-      <div class="card-status">{status}</div>
+      <div class="card-status" data-status-el="1">{status}</div>
       <div class="card-counts">
         <span class="cnt pass">✅ {p}</span>
-        <span class="cnt fail">❌ {f}</span>
-        <span class="cnt bug">⚠️ {k}</span>
+        <span class="cnt fail" data-fail-cnt="1">❌ {f}</span>
+        <span class="cnt bug" data-bug-cnt="1">⚠️ {k}</span>
         <span class="cnt error">💥 {e}</span>
       </div>
-      <div class="card-total">총 {total}건 검증</div>
+      <div class="card-total" data-total-el="1">자동 {total}건 검증</div>
     </div>"""
 
 
 def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
     rows = []
     prev_scenario = None
-    # list_page: order 기준 (order가 시나리오를 인코딩)
-    # modal_form: phase → order 순 (Phase 1 전체 → Phase 2 전체 → ...)
-    if is_list_page:
-        sort_key = lambda x: (x.order or 9999, x.phase or 0)
-    else:
-        sort_key = lambda x: (x.phase or 0, x.order or 9999)
+
+    def _scenario_num(r: ScanResult) -> int:
+        """extra["scenario"] 우선, 없으면 phase, 없으면 0."""
+        return (r.extra or {}).get("scenario") or r.phase or 0
+
+    # 시나리오 번호 → UI 순서(order) 로 정렬: 같은 시나리오 안에서 화면 위→아래
+    sort_key = lambda x: (_scenario_num(x), x.order or 9999)
+
     for r in sorted(report.results, key=sort_key):
         badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
         scenario   = _scenario_label(r, is_list_page)
@@ -480,17 +496,23 @@ function switchTab(btn, key) {{
             {
                 "page_id": pid,
                 "label":   _PAGE_LABELS.get(pid, pid),
-                "is_list": any(r.pattern in _LIST_PAGE_PATTERNS for r in rep.results),
+                # is_list: 결과에 list_page 전용 패턴(list_crud, list_modify 등)이 있을 때만 True
+                # list_tab/list_search/list_table은 modal_form도 사용하므로 제외
+                "is_list": any(r.pattern in {
+                    "list_crud", "list_modify", "list_modify_save",
+                    "list_modify_verify", "list_modify_bug", "list_button",
+                } for r in rep.results),
                 "results": [
                     {
-                        "phase":        r.phase,
-                        "order":        r.order or 9999,
-                        "pattern":      r.pattern,
-                        "label":        r.label,
-                        "status":       r.status,
-                        "detail":       r.detail,
-                        "screenshot":   (r.extra or {}).get("screenshot"),
-                        "scenario_tag": (r.extra or {}).get("scenario_tag"),
+                        "phase":    r.phase,
+                        "order":    r.order or 9999,
+                        "pattern":  r.pattern,
+                        "label":    r.label,
+                        "status":   r.status,
+                        "detail":   r.detail,
+                        "screenshot":  (r.extra or {}).get("screenshot"),
+                        "scenario":    (r.extra or {}).get("scenario"),      # 새 태깅 필드
+                        "scenario_tag": (r.extra or {}).get("scenario_tag"), # 구버전 호환
                     }
                     for r in rep.results
                 ],
