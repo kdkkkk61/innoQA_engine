@@ -222,7 +222,8 @@
 
   /* ── 브라우저 URL 바 ── */
   .url-bar-wrap {
-    margin: 10px 0 0;
+    width: 350px;
+    margin: 0 auto 12px;
   }
   .url-bar {
     display: flex;
@@ -316,6 +317,21 @@
 {% endblock %}
 
 {% block body %}
+
+<!-- 브라우저 URL 바 — 모든 UI 요소 최상단 -->
+<div class="url-bar-wrap">
+  <div class="url-bar">
+    <i class="fas fa-globe url-icon"></i>
+    <input type="text" id="targetUrl"
+           placeholder="http://innotium.iptime.org:14180/"
+           value="{{ current_url }}" maxlength="300"
+           autocomplete="off" spellcheck="false"
+           oninput="updateBtn()"
+           onkeydown="if(event.key==='Enter') document.getElementById('testId').focus()">
+    <i class="fas fa-times url-clear" onclick="clearUrl()" title="지우기"></i>
+  </div>
+</div>
+
 <div class="loginWrapper">
 
   <!-- 파란 헤더 -->
@@ -323,20 +339,6 @@
     <img src="/static/images/login_logo.png" alt="Inno Smart Platform">
     <span><i class="fa fa-caret-down"></i></span>
   </h1>
-
-  <!-- 브라우저 URL 바 -->
-  <div class="url-bar-wrap">
-    <div class="url-bar">
-      <i class="fas fa-globe url-icon"></i>
-      <input type="text" id="targetUrl"
-             placeholder="http://innotium.iptime.org:14180/"
-             value="{{ current_url }}" maxlength="300"
-             autocomplete="off" spellcheck="false"
-             oninput="updateBtn()"
-             onkeydown="if(event.key==='Enter') document.getElementById('testId').focus()">
-      <i class="fas fa-times url-clear" onclick="clearUrl()" title="지우기"></i>
-    </div>
-  </div>
 
   <!-- 흰 카드 -->
   <div class="loginPage">
