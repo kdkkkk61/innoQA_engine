@@ -64,8 +64,7 @@ class CommonProcessPage(BasePage):
         # CommonProcess 페이지가 아니면 항상 main.html 재로드
         # (메뉴 아코디언이 이미 열린 상태가 아닐 때 JS 클릭이 동작하지 않는 문제 방지)
         if "CommonProcess" not in self.page.url or "pageSize=100" not in self.page.url:
-            host = self.base_url.split("/#!/")[0].rstrip("/")
-            self.page.goto(f"{host}/manager/main.html")
+            self.page.goto(f"{self.host_origin}/manager/main.html")
             self._dismiss_stale_confirm_modal()
 
         try:

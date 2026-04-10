@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from urllib.parse import urlparse
 from playwright.sync_api import Page
 
 
@@ -8,6 +9,17 @@ class BasePage:
         self.page = page
         self.base_url = settings.get("base_url", "")
         self.timeout = settings.get("browser", {}).get("timeout", 30000)
+
+    @property
+    def host_origin(self) -> str:
+        """
+        base_url에서 scheme + host + port만 추출.
+        예) "http://192.168.13.141/#!/"       → "http://192.168.13.141"
+            "http://innotium.iptime.org:14180/" → "http://innotium.iptime.org:14180"
+        split("/#!/") 하드코딩 방식 대신 urlparse로 안전하게 추출.
+        """
+        parsed = urlparse(self.base_url)
+        return f"{parsed.scheme}://{parsed.netloc}"
 
     # ------------------------------------------------------------------
     # 네비게이션

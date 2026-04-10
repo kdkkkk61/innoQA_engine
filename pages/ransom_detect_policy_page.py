@@ -112,8 +112,7 @@ class RansomDetectPolicyPage(BasePage):
         # 이미 매니저 메인 페이지에 있으면 goto 생략 (전체 재로드 시 서버 단일세션 충돌 방지)
         # logged_in_page fixture 는 manager/main.html#!/ 에서 출발하므로 goto 불필요
         if "manager/main.html" not in self.page.url:
-            host = self.base_url.split("/#!/")[0].rstrip("/")
-            self.page.goto(f"{host}/manager/main.html")
+            self.page.goto(f"{self.host_origin}/manager/main.html")
             # goto 후 세션만료 모달 재확인
             self._dismiss_stale_confirm_modal()
 

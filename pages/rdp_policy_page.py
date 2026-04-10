@@ -73,8 +73,7 @@ class RdpPolicyPage(BasePage):
             return
 
         if "manager/main.html" not in self.page.url:
-            host = self.base_url.split("/#!/")[0].rstrip("/")
-            self.page.goto(f"{host}/manager/main.html")
+            self.page.goto(f"{self.host_origin}/manager/main.html")
             self._dismiss_stale_confirm_modal()
 
         try:
