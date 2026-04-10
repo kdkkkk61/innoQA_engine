@@ -17,6 +17,8 @@
 8. [설치 후 바탕화면 바로가기 생성 실패 (0x80070005)](#8-설치-후-바탕화면-바로가기-생성-실패-0x80070005)
 9. [테스트 대상 서버 IP/URL 변경 방법](#9-테스트-대상-서버-ipurl-변경-방법)
 10. [base_url URL 형식 변경 시 navigate_to 오류](#10-base_url-url-형식-변경-시-navigate_to-오류)
+11. [VM 환경에서 앱 창이 안 뜸 (pywebview 실패)](#11-vm-환경에서-앱-창이-안-뜸-pywebview-실패)
+12. [화면 OFF(headless) 모드에서 테스트가 아무것도 안 됨 — CREATE_NO_WINDOW 문제](#12-화면-offheadless-모드에서-테스트가-아무것도-안-됨--create_no_window-문제)
 
 ---
 
@@ -347,6 +349,58 @@ except Exception:
 
 ---
 
+## 12. 화면 OFF(headless) 모드에서 테스트가 아무것도 안 됨 — CREATE_NO_WINDOW 문제
+
+### 증상
+- 화면 ON 모드(headed)에서는 테스트가 정상 실행됨
+- 화면 OFF 모드(headless)로 전환하면 pytest가 시작되자마자 아무 로그도 없이 테스트가 한 건도 실행되지 않음
+- 실시간 로그 패널에 출력이 전혀 없거나 즉시 종료됨
+
+### 원인
+`app.py`에서 pytest 서브프로세스를 생성할 때 `CREATE_NO_WINDOW` 플래그를 사용한 것이 원인.
+
+- **headed 모드**: Chromium이 GUI 윈도우를 자체 생성하므로 `CREATE_NO_WINDOW` 영향 없음 → 정상 동작
+- **headless 모드**: Chromium이 GUI 없이 CDP 파이프만으로 Playwright와 통신해야 하는데,
+  `CREATE_NO_WINDOW`가 자식 프로세스의 콘솔 핸들 상속을 차단 → CDP 파이프 통신 실패 → 테스트 0건
+
+### 해결
+`CREATE_NO_WINDOW` 대신 `STARTUPINFO`의 `SW_HIDE`를 사용한다.
+
+- `SW_HIDE`: pytest 프로세스 자체의 콘솔 창만 숨김
+- `CREATE_NO_WINDOW`와 달리 하위 프로세스(Playwright / Chromium)에 핸들 상속 제약 없음
+- 검은 콘솔 창도 안 뜨고, headless Playwright도 정상 동작
+
+```python
+# 변경 전
+_proc = subprocess.Popen(
+    cmd,
+    ...
+    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+)
+
+# 변경 후
+_startupinfo = None
+if os.name == "nt":
+    _startupinfo = subprocess.STARTUPINFO()
+    _startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    _startupinfo.wShowWindow = subprocess.SW_HIDE
+
+_proc = subprocess.Popen(
+    cmd,
+    ...
+    startupinfo=_startupinfo,
+    # CREATE_NO_WINDOW 제거 — headless Playwright 자식 프로세스 통신 보장
+)
+```
+
+> `CREATE_NO_WINDOW`는 launcher.py에서 app.py를 실행할 때는 사용 불가 (동일 이유).
+> launcher.py도 `STARTUPINFO(SW_HIDE)` 방식 사용.
+
+### 적용 위치
+`app.py` → `_run()` 함수 내 `subprocess.Popen()` 호출부
+
+---
+
 ## 빠른 체크리스트 (EXE 설치 후 테스트 안 될 때)
 
 ```
@@ -355,8 +409,9 @@ except Exception:
 [ ] 3. 테스트 즉시 "ERROR: usage"? → pytest-timeout 설치 여부 확인
 [ ] 4. 진행 화면이 멈춤? → _proc.poll() 복구 로직 확인 (app.py /start)
 [ ] 5. 스크린샷 안 보임? → finalize route에서 base64 data URI 변환 확인
-[ ] 5. 서버 URL 변경? → settings.yaml base_url 또는 UI URL 바 입력
-[ ] 6. 설치 바로가기 실패? → qatool_setup.iss에서 {userdesktop} 사용 여부 확인
+[ ] 6. 서버 URL 변경? → settings.yaml base_url 또는 UI URL 바 입력
+[ ] 7. 설치 바로가기 실패? → qatool_setup.iss에서 {userdesktop} 사용 여부 확인
+[ ] 8. 화면 OFF만 테스트 안 됨? → app.py Popen에 CREATE_NO_WINDOW 없는지 확인 (SW_HIDE 방식 사용)
 ```
 
 ---

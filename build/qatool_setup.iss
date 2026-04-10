@@ -62,7 +62,7 @@ Name: "{app}\logs"
 [Icons]
 Name: "{group}\QA Tool";         Filename: "{app}\qatool.exe"
 Name: "{group}\Uninstall QATool"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\QA Tool"; Filename: "{app}\qatool.exe"; Tasks: desktopicon
+Name: "{userdesktop}\QA Tool"; Filename: "{app}\qatool.exe"; Tasks: desktopicon
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\browsers"
