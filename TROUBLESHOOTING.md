@@ -27,19 +27,36 @@
 Assertion failed: new_time >= loop->time,
 file src\win\core.c, line 327
 ```
-Playwright가 Chromium을 띄우자마자 즉시 크래시. Windows 11 26100 이상에서 재현.
+Playwright가 Chromium을 띄우자마자 즉시 크래시. Windows 11 26100 이상 / VM 환경에서 재현.
 
 ### 원인
-Windows 11 고해상도 타이머와 Chromium 내부 libuv의 시간 단조 증가 가정 충돌.
+Windows 11 고해상도 타이머와 Playwright 내부 libuv의 시간 단조 증가 가정 충돌.
+VM 환경에서는 타이머 동기화 문제로 더 자주 발생.
 
-### 해결
-`app.py` — pytest 서브프로세스 실행 env에 추가:
+### 해결 (2중 적용)
+
+**1) `app.py` — pytest 서브프로세스 env에 추가:**
 ```python
 env["UV_USE_IO_RINGS"] = "0"
 ```
 
+**2) `conftest.py` — Chromium 실행 args 추가 (VM 환경 필수):**
+```python
+_chromium_args = [
+    "--no-sandbox",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+    "--disable-software-rasterizer",
+]
+br = playwright_instance.chromium.launch(headless=headless, slow_mo=slow_mo, args=_chromium_args)
+```
+
+> `UV_USE_IO_RINGS=0` 만으로 해결되지 않으면 Chromium args 방식이 유효.
+> 일반 PC 환경에서도 이 플래그는 기능에 영향 없음.
+
 ### 적용 위치
-`app.py` → `/start` route → `env = ...` 블록 (line ~314)
+- `app.py` → `/start` route → `env = ...` 블록
+- `conftest.py` → `browser` fixture → `chromium.launch()` 호출부
 
 ---
 
@@ -293,13 +310,51 @@ self.page.goto(f"{self.host_origin}/manager/main.html")
 
 ---
 
+## 11. VM 환경에서 앱 창이 안 뜸 (pywebview 실패)
+
+### 증상
+EXE 실행 후 아무 창도 표시되지 않음. 앱이 실행은 됐는지조차 알 수 없음.
+
+### 원인
+pywebview가 Edge WebView2 + GPU 가속을 필요로 하는데, VM 환경에서 GPU 드라이버가
+제한되어 창을 렌더링하지 못하거나 초기화 실패.
+
+### 확인 방법
+설치 경로 `logs\app_날짜시간.log` 파일 열기. 아래 내용이 있으면 Flask는 정상:
+```
+Running on http://127.0.0.1:5321
+```
+
+### 즉시 해결 (앱이 실행 중인 경우)
+VM 안 브라우저에서 직접 접속:
+```
+http://127.0.0.1:5321
+```
+
+### 근본 해결
+`app.py` — pywebview 실패 시 자동으로 기본 브라우저 fallback:
+```python
+try:
+    import webview
+    webview.create_window(...)
+    webview.start()
+except Exception:
+    webbrowser.open("http://127.0.0.1:5321")
+    # 메인 스레드 유지
+    while True: time.sleep(1)
+```
+다음 빌드부터 VM에서도 자동으로 브라우저가 열림.
+
+---
+
 ## 빠른 체크리스트 (EXE 설치 후 테스트 안 될 때)
 
 ```
-[ ] 1. Chromium 크래시? → UV_USE_IO_RINGS=0 env 확인 (app.py)
-[ ] 2. 테스트 즉시 "ERROR: usage"? → pytest-timeout 설치 여부 확인
-[ ] 3. 진행 화면이 멈춤? → _proc.poll() 복구 로직 확인 (app.py /start)
-[ ] 4. 스크린샷 안 보임? → finalize route에서 base64 data URI 변환 확인
+[ ] 1. 창이 안 뜸? → logs\ 폴더 확인, 브라우저로 http://127.0.0.1:5321 접속
+[ ] 2. Chromium 크래시? → conftest.py browser fixture args 확인 + UV_USE_IO_RINGS=0
+[ ] 3. 테스트 즉시 "ERROR: usage"? → pytest-timeout 설치 여부 확인
+[ ] 4. 진행 화면이 멈춤? → _proc.poll() 복구 로직 확인 (app.py /start)
+[ ] 5. 스크린샷 안 보임? → finalize route에서 base64 data URI 변환 확인
 [ ] 5. 서버 URL 변경? → settings.yaml base_url 또는 UI URL 바 입력
 [ ] 6. 설치 바로가기 실패? → qatool_setup.iss에서 {userdesktop} 사용 여부 확인
 ```
