@@ -72,6 +72,9 @@ def _get_browsers_env(base: dict) -> dict:
     browsers_dir = BASE_DIR / "browsers"
     if browsers_dir.exists():
         base["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_dir)
+        log.info(f"[browsers] PLAYWRIGHT_BROWSERS_PATH = {browsers_dir}")
+    else:
+        log.info(f"[browsers] browsers/ 폴더 없음 — 시스템 기본 Chromium 사용 ({browsers_dir})")
     return base
 
 # ── 로그 설정 ─────────────────────────────────────────────────────────
@@ -278,11 +281,14 @@ def start():
     env["TEST_PW"] = test_pw
     env["TEST_HEADLESS"] = "1" if headless else "0"
     env = _get_browsers_env(env)   # 설치 폴더 browsers\ 있으면 PLAYWRIGHT_BROWSERS_PATH 설정
+    env["UV_USE_IO_RINGS"] = "0"   # libuv Windows 타이머 역방향 assertion 방지 (Chromium 크래시 방지)
 
     cmd = [
         _get_python(), "-u", "-m", "pytest",
         str(BASE_DIR / "tests" / "test_scan_pages.py"),   # 절대 경로 — cwd 의존 제거
-        "-v", "-s", "-k", k_filter,
+        "-v", "-s",
+        "--timeout=180",    # 테스트 1개당 최대 3분 — Chromium hang 시 강제 종료
+        "-k", k_filter,
     ]
     env["PYTHONUNBUFFERED"] = "1"
 
@@ -308,6 +314,7 @@ def start():
                 env=env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,   # 콘솔 없는 환경에서 stdin block 방지
                 text=True,
                 encoding="utf-8",
                 errors="replace",
