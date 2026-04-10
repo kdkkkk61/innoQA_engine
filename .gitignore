@@ -10,8 +10,15 @@ reports/qa_report_*.html
 # 가상환경
 venv/
 
-# PyInstaller 빌드 산출물
-build/
+# PyInstaller 빌드 산출물 (빌드 스크립트 build/ 폴더는 추적)
+build/dist_pkg/
+build/dist_launcher/
+build/dist_final/
+build/build_pi/
+build/output/
+build/get-pip.py
+build/python-*.zip
+build/*.spec
 dist/
 *.spec.bak
 
