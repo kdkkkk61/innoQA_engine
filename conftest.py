@@ -327,7 +327,23 @@ def browser(playwright_instance, settings):
         headless = browser_cfg.get("headless", False)
     slow_mo  = browser_cfg.get("slow_mo", 0)
 
-    br = playwright_instance.chromium.launch(headless=headless, slow_mo=slow_mo)
+    # VM / GPU 없는 환경에서 Chromium libuv 타이머 assertion 방지용 플래그
+    # - --no-sandbox           : VM/컨테이너 sandbox 비활성화 (필수)
+    # - --disable-gpu          : GPU 가속 비활성화 (VM 렌더링 오류 방지)
+    # - --disable-dev-shm-usage: /dev/shm 부족 방지 (Linux VM)
+    # - --disable-software-rasterizer: SW 래스터라이저 충돌 방지
+    _chromium_args = [
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--disable-software-rasterizer",
+    ]
+
+    br = playwright_instance.chromium.launch(
+        headless=headless,
+        slow_mo=slow_mo,
+        args=_chromium_args,
+    )
     yield br
     br.close()
 
