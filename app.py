@@ -222,22 +222,29 @@ def run_setup():
     page_ids = request.args.getlist("pages")
     _state["pages"] = page_ids
     product_id = _state.get("product", "")
-    # 선택된 페이지의 라벨 포함해서 전달
     all_pages  = _get_pages(product_id)
-    selected   = [p for p in all_pages if p["id"] in page_ids]
-    # 선택 안 된 페이지도 흐리게 보여주기 위해 전체 포함
     pages_info = [
         {**p, "selected": p["id"] in page_ids}
         for p in all_pages
     ]
     product_label_map = {"ransom_cruncher": "RansomCruncher"}
-    log.info(f"화면: 실행 설정 | 선택된 페이지={page_ids}")
+
+    # 현재 설정된 base_url 읽어서 UI에 표시 (설치 PC에서 수정 가능)
+    import yaml as _yaml
+    try:
+        _cfg = _yaml.safe_load((BASE_DIR / "config" / "settings.yaml").read_text(encoding="utf-8")) or {}
+        current_url = _cfg.get("base_url", "")
+    except Exception:
+        current_url = ""
+
+    log.info(f"화면: 실행 설정 | 선택된 페이지={page_ids} | URL={current_url}")
     return render_template(
         "run_setup.html",
         pages=page_ids,
         pages_info=pages_info,
         product_id=product_id,
         product_label=product_label_map.get(product_id, product_id),
+        current_url=current_url,
     )
 
 
@@ -249,11 +256,34 @@ def start():
     test_id   = data.get("test_id", "")
     test_pw   = data.get("test_pw", "")
     headless  = bool(data.get("headless", False))
+    target_url = data.get("target_url", "").strip()
     page_ids  = _state.get("pages", [])
+
+    # target_url이 전달된 경우 settings.yaml에 즉시 반영 (설치 PC에서 IP 변경 지원)
+    if target_url:
+        import yaml as _yaml
+        _cfg_path = BASE_DIR / "config" / "settings.yaml"
+        try:
+            _cfg = _yaml.safe_load(_cfg_path.read_text(encoding="utf-8")) or {}
+            if _cfg.get("base_url") != target_url:
+                _cfg["base_url"] = target_url
+                _cfg_path.write_text(
+                    _yaml.dump(_cfg, allow_unicode=True, default_flow_style=False),
+                    encoding="utf-8",
+                )
+                log.info(f"base_url 업데이트: {target_url}")
+        except Exception as e:
+            log.warning(f"settings.yaml 업데이트 실패: {e}")
 
     if not page_ids or not test_id or not test_pw:
         log.warning(f"시작 실패 — 필수 입력 누락 | id={test_id!r} pages={page_ids}")
         return jsonify({"ok": False, "error": "필수 입력 누락"}), 400
+
+    # 이전 프로세스가 크래시/timeout으로 죽었는데 status가 running에 고착된 경우 자동 복구
+    if _state["status"] == "running" and _proc is not None:
+        if _proc.poll() is not None:
+            log.info(f"이전 프로세스 종료 감지 (returncode={_proc.returncode}) — 상태 자동 복구")
+            _state["status"] = "done"
 
     if _state["status"] == "running":
         log.warning("시작 실패 — 이미 실행 중")

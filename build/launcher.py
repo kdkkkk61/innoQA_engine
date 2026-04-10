@@ -43,13 +43,21 @@ def main() -> None:
             f"재설치를 시도하세요."
         )
 
-    # pythonw.exe 가 있으면 콘솔 창 없이 실행 (선택)
+    # pythonw.exe 가 있으면 콘솔 창 없이 실행, 없으면 python.exe 사용
+    # (embedded Python 에는 pythonw.exe 없음 → python.exe 폴백)
     pythonw = PYTHON_EXE.parent / "pythonw.exe"
     py = pythonw if pythonw.exists() else PYTHON_EXE
+
+    # STARTUPINFO(SW_HIDE): 콘솔 창 flash 방지
+    # CREATE_NO_WINDOW 미사용 — 자식 프로세스(Playwright Chromium) 핸들 상속 보장
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = subprocess.SW_HIDE
 
     subprocess.Popen(
         [str(py), str(APP_SCRIPT)],
         cwd=str(INSTALL_DIR),
+        startupinfo=si,
     )
     # launcher 는 여기서 종료 — 실제 앱은 별도 프로세스로 계속 실행됨
 

@@ -292,6 +292,17 @@
       <fieldset>
         <legend>로그인</legend>
         <dl>
+          <!-- 대상 URL -->
+          <dt class="skip">대상 URL</dt>
+          <dd class="userId" style="margin-bottom:6px;">
+            <input type="text" id="targetUrl" placeholder="http://192.168.x.x/#!/"
+                   value="{{ current_url }}" maxlength="200"
+                   autocomplete="off"
+                   oninput="updateBtn()"
+                   style="font-size:12px; color:#555;"
+                   onkeydown="if(event.key==='Enter') document.getElementById('testId').focus()">
+          </dd>
+
           <!-- 아이디 -->
           <dt class="skip">아이디</dt>
           <dd class="userId">
@@ -353,9 +364,10 @@
   let pwVisible = false;
 
   function updateBtn() {
-    const id = document.getElementById('testId').value.trim();
-    const pw = document.getElementById('testPw').value;
-    document.getElementById('nextBtn').disabled = !(id && pw);
+    const id  = document.getElementById('testId').value.trim();
+    const pw  = document.getElementById('testPw').value;
+    const url = document.getElementById('targetUrl').value.trim();
+    document.getElementById('nextBtn').disabled = !(id && pw && url);
   }
 
   function togglePw() {
@@ -394,10 +406,11 @@
     btn.value    = '연결 중...';
 
     try {
+      const url  = document.getElementById('targetUrl').value.trim();
       const res  = await fetch('/start', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({test_id: id, test_pw: pw, headless: !_headed}),
+        body: JSON.stringify({test_id: id, test_pw: pw, headless: !_headed, target_url: url}),
       });
       const data = await res.json();
       if (data.ok) {
