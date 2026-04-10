@@ -1,4 +1,4 @@
-base_url: "http://192.168.13.141/#!/"
+base_url: "http://innotium.iptime.org:14180/"
 product_name: "RansomCruncher"
 
 browser:
