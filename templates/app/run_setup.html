@@ -220,10 +220,17 @@
     cursor: not-allowed;
   }
 
+  /* ── 전체 컬럼 묶음 (URL바 + 카드 + 목록) ── */
+  .page-col {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 350px;
+  }
+
   /* ── 브라우저 URL 바 ── */
   .url-bar-wrap {
-    width: 350px;
-    margin: 0 auto 12px;
+    margin: 0 0 10px;
   }
   .url-bar {
     display: flex;
@@ -317,22 +324,23 @@
 {% endblock %}
 
 {% block body %}
+<div class="page-col">
 
-<!-- 브라우저 URL 바 — 모든 UI 요소 최상단 -->
-<div class="url-bar-wrap">
-  <div class="url-bar">
-    <i class="fas fa-globe url-icon"></i>
-    <input type="text" id="targetUrl"
-           placeholder="http://innotium.iptime.org:14180/"
-           value="{{ current_url }}" maxlength="300"
-           autocomplete="off" spellcheck="false"
-           oninput="updateBtn()"
-           onkeydown="if(event.key==='Enter') document.getElementById('testId').focus()">
-    <i class="fas fa-times url-clear" onclick="clearUrl()" title="지우기"></i>
+  <!-- 브라우저 URL 바 — 모든 UI 요소 최상단 -->
+  <div class="url-bar-wrap">
+    <div class="url-bar">
+      <i class="fas fa-globe url-icon"></i>
+      <input type="text" id="targetUrl"
+             placeholder="http://innotium.iptime.org:14180/"
+             value="{{ current_url }}" maxlength="300"
+             autocomplete="off" spellcheck="false"
+             oninput="updateBtn()"
+             onkeydown="if(event.key==='Enter') document.getElementById('testId').focus()">
+      <i class="fas fa-times url-clear" onclick="clearUrl()" title="지우기"></i>
+    </div>
   </div>
-</div>
 
-<div class="loginWrapper">
+  <div class="loginWrapper">
 
   <!-- 파란 헤더 -->
   <h1>
@@ -407,7 +415,8 @@
     {% endfor %}
   </div>
 
-</div>
+  </div><!-- /loginWrapper -->
+</div><!-- /page-col -->
 {% endblock %}
 
 {% block footer %}
