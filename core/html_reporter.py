@@ -6,12 +6,26 @@ core/html_reporter.py — QA 보고서 HTML 자동 생성
 """
 from __future__ import annotations
 
+import base64
 import html
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from core.models import PageScanReport, ScanResult
+
+
+def _to_data_uri(path: Path) -> str | None:
+    """이미지 파일을 Base64 data URI로 변환. 파일 없으면 None 반환."""
+    try:
+        if not path.exists():
+            return None
+        data = base64.b64encode(path.read_bytes()).decode("ascii")
+        suffix = path.suffix.lower().lstrip(".")
+        mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif", "webp": "webp"}.get(suffix, "png")
+        return f"data:image/{mime};base64,{data}"
+    except Exception:
+        return None
 
 # ── 페이지 ID → 표시 이름 ──────────────────────────────────────────
 _PAGE_LABELS: dict[str, str] = {
@@ -45,11 +59,11 @@ _LIST_PAGE_PATTERNS = {
 }
 
 _STATUS_BADGE = {
-    "pass":      ('<span class="badge pass">✅ PASS</span>', "pass"),
-    "fail":      ('<span class="badge fail">❌ FAIL</span>', "fail"),
-    "known_bug": ('<span class="badge bug">⚠️ BUG</span>',  "bug"),
-    "error":     ('<span class="badge error">💥 ERROR</span>', "error"),
-    "skip":      ('<span class="badge skip">⏭ SKIP</span>',  "skip"),
+    "pass":      ('<span class="badge pass">&#x2705; PASS</span>', "pass"),
+    "fail":      ('<span class="badge fail">&#x274C; FAIL</span>', "fail"),
+    "known_bug": ('<span class="badge bug">&#x26A0;&#xFE0F; BUG</span>',  "bug"),
+    "error":     ('<span class="badge error">&#x1F534; ERROR</span>', "error"),
+    "skip":      ('<span class="badge skip">&#x23ED; SKIP</span>',  "skip"),
 }
 
 # ── 재현 단계 자동 생성 ────────────────────────────────────────────
@@ -131,10 +145,10 @@ def _render_summary_card(page_id: str, report: PageScanReport) -> str:
       <div class="card-title">{html.escape(label)}</div>
       <div class="card-status" data-status-el="1">{status}</div>
       <div class="card-counts">
-        <span class="cnt pass">✅ {p}</span>
-        <span class="cnt fail" data-fail-cnt="1">❌ {f}</span>
-        <span class="cnt bug" data-bug-cnt="1">⚠️ {k}</span>
-        <span class="cnt error">💥 {e}</span>
+        <span class="cnt pass">&#x2705; {p}</span>
+        <span class="cnt fail" data-fail-cnt="1">&#x274C; {f}</span>
+        <span class="cnt bug" data-bug-cnt="1">&#x26A0;&#xFE0F; {k}</span>
+        <span class="cnt error">&#x1F534; {e}</span>
       </div>
       <div class="card-total" data-total-el="1">자동 {total}건 검증</div>
     </div>"""
@@ -188,11 +202,13 @@ def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
 def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str:
     """전체 페이지에서 known_bug + fail 항목 모아서 결함 목록 생성."""
     defects = []
+    issue_num = 0
     for page_id, report in all_reports:
         label      = _PAGE_LABELS.get(page_id, page_id)
         is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
         bug_items  = [r for r in report.results if r.status in ("known_bug", "fail", "error")]
         for r in bug_items:
+            issue_num += 1
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
             scenario   = _scenario_label(r, is_list)
             steps      = _reproduce_steps(r)
@@ -203,8 +219,8 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             if ss_path:
                 from pathlib import Path as _Path
                 ss_abs = _Path(ss_path).resolve()
-                if ss_abs.exists():
-                    ss_uri = ss_abs.as_posix()
+                ss_uri = _to_data_uri(ss_abs)
+                if ss_uri:
                     ss_html = f"""
             <tr>
               <th>스크린샷</th>
@@ -218,6 +234,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             defects.append(f"""
         <div class="defect-card defect-{css}" data-page-key="{html.escape(label)}">
           <div class="defect-header">
+            <span class="issue-num">#{issue_num}</span>
             {badge}
             <span class="defect-page">{html.escape(label)}</span>
             <span class="defect-scenario">{html.escape(scenario)}</span>
@@ -235,7 +252,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
     if not defects:
         return '<p class="no-defect">🎉 발견된 결함 없음</p>'
     # tab-no-defect: 탭 필터로 결함 없을 때 JS가 show
-    return ''.join(defects) + '\n<p class="tab-no-defect" id="tab-no-defect">✅ 해당 페이지에 결함이 없습니다</p>'
+    return ''.join(defects) + '\n<p class="tab-no-defect" id="tab-no-defect">[OK]  해당 페이지에 결함이 없습니다</p>'
 
 
 # ── CSS ──────────────────────────────────────────────────────────
@@ -320,6 +337,10 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .defect-bug   { border-left: 4px solid #f39c12; }
 .defect-error { border-left: 4px solid #c0392b; }
 .defect-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.issue-num { display: inline-block; min-width: 32px; text-align: center;
+             font-size: 12px; font-weight: 700; color: #fff;
+             background: #4a6fa5; border-radius: 4px; padding: 2px 6px;
+             letter-spacing: 0.3px; flex-shrink: 0; }
 .defect-page     { font-weight: 600; color: #1e3a5f; }
 .defect-scenario { color: #666; font-size: 12px; }
 .defect-severity { margin-left: auto; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
@@ -390,7 +411,7 @@ def generate_html_report(
         <div class="page-result-section" data-page-key="{html.escape(label)}">
           <div class="page-label">{html.escape(label)}
             <span style="font-weight:400;font-size:13px;color:#666;margin-left:10px;">
-              ✅ {p}  ❌ {f}  ⚠️ {k}  💥 {e}
+              &#x2705; {p}  &#x274C; {f}  &#x26A0;&#xFE0F; {k}  &#x1F534; {e}
             </span>
           </div>
           {table_html}
@@ -407,8 +428,9 @@ def generate_html_report(
         if screenshots:
             items = "".join(
                 f'<div style="margin-bottom:16px;"><div style="font-size:12px;color:#666;margin-bottom:4px;">{html.escape(s.name)}</div>'
-                f'<div class="screenshot"><img src="{s.resolve().as_posix()}" alt="{html.escape(s.name)}"></div></div>'
+                f'<div class="screenshot"><img src="{_to_data_uri(s)}" alt="{html.escape(s.name)}"></div></div>'
                 for s in screenshots
+                if _to_data_uri(s)
             )
             screenshot_html = f"""
     <div class="section">
@@ -438,7 +460,7 @@ def generate_html_report(
     <h1>🔍 QA 보고서 — {html.escape(product_name)}</h1>
     <div class="meta">
       생성일시: {now.strftime('%Y년 %m월 %d일 %H:%M')} &nbsp;|&nbsp;
-      전체 결과: ✅ {total_p}  ❌ {total_f}  ⚠️ {total_k}  💥 {total_e} &nbsp;|&nbsp;
+      전체 결과: &#x2705; {total_p}  &#x274C; {total_f}  &#x26A0;&#xFE0F; {total_k}  &#x1F534; {total_e} &nbsp;|&nbsp;
       {overall}
     </div>
   </div>

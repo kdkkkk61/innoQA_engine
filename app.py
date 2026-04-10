@@ -21,27 +21,90 @@ from pathlib import Path
 from flask import Flask, render_template, jsonify, request, send_file
 
 # ── 경로 설정 ────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).parent
+# PyInstaller --onedir EXE 로 실행 시: sys._MEIPASS 가 존재하며
+#   sys.executable = dist/inno_test_tool/inno_test_tool.exe
+#   BASE_DIR       = dist/inno_test_tool/          (EXE 옆 폴더)
+# 일반 python app.py 실행 시: Path(__file__).parent 그대로 사용
+if getattr(sys, "frozen", False):
+    # PyInstaller 번들 실행
+    BASE_DIR = Path(sys.executable).parent
+else:
+    BASE_DIR = Path(__file__).parent
 sys.path.insert(0, str(BASE_DIR))
+
+
+def _get_python() -> str:
+    """
+    pytest 서브프로세스에 전달할 Python 인터프리터 경로를 반환한다.
+
+    우선순위:
+    1. 설치 폴더 python/python.exe  (qatool_setup.exe 로 설치한 경우)
+    2. 현재 venv Scripts/python.exe (setup.bat 으로 구성한 경우)
+    3. sys.executable 의 pythonw -> python 전환 (pythonw 는 subprocess 에 부적합)
+    4. sys.executable 그대로 (일반 개발 실행)
+    """
+    # 인스톨러 배포: EXE 옆 python\ 폴더
+    bundled = BASE_DIR / "python" / "python.exe"
+    if bundled.exists():
+        return str(bundled)
+
+    # setup.bat 배포: venv
+    venv_py = BASE_DIR / "venv" / "Scripts" / "python.exe"
+    if venv_py.exists():
+        return str(venv_py)
+
+    # 일반 실행: pythonw.exe 인 경우 python.exe 로 교체
+    exe = Path(sys.executable)
+    if exe.stem.lower() == "pythonw":
+        sibling = exe.parent / "python.exe"
+        if sibling.exists():
+            return str(sibling)
+
+    return sys.executable
+
+
+def _get_browsers_env(base: dict) -> dict:
+    """
+    PLAYWRIGHT_BROWSERS_PATH 를 설치 폴더 기준으로 설정한다.
+    인스톨러 배포 시 browsers/ 폴더를 사용하고,
+    개발 환경에서는 기존 환경변수를 그대로 유지한다.
+    """
+    browsers_dir = BASE_DIR / "browsers"
+    if browsers_dir.exists():
+        base["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_dir)
+    return base
 
 # ── 로그 설정 ─────────────────────────────────────────────────────────
 _LOG_DIR = BASE_DIR / "logs"
 _LOG_DIR.mkdir(exist_ok=True)
 _LOG_FILE = _LOG_DIR / f"app_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
+import io as _io
+_safe_stdout = _io.TextIOWrapper(
+    sys.stdout.buffer if hasattr(sys.stdout, "buffer") else open(os.devnull, "wb"),
+    encoding="utf-8", errors="replace", line_buffering=True,
+)
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
     handlers=[
         logging.FileHandler(_LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),          # CMD 창에도 동시 출력
+        logging.StreamHandler(_safe_stdout),        # UTF-8 강제 — CP949 이모지 오류 방지
     ],
 )
 log = logging.getLogger("qa_app")
 log.info(f"=== QA Tool 시작 === 로그 파일: {_LOG_FILE}")
 
-app = Flask(__name__, template_folder=str(BASE_DIR / "templates" / "app"))
+# PyInstaller --onedir: 코드/템플릿은 _MEIPASS 안에 번들되지만
+# BASE_DIR (EXE 옆) 에도 templates 폴더를 배치하는 방식으로 통일
+_TEMPLATE_DIR = BASE_DIR / "templates" / "app"
+_STATIC_DIR   = BASE_DIR / "static"
+app = Flask(
+    __name__,
+    template_folder=str(_TEMPLATE_DIR),
+    static_folder=str(_STATIC_DIR),
+)
 
 # ── 실행 상태 (세션 단위) ─────────────────────────────────────────────
 _state: dict = {
@@ -52,13 +115,15 @@ _state: dict = {
     "scenario_status": {},     # {page_id: [{"label":..., "status":"pending"|"running"|"done"}]}
     "error_log":       "",
     "report_path":     None,
+    "live_log":        [],     # 최근 pytest 출력 (최대 200줄) — progress 화면 실시간 표시용
+    "log_file":        "",     # 현재 세션 로그 파일 경로
 }
 _proc: subprocess.Popen | None = None
 
 
 # ── 시나리오 사전 정의 ──────────────────────────────────────────────
 
-# CLAUDE.md 시나리오 번호 표준: 1~5 고정 (없는 항목은 ⏭ skip 출력)
+# CLAUDE.md 시나리오 번호 표준: 1~5 고정 (없는 항목은 [SKIP] skip 출력)
 # modal_form / list_page 모두 동일 번호 사용
 _MODAL_SCENARIOS = [
     {"num": 1, "label": "시나리오 1: UI 구조  (탭 · 테이블 · 검색)", "status": "pending"},
@@ -197,6 +262,8 @@ def start():
     _state["status"]          = "running"
     _state["error_log"]       = ""
     _state["report_path"]     = None
+    _state["live_log"]        = []
+    _state["log_file"]        = str(_LOG_FILE)
     _state["page_status"]     = {
         pid: ("running" if i == 0 else "waiting")
         for i, pid in enumerate(page_ids)
@@ -210,10 +277,11 @@ def start():
     env["TEST_ID"] = test_id
     env["TEST_PW"] = test_pw
     env["TEST_HEADLESS"] = "1" if headless else "0"
+    env = _get_browsers_env(env)   # 설치 폴더 browsers\ 있으면 PLAYWRIGHT_BROWSERS_PATH 설정
 
     cmd = [
-        sys.executable, "-u", "-m", "pytest",
-        "tests/test_scan_pages.py",
+        _get_python(), "-u", "-m", "pytest",
+        str(BASE_DIR / "tests" / "test_scan_pages.py"),   # 절대 경로 — cwd 의존 제거
         "-v", "-s", "-k", k_filter,
     ]
     env["PYTHONUNBUFFERED"] = "1"
@@ -222,12 +290,18 @@ def start():
         import re as _re
         # 시나리오 N: ... 헤더 감지 (일반 실행)
         _SC_RE   = _re.compile(r'시나리오\s+(\d+)\s*[:\uff1a]\s*(.+)')
-        # ⏭ 시나리오 N: ... — 해당 없음 (skip 출력)
-        _SKIP_RE = _re.compile(r'[⏭]\s*시나리오\s+(\d+)')
+        # [SKIP] 시나리오 N: ... — 해당 없음 (skip 출력)
+        _SKIP_RE = _re.compile(r'[[SKIP]]\s*시나리오\s+(\d+)')
 
         global _proc
         try:
             log.info(f"pytest 실행: {' '.join(cmd)}")
+            _startupinfo = None
+            if os.name == "nt":
+                _startupinfo = subprocess.STARTUPINFO()
+                _startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                _startupinfo.wShowWindow = subprocess.SW_HIDE
+
             _proc = subprocess.Popen(
                 cmd,
                 cwd=str(BASE_DIR),
@@ -237,11 +311,14 @@ def start():
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                startupinfo=_startupinfo,
+                # CREATE_NO_WINDOW 제거 — headless Playwright 자식 프로세스 통신 보장
             )
             log.info(f"pytest PID={_proc.pid}")
 
             current_page = None
             error_lines: list[str] = []
+            _MAX_LIVE_LOG = 200  # 최대 보관 줄 수
 
             for line in _proc.stdout:
                 line = line.rstrip()
@@ -250,6 +327,11 @@ def start():
 
                 # pytest 출력 전체를 로그에 기록 (DEBUG 레벨)
                 log.debug(f"[pytest] {line}")
+
+                # live_log 버퍼에 추가 (progress 화면 실시간 표시용)
+                _state["live_log"].append(line)
+                if len(_state["live_log"]) > _MAX_LIVE_LOG:
+                    _state["live_log"] = _state["live_log"][-_MAX_LIVE_LOG:]
 
                 # 현재 스캔 중인 페이지 감지
                 for pid in page_ids:
@@ -268,7 +350,7 @@ def start():
                 if current_page:
                     sc_list = _state["scenario_status"][current_page]
 
-                    # ⏭ skip 감지 — 해당 시나리오를 stopped로 표시
+                    # [SKIP] skip 감지 — 해당 시나리오를 stopped로 표시
                     ms = _SKIP_RE.search(line)
                     if ms:
                         sc_num = int(ms.group(1))
@@ -277,8 +359,8 @@ def start():
                             existing["status"] = "stopped"
                         log.info(f"  [{current_page}] 시나리오 {sc_num} 스킵")
 
-                    # 일반 시나리오 헤더 감지 (⏭가 없는 줄만)
-                    elif "⏭" not in line:
+                    # 일반 시나리오 헤더 감지 ([SKIP]가 없는 줄만)
+                    elif "[SKIP]" not in line:
                         m = _SC_RE.search(line)
                         if m:
                             sc_num   = int(m.group(1))
@@ -311,7 +393,7 @@ def start():
                         for sc in _state["scenario_status"].get(current_page, []):
                             sc["status"] = "done"
                         _state["page_status"][current_page] = "done"
-                        log.info(f"  [{current_page}] PASSED ✅")
+                        log.info(f"  [{current_page}] PASSED [OK]")
                     elif is_failed:
                         for sc in _state["scenario_status"].get(current_page, []):
                             if sc["status"] == "running":
@@ -319,7 +401,7 @@ def start():
                             elif sc["status"] == "pending":
                                 sc["status"] = "stopped"  # 미실행 시나리오 → 중지
                         _state["page_status"][current_page] = "error"
-                        log.warning(f"  [{current_page}] FAILED ❌")
+                        log.warning(f"  [{current_page}] FAILED [FAIL]")
 
                 # HTML 리포트 경로 감지 (conftest pytest_unconfigure가 출력)
                 if "[HTML 리포트]" in line:
@@ -397,6 +479,8 @@ def status():
         "scenario_status": _state["scenario_status"],
         "error_log":       _state["error_log"],
         "report_path":     _state["report_path"],
+        "live_log":        _state.get("live_log", [])[-80:],   # 최신 80줄만 전송
+        "log_file":        _state.get("log_file", ""),
     })
 
 
@@ -506,14 +590,14 @@ def finalize():
     import re as _re
 
     STATUS_BADGE = {
-        "pass": ('<span class="badge pass">✅ PASS</span>', "pass"),
-        "bug":  ('<span class="badge bug">⚠️ BUG</span>',  "bug"),
-        "fail": ('<span class="badge fail">❌ FAIL</span>', "fail"),
+        "pass": ('<span class="badge pass">&#x2705; PASS</span>', "pass"),
+        "bug":  ('<span class="badge bug">&#x26A0;&#xFE0F; BUG</span>',  "bug"),
+        "fail": ('<span class="badge fail">&#x274C; FAIL</span>', "fail"),
     }
 
     # 결함 카드 HTML — html_reporter의 defect-card 스타일과 동일
     cards_html = ""
-    for it in items:
+    for issue_idx, it in enumerate(items, 1):
         st          = it.get("status", "fail")
         badge_html, css = STATUS_BADGE.get(st, STATUS_BADGE["fail"])
         page_label   = _html.escape(it.get("page", ""))
@@ -522,7 +606,7 @@ def finalize():
         detail       = _html.escape(it.get("detail", ""))
         user_opinion = _html.escape(it.get("user_opinion", ""))
         severity     = "높음" if st in ("fail", "error") else "낮음"
-        manual_tag   = '<span class="manual-badge">✏️ 직접 등록</span>' if it.get("manual") else ""
+        manual_tag   = '<span class="manual-badge">&#x270F;&#xFE0F; 직접 등록</span>' if it.get("manual") else ""
 
         ss_html = ""
         ss_raw  = it.get("screenshot", "")
@@ -530,21 +614,28 @@ def finalize():
             ss_path_str = ss_raw.replace("/screenshot?path=", "").strip()
             ss_p = Path(ss_path_str)
             if ss_p.exists():
-                ss_uri = ss_p.resolve().as_posix()
-                ss_html = f"""
+                try:
+                    import base64 as _b64
+                    _ss_data = _b64.b64encode(ss_p.read_bytes()).decode("ascii")
+                    _ss_mime = "image/png" if ss_p.suffix.lower() == ".png" else "image/jpeg"
+                    ss_data_uri = f"data:{_ss_mime};base64,{_ss_data}"
+                    ss_html = f"""
             <tr>
               <th>스크린샷</th>
               <td>
                 <details>
-                  <summary class="ss-toggle">📷 스크린샷 보기</summary>
-                  <img src="{ss_uri}" class="ss-img" alt="{label}">
+                  <summary class="ss-toggle">&#x1F4F7; 스크린샷 보기</summary>
+                  <img src="{ss_data_uri}" class="ss-img" alt="{label}">
                 </details>
               </td>
             </tr>"""
+                except Exception:
+                    pass
 
         cards_html += f"""
         <div class="defect-card defect-{css}" data-page-key="{page_label}">
           <div class="defect-header">
+            <span class="issue-num">#{issue_idx}</span>
             {badge_html}
             <span class="defect-page">{page_label}</span>
             <span class="defect-scenario">{pattern}</span>
@@ -563,7 +654,7 @@ def finalize():
 
     # 기존 HTML에서 결함 섹션 교체 (마커 기반)
     original     = Path(html_path).read_text(encoding="utf-8")
-    no_defect_el = '<p class="tab-no-defect" id="tab-no-defect">✅ 해당 페이지에 결함이 없습니다</p>'
+    no_defect_el = '<p class="tab-no-defect" id="tab-no-defect">[OK]  해당 페이지에 결함이 없습니다</p>'
     new_section  = f"""<!-- DEFECT_SECTION_START -->
   <div class="section">
     <div class="section-title">🐛 확정된 결함 ({len(items)}건) <span style="font-size:12px;font-weight:400;color:#888;">— QA 검토 완료</span></div>
@@ -612,35 +703,66 @@ def finalize():
 
     if manual_by_page:
         import re as _re2
-        def _patch_card(m):
-            pid_match = _re2.search(r'data-page-id="([^"]+)"', m.group(0))
-            if not pid_match:
-                return m.group(0)
-            pid = pid_match.group(1)
-            mc  = manual_by_page.get(pid)
-            if not mc:
-                return m.group(0)
-            card = m.group(0)
-            # auto 카운트 추출
-            auto_fail = int((_re2.search(r'data-auto-fail="(\d+)"', card) or type('', (), {'group': lambda *_: '0'})()).group(1))
-            auto_bug  = int((_re2.search(r'data-auto-bug="(\d+)"',  card) or type('', (), {'group': lambda *_: '0'})()).group(1))
-            auto_tot  = int((_re2.search(r'data-auto-total="(\d+)"', card) or type('', (), {'group': lambda *_: '0'})()).group(1))
-            new_fail  = auto_fail + mc["fail"]
-            new_bug   = auto_bug  + mc["bug"]
-            m_cnt     = mc["fail"] + mc["bug"]
-            # fail 카운트 업데이트
-            card = _re2.sub(r'(<span class="cnt fail"[^>]*>)❌ \d+', f'\\g<1>❌ {new_fail}', card)
-            card = _re2.sub(r'(<span class="cnt bug"[^>]*>)⚠️ \d+',  f'\\g<1>⚠️ {new_bug}',  card)
-            card = _re2.sub(r'자동 \d+건 검증', f'자동 {auto_tot}건 + 수동 {m_cnt}건', card)
-            # has-fail 클래스 업데이트
+
+        def _extract_card_range(html_str: str, pid: str):
+            """pid에 해당하는 summary-card div의 (start, end) 인덱스 반환. 없으면 (-1, -1)."""
+            marker = f'data-page-id="{pid}"'
+            marker_pos = html_str.find(marker)
+            if marker_pos == -1:
+                return -1, -1
+            # marker 앞에서 가장 가까운 <div 찾기 (= 카드 루트 태그)
+            start = html_str.rfind('<div', 0, marker_pos)
+            if start == -1:
+                return -1, -1
+            # 중첩 깊이 카운팅으로 매칭 </div> 찾기
+            depth = 0
+            i = start
+            while i < len(html_str):
+                if html_str[i:i+4] == '<div':
+                    depth += 1
+                    i += 4
+                elif html_str[i:i+6] == '</div>':
+                    depth -= 1
+                    i += 6
+                    if depth == 0:
+                        return start, i
+                else:
+                    i += 1
+            return -1, -1
+
+        for pid, mc in manual_by_page.items():
+            start, end = _extract_card_range(patched, pid)
+            if start == -1:
+                continue
+            card = patched[start:end]
+
+            # auto 카운트 추출 (opening div 태그에 있음)
+            auto_fail_m = _re2.search(r'data-auto-fail="(\d+)"', card)
+            auto_bug_m  = _re2.search(r'data-auto-bug="(\d+)"',  card)
+            auto_tot_m  = _re2.search(r'data-auto-total="(\d+)"', card)
+            auto_fail = int(auto_fail_m.group(1)) if auto_fail_m else 0
+            auto_bug  = int(auto_bug_m.group(1))  if auto_bug_m  else 0
+            auto_tot  = int(auto_tot_m.group(1))  if auto_tot_m  else 0
+
+            new_fail = auto_fail + mc["fail"]
+            new_bug  = auto_bug  + mc["bug"]
+            m_cnt    = mc["fail"] + mc["bug"]
+
+            # fail/bug 카운트 업데이트 (HTML entity 이모지 버전에 맞춤)
+            card = _re2.sub(r'(<span class="cnt fail"[^>]*>)&#x274C; \d+', f'\\g<1>&#x274C; {new_fail}', card)
+            card = _re2.sub(r'(<span class="cnt bug"[^>]*>)&#x26A0;&#xFE0F; \d+', f'\\g<1>&#x26A0;&#xFE0F; {new_bug}', card)
+            # card-total: 자동 N건 검증 → 자동 N건 수동 M건 검증
+            card = _re2.sub(r'자동 \d+건 검증', f'자동 {auto_tot}건 수동 {m_cnt}건 검증', card)
+            # has-fail 클래스 + 상태 텍스트 업데이트
             if new_fail > 0 and 'has-fail' not in card:
-                card = card.replace('has-bug', 'has-fail').replace('all-pass', 'has-fail')
+                card = _re2.sub(
+                    r'class="summary-card (has-bug|all-pass)"',
+                    'class="summary-card has-fail"',
+                    card,
+                )
                 card = card.replace('🟡 버그 추적 중', '🔴 결함 있음').replace('🟢 정상', '🔴 결함 있음')
-            return card
-        patched = _re2.sub(
-            r'<div class="summary-card[^"]*"[^>]*data-page-id="[^"]*".*?</div>',
-            _patch_card, patched, flags=_re2.DOTALL,
-        )
+
+            patched = patched[:start] + card + patched[end:]
 
     Path(html_path).write_text(patched, encoding="utf-8")
     log.info(f"확정 완료 → {html_path}")

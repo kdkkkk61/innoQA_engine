@@ -39,11 +39,11 @@ from core.ui_scanner import UIScanner, PageScanReport
 from pages.ransom_detect_policy_page import RansomDetectPolicyPage
 
 _STATUS_ICON = {
-    "pass":      "✅",
-    "fail":      "❌",
-    "known_bug": "⚠️",
-    "skip":      "⏭",
-    "error":     "💥",
+    "pass":      "[OK] ",
+    "fail":      "[FAIL]",
+    "known_bug": "[WARN]",
+    "skip":      "[SKIP]",
+    "error":     "[ERR] ",
 }
 _PATTERN_FALLBACK = {
     "modal_open":      0,

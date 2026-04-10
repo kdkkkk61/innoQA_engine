@@ -14,7 +14,7 @@ from core.reporter import print_combined_report
 from validators.list_ui import scan_list_ui
 
 _STATUS_ICON = {
-    "pass": "✅", "fail": "❌", "known_bug": "⚠️", "skip": "⏭", "error": "💥",
+    "pass": "[OK] ", "fail": "[FAIL]", "known_bug": "[WARN]", "skip": "[SKIP]", "error": "[ERR] ",
 }
 _SCENARIO_THRESHOLDS = [
     (0,   "시나리오 1: UI 구조  (탭 · 버튼 · 테이블)"),
@@ -46,7 +46,7 @@ class ListPageRunner:
 
     def run(self) -> PageScanReport:
         # 시나리오 헤더를 스캔 시작 시점에 출력 → app.py가 실시간으로 감지
-        # CLAUDE.md 시나리오 번호 표준 준수: 1~5 고정, 없는 항목은 ⏭ 출력
+        # CLAUDE.md 시나리오 번호 표준 준수: 1~5 고정, 없는 항목은 [SKIP] 출력
         print(f"\n  시나리오 1: UI 구조  (탭 · 테이블 · 검색)", flush=True)
         c0 = len(self.report.results)
         scan_list_ui(self.page, self.hints, self.report)  # 탭/검색/테이블 공통 스캔
@@ -64,8 +64,8 @@ class ListPageRunner:
         self._scan_search()     # URL 파라미터 구조 확인 (항목 없어도 가능)
         self._tag_scenario(3, c2)
 
-        print(f"\n  ⏭ 시나리오 4: 수정 시나리오 — CRUD 내 수정 검증으로 통합", flush=True)
-        print(f"\n  ⏭ 시나리오 5: 케이스 검증 — 해당 없음 (list_page)", flush=True)
+        print(f"\n  [SKIP] 시나리오 4: 수정 시나리오 — CRUD 내 수정 검증으로 통합", flush=True)
+        print(f"\n  [SKIP] 시나리오 5: 케이스 검증 — 해당 없음 (list_page)", flush=True)
         # 시나리오 3 내 오버플로는 향후 list_page에도 추가 예정 (overflow_tests YAML 섹션)
 
         # 결과 출력 (헤더 없이 — 헤더는 스캔 시작 시점에 이미 출력됨)
@@ -845,7 +845,7 @@ class ListPageRunner:
         ))
 
     def _known_bug(self, pattern, selector, label, detail, order, phase=1):
-        """제품 버그로 확인된 항목. 테스트 실패가 아닌 버그 추적용 ⚠️."""
+        """제품 버그로 확인된 항목. 테스트 실패가 아닌 버그 추적용 [WARN]."""
         scenario_idx = sum(1 for t, _ in _SCENARIO_THRESHOLDS if order >= t) - 1
         scenario_idx = max(0, min(scenario_idx, len(_SCENARIO_THRESHOLDS) - 1))
         _, scenario_header = _SCENARIO_THRESHOLDS[scenario_idx]

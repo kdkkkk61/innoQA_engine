@@ -22,11 +22,11 @@ _PHASE_LABEL: dict[int, str] = {
 }
 
 _STATUS_ICON: dict[str, str] = {
-    "pass":      "✅",
-    "fail":      "❌",
-    "known_bug": "⚠️",
-    "skip":      "⏭",
-    "error":     "💥",
+    "pass":      "[OK] ",
+    "fail":      "[FAIL]",
+    "known_bug": "[WARN]",
+    "skip":      "[SKIP]",
+    "error":     "[ERR] ",
 }
 
 _PATTERN_FALLBACK: dict[str, int] = {
@@ -157,14 +157,14 @@ def print_combined_report(combined: PageScanReport) -> None:
 
     if combined.known_bugs:
         print(f"\n{'─' * 60}")
-        print(f"  ⚠️  추적 중인 결함 {len(combined.known_bugs)}건 — 수정 필요 (fail 카운트 제외)")
+        print(f"  [WARN]  추적 중인 결함 {len(combined.known_bugs)}건 — 수정 필요 (fail 카운트 제외)")
         print(f"{'─' * 60}")
         for r in combined.known_bugs:
             scenario_tag = r.extra.get("scenario_tag") if r.extra else None
             ctx = f"[{scenario_tag}]" if scenario_tag else (f"[Phase {r.phase}]" if r.phase else "")
             prefix = f"{ctx} " if ctx else ""
-            print(f"  ⚠️  {prefix}[{r.pattern}] {r.label}")
+            print(f"  [WARN]  {prefix}[{r.pattern}] {r.label}")
             print(f"       → {r.detail}")
         print(f"{'─' * 60}")
-        print(f"  💡 known_bugs.yaml 에서 status: open → fixed 로 변경 시 회귀 감지 활성화")
+        print(f"  [TIP]  known_bugs.yaml 에서 status: open → fixed 로 변경 시 회귀 감지 활성화")
         print(f"{'─' * 60}\n")

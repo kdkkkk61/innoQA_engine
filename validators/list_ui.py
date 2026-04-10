@@ -7,7 +7,7 @@ YAML list_ui 섹션을 읽어 탭 / 검색 / 테이블 헤더를 검증한다.
 YAML 구조 (config/scan_hints/{page_id}.yaml):
 
   list_ui:
-    tabs:                         # 없거나 [] 이면 ⏭ skip
+    tabs:                         # 없거나 [] 이면 [SKIP] skip
       - label: "예외 프로세스"
         param_key: "processType"
         param_value: "EXCEPT_PROCESS"
@@ -177,7 +177,7 @@ def _scan_search(page, cfg: dict, report: PageScanReport) -> None:
                 failures.append(f"필터 없음 — {f_label} ({f_sel})")
 
         status = "fail" if failures else "pass"
-        detail = " / ".join(checks + [f"❌ {f}" for f in failures])
+        detail = " / ".join(checks + [f"[FAIL] {f}" for f in failures])
         report.results.append(ScanResult(
             pattern="list_search", selector=inp_sel,
             label=label, status=status, detail=detail,

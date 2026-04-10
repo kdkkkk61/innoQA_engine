@@ -131,19 +131,21 @@ class RdpPolicyPage(BasePage):
     def click_policy_row(self, policy_name: str) -> None:
         """
         정책 이름으로 행 클릭 (단일 선택 → tActive 확인).
-        오버레이 pointer-events 일시 비활성화 후 Playwright 네이티브 click().
+        오버레이 pointer-events 일시 비활성화 후 force=True 클릭.
+        force=True: actionability 30초 대기 없이 즉시 좌표 클릭.
         """
         row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=policy_name).first
         for attempt in range(3):
             self._toggle_overlay(False)
+            self.page.wait_for_timeout(80)
             try:
-                row.click()
+                row.click(force=True, timeout=3000)
             finally:
                 self._toggle_overlay(True)
             try:
                 self.page.locator(self.SEL_TABLE_ROW_ACTIVE).filter(
                     has_text=policy_name
-                ).first.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
+                ).first.wait_for(state="attached", timeout=5000)
                 return
             except Exception:
                 print(f"\n[click_policy_row] tActive 미확인 ({attempt+1}회), 재시도...")
@@ -153,6 +155,7 @@ class RdpPolicyPage(BasePage):
         """
         정책 이름 행의 체크박스 체크.
         [AUTO] 접두사 정책만 허용.
+        JS el.click() 직접 호출 → hit-testing/actionability 대기 완전 우회.
         """
         if not policy_name.startswith("[AUTO]"):
             raise Exception("테스트 생성 정책([AUTO] 접두사)만 조작 가능합니다")
@@ -164,11 +167,7 @@ class RdpPolicyPage(BasePage):
         )
         if checkbox.is_checked():
             return
-        self._toggle_overlay(False)
-        try:
-            checkbox.click()
-        finally:
-            self._toggle_overlay(True)
+        checkbox.evaluate("el => el.click()")
         if not checkbox.is_checked():
             raise Exception(f"체크박스 클릭 후 미체크 상태: {policy_name}")
 

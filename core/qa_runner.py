@@ -139,7 +139,7 @@ def _save_snapshot(page_id: str, case_name: str, verify_dict: dict) -> None:
     path = snap_dir / f"{page_id}_{case_name}_{ts}.json"
     with open(path, "w", encoding="utf-8") as f:
         json.dump(snap, f, ensure_ascii=False, indent=2)
-    print(f"  💾 스냅샷 저장: {path}")
+    print(f"  [SAVE] 스냅샷 저장: {path}")
 
 
 def run_phase3_cases(
@@ -428,9 +428,9 @@ def run_3phase_scan(
             _tag_scenario(report1, 1)
             print_phase_report(report1, 1)
         except Exception as e:
-            print(f"  💥 [{page_id}] 시나리오 1 실행 중 예외: {e}")
+            print(f"  [ERR]  [{page_id}] 시나리오 1 실행 중 예외: {e}")
     else:
-        print(f"\n  ⏭ 시나리오 1: UI 구조 — 해당 없음 (list_ui 섹션 없음)")
+        print(f"\n  [SKIP] 시나리오 1: UI 구조 — 해당 없음 (list_ui 섹션 없음)")
 
     # ─────────────────────────────────────────────────────────────
     # 시나리오 2: 입력 구조 (초기값 스냅샷 + 필수입력 검증)
@@ -465,7 +465,7 @@ def run_3phase_scan(
     if p1_saved:
         context2["existing_name"] = p1_name
     else:
-        print(f"  ⏭ [{page_id}] 시나리오 3: existing_name 스킵 — 시나리오 2 저장 실패")
+        print(f"  [SKIP] [{page_id}] 시나리오 3: existing_name 스킵 — 시나리오 2 저장 실패")
 
     report3 = scanner.scan(
         page_id, phase=3,
@@ -496,7 +496,7 @@ def run_3phase_scan(
                 ),
             )
         except Exception as e:
-            print(f"  💥 [{page_id}] 시나리오 3 오버플로 실행 중 예외: {e}")
+            print(f"  [ERR]  [{page_id}] 시나리오 3 오버플로 실행 중 예외: {e}")
 
     _tag_scenario(report3, 3)
     print_phase_report(report3, 3)
@@ -506,8 +506,14 @@ def run_3phase_scan(
     # ─────────────────────────────────────────────────────────────
     report4: PageScanReport | None = None
 
+    # 시나리오 3 오버플로 테스트 후 잔여 모달/상태 초기화
+    try:
+        page_obj.navigate_to()
+    except Exception:
+        pass
+
     if not p2_saved:
-        print(f"  ⏭ 시나리오 4: 수정 시나리오 스킵 — 시나리오 3 저장 실패 (p2 정책 없음)")
+        print(f"  [SKIP] 시나리오 4: 수정 시나리오 스킵 — 시나리오 3 저장 실패 (p2 정책 없음)")
     else:
         try:
             report4 = scanner.scan(
@@ -520,14 +526,14 @@ def run_3phase_scan(
             _tag_scenario(report4, 4)
             print_phase_report(report4, 4)
         except Exception as e:
-            print(f"  💥 [{page_id}] 시나리오 4 실행 중 예외: {e}")
+            print(f"  [ERR]  [{page_id}] 시나리오 4 실행 중 예외: {e}")
         finally:
             try:
                 page_obj.navigate_to()
                 page_obj.delete_all_auto_policies()
             except Exception as e:
                 print(
-                    f"\n  ⚠️  [{page_id}] 정리 실패 — "
+                    f"\n  [WARN]  [{page_id}] 정리 실패 — "
                     f"잔여 [AUTO] 정책이 남아있을 수 있습니다: {e}"
                 )
 
@@ -541,9 +547,9 @@ def run_3phase_scan(
             _tag_scenario(report5, 5)
             print_phase_report(report5, 5)
         else:
-            print(f"\n  ⏭ 시나리오 5: 케이스 검증 — 해당 없음 (test_profiles/{page_id}.yaml 없음)")
+            print(f"\n  [SKIP] 시나리오 5: 케이스 검증 — 해당 없음 (test_profiles/{page_id}.yaml 없음)")
     except Exception as e:
-        print(f"  💥 [{page_id}] 시나리오 5 실행 중 예외: {e}")
+        print(f"  [ERR]  [{page_id}] 시나리오 5 실행 중 예외: {e}")
     finally:
         try:
             page_obj.navigate_to()

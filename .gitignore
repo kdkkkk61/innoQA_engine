@@ -4,4 +4,16 @@ __pycache__/
 reports/screenshots/
 reports/scan_debug.log
 reports/report.html
+reports/qa_report_*.html
 *.pyc
+
+# 가상환경
+venv/
+
+# PyInstaller 빌드 산출물
+build/
+dist/
+*.spec.bak
+
+# 로그
+logs/

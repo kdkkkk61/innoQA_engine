@@ -5,6 +5,50 @@
 
 ---
 
+## 클릭 차단 오버레이 (qa-block-overlay) 원칙
+
+테스트가 최우선이다. 오버레이는 사람 클릭 차단용이며, 자동화 클릭에는 방해가 되면 잠깐 꺼도 된다.
+
+### 클릭 방식 선택 기준
+
+| 상황 | 방식 | 이유 |
+|---|---|---|
+| 버튼 / 모달 내부 요소 | `locator.evaluate("el => el.click()")` | JS 직접 호출 → hit-testing 우회, overlay 무관 |
+| 테이블 행 선택 (tActive 필요) | `_toggle_overlay(False)` + `click(force=True)` | native 마우스 이벤트 필요 (mousedown → AngularJS tActive 반응) |
+| 체크박스 | `checkbox.evaluate("el => el.click()")` | JS 직접 호출로 충분 |
+
+### `_toggle_overlay` 사용 가능 범위
+
+```
+가능: 테이블 행 클릭, 체크박스 등 페이지 내 단순 상태 변경
+불가: SPA 네비게이션 발생 시 (navigate_to, 메뉴 클릭 등)
+      → add_init_script가 페이지 로드마다 overlay를 pointer-events:all로 재주입하기 때문
+```
+
+### 테이블 행 클릭 표준 패턴
+
+```python
+self._toggle_overlay(False)
+self.page.wait_for_timeout(80)      # JS 반영 여유
+try:
+    row.click(force=True, timeout=3000)  # actionability 체크 없이 즉시 클릭
+finally:
+    self._toggle_overlay(True)
+```
+
+- `force=True`: actionability 30초 대기 제거 → hang 방지
+- `_toggle_overlay(False)`: 좌표 클릭이 row에 실제로 닿도록 overlay 차단 해제
+- 두 가지 모두 필요하다. 하나만 쓰면 안 된다.
+
+### Windows 인코딩 규칙 (CP949 환경)
+
+- Python 소스 파일의 `print()` / `log.info()` 등에 이모지 사용 금지
+- 이모지는 CP949(한국어 Windows 기본 인코딩)에서 UnicodeEncodeError 발생
+- ASCII 대체 텍스트 사용: `[OK]`, `[FAIL]`, `[WARN]`, `[SKIP]`, `[ERR]`, `[TIP]`
+- HTML 템플릿(.html)은 UTF-8이므로 이모지 사용 가능
+
+---
+
 ## 아키텍처 원칙
 
 ### 레이어 구조
@@ -273,6 +317,20 @@ for r in sorted(report.results, key=_sort_key):
 □ 시나리오 5: test_profiles 작성 (ON/OFF 케이스가 있는 경우만)
 □ 시나리오 3: overflow_tests 작성 (태그 입력 필드가 있는 경우 — 시나리오 3에 통합)
 ```
+
+---
+
+## 코드 수정 전 확인 절차
+
+기존 파일을 수정하기 전에 반드시 아래 순서를 따른다.
+
+1. **영향 범위 파악 먼저**: 수정 대상 파일을 import하거나 호출하는 파일 목록 확인
+2. **연계 파일 맥락 확인**: 관련 파일을 실제로 읽고 코드 흐름 / 문맥 / 통일성 파악
+   - 변수명·함수명·패턴이 다른 파일과 일관성 있는지
+   - 수정 지점이 다른 경로(분기, 호출자)에도 영향을 주는지
+   - YAML 정의 ↔ validator ↔ runner ↔ 테스트 파일 간 연계 흐름 확인
+3. **맥락 파악 후 즉시 실행**: 설명 없이 Edit 도구로 바로 수정한다. 설명이 필요하면 사용자가 요청한다.
+4. **하지 말아야 할 것**: 연계 파일 확인 없이 수정 대상 파일만 보고 바로 수정 시작
 
 ---
 

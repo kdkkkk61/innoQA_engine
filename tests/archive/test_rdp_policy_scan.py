@@ -35,11 +35,11 @@ from pages.rdp_policy_page import RdpPolicyPage
 _PHASE_LABEL = {1: "Phase 1 (초기값+필수입력)", 2: "Phase 2 (UI 동작)", 3: "Phase 3 (수정)"}
 
 _STATUS_ICON = {
-    "pass":      "✅",
-    "fail":      "❌",
-    "known_bug": "⚠️",
-    "skip":      "⏭",
-    "error":     "💥",
+    "pass":      "[OK]  ",
+    "fail":      "[FAIL]",
+    "known_bug": "[WARN]",
+    "skip":      "[SKIP]",
+    "error":     "[ERR] ",
 }
 _PATTERN_FALLBACK = {
     "initial_state":   0,
@@ -268,14 +268,14 @@ class TestRdpPolicyScan:
         # ── known_bug 추적 섹션 (무시하지 않고 항상 출력) ──────────────────────
         if combined.known_bugs:
             print(f"\n{'─' * 60}")
-            print(f"  ⚠️  추적 중인 결함 {len(combined.known_bugs)}건 — 수정 필요 (fail 카운트 제외)")
+            print(f"  [WARN]  추적 중인 결함 {len(combined.known_bugs)}건 — 수정 필요 (fail 카운트 제외)")
             print(f"{'─' * 60}")
             for r in combined.known_bugs:
                 phase_tag = f"[Phase {r.phase}]" if r.phase else ""
-                print(f"  ⚠️  {phase_tag}[{r.pattern}] {r.label}")
+                print(f"  [WARN]  {phase_tag}[{r.pattern}] {r.label}")
                 print(f"       → {r.detail}")
             print(f"{'─' * 60}")
-            print(f"  💡 known_bugs.yaml 에서 status: open → fixed 로 변경 시 회귀 감지 활성화")
+            print(f"  [TIP]  known_bugs.yaml 에서 status: open → fixed 로 변경 시 회귀 감지 활성화")
             print(f"{'─' * 60}\n")
 
         assert not combined.failed, (
