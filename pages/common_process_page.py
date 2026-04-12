@@ -278,6 +278,12 @@ class CommonProcessPage(BasePage):
             state="detached", timeout=self._TIMEOUT_TABLE
         )
         self.wait_for(self.SEL_ADD_BTN)
+        # AngularJS digest cycle 완료 보장 — 삭제된 행이 DOM에서 사라질 때까지 대기
+        # wait_for(SEL_ADD_BTN) 직후 get_item_names()를 부르면 갱신 전 DOM을 읽는 타이밍 문제 방지
+        try:
+            row.wait_for(state="detached", timeout=self._TIMEOUT_TABLE)
+        except Exception:
+            pass  # 이미 사라졌거나 locator가 재평가된 경우 무시
         self._restore_page_size()
 
     # ── 내부 유틸 ─────────────────────────────────────────────────
