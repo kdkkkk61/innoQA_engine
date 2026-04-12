@@ -820,36 +820,32 @@ if __name__ == "__main__":
     t = threading.Thread(target=_run_flask, daemon=True)
     t.start()
 
-    # PyWebView 시도 — VM / GPU 없는 환경에서 실패하면 기본 브라우저로 fallback
     _FLASK_URL = "http://127.0.0.1:5321"
+
+    # Flask 준비 대기 후 기본 브라우저로 먼저 열기 (VM 포함 모든 환경에서 동작 보장)
+    _time.sleep(1)
+    log.info(f"브라우저로 열기: {_FLASK_URL}")
+    webbrowser.open(_FLASK_URL)
+
+    # PyWebView 추가 시도 — 지원되는 환경이면 네이티브 창도 열림 (선택적)
+    _webview_ok = False
     try:
         import webview
+        webview.create_window(
+            title="QA Tool",
+            url=_FLASK_URL,
+            width=1100,
+            height=750,
+            min_size=(900, 600),
+            resizable=True,
+        )
         _webview_ok = True
+        webview.start()   # 블로킹 — pywebview 창이 뜨는 환경에서만 여기서 대기
     except Exception as e:
-        _webview_ok = False
-        log.warning(f"pywebview import 실패 ({e}) — 브라우저 fallback 사용")
-
-    if _webview_ok:
-        try:
-            webview.create_window(
-                title="QA Tool",
-                url=_FLASK_URL,
-                width=1100,
-                height=750,
-                min_size=(900, 600),
-                resizable=True,
-            )
-            webview.start()
-        except Exception as e:
-            log.warning(f"pywebview 창 실패 ({e}) — 브라우저 fallback 사용")
-            _webview_ok = False
+        log.warning(f"pywebview 사용 불가 ({e}) — 브라우저로 계속 진행")
 
     if not _webview_ok:
-        # Flask 서버 준비 대기 후 기본 브라우저로 열기
-        _time.sleep(1)
-        log.info(f"브라우저로 열기: {_FLASK_URL}")
-        webbrowser.open(_FLASK_URL)
-        # 메인 스레드 유지 (Flask daemon 스레드 살려두기)
+        # pywebview 없으면 메인 스레드 유지 (Flask daemon 스레드 살려두기)
         try:
             while True:
                 _time.sleep(1)
