@@ -328,15 +328,27 @@ def browser(playwright_instance, settings):
     slow_mo  = browser_cfg.get("slow_mo", 0)
 
     # VM / GPU 없는 환경에서 Chromium libuv 타이머 assertion 방지용 플래그
-    # - --no-sandbox           : VM/컨테이너 sandbox 비활성화 (필수)
-    # - --disable-gpu          : GPU 가속 비활성화 (VM 렌더링 오류 방지)
-    # - --disable-dev-shm-usage: /dev/shm 부족 방지 (Linux VM)
-    # - --disable-software-rasterizer: SW 래스터라이저 충돌 방지
+    # - --no-sandbox                            : VM/컨테이너 sandbox 비활성화 (필수)
+    # - --disable-gpu                           : GPU 가속 비활성화 (VM 렌더링 오류 방지)
+    # - --disable-dev-shm-usage                 : /dev/shm 부족 방지 (Linux VM)
+    # - --disable-software-rasterizer           : SW 래스터라이저 충돌 방지
+    # - --disable-background-timer-throttling   : 백그라운드 타이머 지연 비활성화
+    # - --disable-renderer-backgrounding        : 렌더러 백그라운드 전환 비활성화
+    # - --disable-backgrounding-occluded-windows: 가려진 창 백그라운드 전환 비활성화
+    # - --disable-ipc-flooding-protection       : IPC 과부하 보호 비활성화 (VM 타이머 오류 감소)
+    # - --no-first-run                          : 첫 실행 초기화 생략
+    # - --metrics-recording-only                : 메트릭 외부 전송 없음
     _chromium_args = [
         "--no-sandbox",
         "--disable-gpu",
         "--disable-dev-shm-usage",
         "--disable-software-rasterizer",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-ipc-flooding-protection",
+        "--no-first-run",
+        "--metrics-recording-only",
     ]
 
     br = playwright_instance.chromium.launch(

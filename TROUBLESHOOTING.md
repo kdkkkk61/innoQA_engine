@@ -49,11 +49,18 @@ _chromium_args = [
     "--disable-gpu",
     "--disable-dev-shm-usage",
     "--disable-software-rasterizer",
+    "--disable-background-timer-throttling",    # 백그라운드 타이머 지연 비활성화
+    "--disable-renderer-backgrounding",         # 렌더러 백그라운드 전환 비활성화
+    "--disable-backgrounding-occluded-windows", # 가려진 창 백그라운드 전환 비활성화
+    "--disable-ipc-flooding-protection",        # IPC 과부하 보호 비활성화
+    "--no-first-run",
+    "--metrics-recording-only",
 ]
 br = playwright_instance.chromium.launch(headless=headless, slow_mo=slow_mo, args=_chromium_args)
 ```
 
-> `UV_USE_IO_RINGS=0` 만으로 해결되지 않으면 Chromium args 방식이 유효.
+> `UV_USE_IO_RINGS=0` + `--no-sandbox --disable-gpu` 만으로 부족한 경우(테스트 중간에 크래시):
+> 타이머/렌더러 관련 플래그를 추가하면 libuv 타이머 역방향 assertion 발생 빈도가 크게 줄어든다.
 > 일반 PC 환경에서도 이 플래그는 기능에 영향 없음.
 
 ### 적용 위치
