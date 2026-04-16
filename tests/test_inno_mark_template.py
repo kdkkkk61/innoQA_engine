@@ -434,17 +434,26 @@ class TestInnoMarkTemplate:
     # 시나리오 3: 동작 검증 — 비PNG 파일 업로드 거부 (IMAGE 모드)
     # ──────────────────────────────────────────────────────────────────────
     @pytest.mark.skip(
-        reason="Dropzone.js 업로드 — Playwright 파일 주입으로 제품 JS 검증 미트리거, 자동화 불가"
+        reason=(
+            "[수동 확인 항목] IMAGE 모드 파일등록 버튼 클릭 후 JPG 등 비PNG 파일 선택 시 "
+            "'업로드 허용되지 않은 확장자 입니다. (허용 확장자 : png)' 팝업 출력되는지 확인. "
+            "Dropzone.js OS 다이얼로그 경로에서만 검증 파이프라인 실행 — 자동화 불가."
+        )
     )
     def test_s3_image_format_rejection(self, logged_in_page, settings):
         """
         IMAGE 모드에서 비PNG 파일 업로드 시 오류 팝업 출력 확인.
         제품 동작: "업로드 허용되지 않은 확장자 입니다. (허용 확장자 : png)" 팝업 출력.
 
-        [xfail 사유]
-        - 파일 업로드: Dropzone.js 사용 (button#addTemplateImageFileBtn.dz-clickable)
-        - Playwright가 dz-hidden-input에 파일 주입 시 제품 JS 검증 미트리거
-        - 수동으로는 정상 동작 확인 — 자동화 한계로 xfail 처리
+        [수동 확인 방법]
+        1. 템플릿 추가 모달 열기 → 표시형식: 이미지 선택
+        2. 파일등록 버튼 클릭 → OS 파일 선택창에서 JPG/GIF 등 비PNG 파일 선택
+        3. 팝업 메시지 확인: "업로드 허용되지 않은 확장자 입니다. (허용 확장자 : png)"
+
+        [자동화 불가 사유]
+        - Dropzone.js가 OS 파일 다이얼로그 경로에서만 accept() 검증 파이프라인 실행
+        - JS 파일 주입(DataTransfer, change 이벤트)은 Dropzone 내부 검증을 우회함
+        - Chrome MCP로 직접 확인 완료 (2026-04-16)
         fixtures/test_invalid.jpg (22-byte minimal JPEG) 사용.
         """
         assert os.path.exists(_FIXTURE_INVALID), \
