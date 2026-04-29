@@ -13,13 +13,13 @@
 AppName=QA Tool
 AppVersion=1.0
 AppPublisher=QA Team
-DefaultDirName={autopf64}\QATool
+DefaultDirName={localappdata}\QATool
 DefaultGroupName=QA Tool
 OutputBaseFilename=qatool_setup
 OutputDir=output
 Compression=lzma2/ultra64
 SolidCompression=yes
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 UninstallDisplayName=QA Tool
@@ -63,7 +63,7 @@ Name: "{app}\logs"
 [Icons]
 Name: "{group}\QA Tool";         Filename: "{app}\qatool.exe"
 Name: "{group}\Uninstall QATool"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\QA Tool"; Filename: "{app}\qatool.exe"; Tasks: desktopicon
+Name: "{userdesktop}\QA Tool";   Filename: "{app}\qatool.exe"; Tasks: desktopicon
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\browsers"
