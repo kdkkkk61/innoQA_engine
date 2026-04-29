@@ -49,6 +49,7 @@ Source: "..\pages\*";       DestDir: "{app}\pages";       Flags: ignoreversion r
 Source: "..\core\*";        DestDir: "{app}\core";        Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\validators\*";  DestDir: "{app}\validators";  Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\utils\*";       DestDir: "{app}\utils";       Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dashboard\*";   DestDir: "{app}\dashboard";   Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; placeholder files for empty dirs
 Source: "placeholder.txt";  DestDir: "{app}\reports\screenshots"; Flags: ignoreversion
