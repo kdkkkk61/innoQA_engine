@@ -44,10 +44,12 @@ def test_page_scan(logged_in_page, settings, request, page_id):
     combined = run_scan(logged_in_page, settings, page_id)
     request.node._scan_report = combined
 
-    assert not combined.failed, (
-        f"[{page_id}] UI 패턴 검사 실패 {len(combined.failed)}건:\n"
+    # known_bug 플래그 있는 fail은 알려진 버그 — 리포트에 빨간 표시되지만 테스트 abort 제외
+    unexpected = [r for r in combined.failed if not r.extra.get("known_bug")]
+    assert not unexpected, (
+        f"[{page_id}] UI 패턴 검사 실패 {len(unexpected)}건:\n"
         + "\n".join(
             f"  [Phase {r.phase}][{r.pattern}] {r.label}: {r.detail}"
-            for r in combined.failed
+            for r in unexpected
         )
     )

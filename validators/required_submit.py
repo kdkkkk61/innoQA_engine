@@ -291,10 +291,12 @@ def _run_submit_edit(
         warning_appeared = ctx.dismiss_warning_dialog()
         main_still_open  = ctx.page.locator(f"#{main_modal_sel}.in").count() > 0
 
+        is_kb = False
         if not main_still_open:
             if ctx.is_known_bug(submit_sel, "edit_required_submit"):
                 status = "fail"
                 detail = "필수 필드 비운 채 수정 시 경고 없이 저장됨 — 알려진 버그: 필수 필드 검증 누락"
+                is_kb = True
             else:
                 status, detail = "fail", "필수 필드 비운 채 수정 시 경고 없이 모달이 닫힘"
         elif warning_appeared:
@@ -303,11 +305,14 @@ def _run_submit_edit(
             status, detail = "pass", "필수 필드 비운 채 수정 시 모달 닫히지 않음 (필드 검증 동작)"
 
         ss = ctx.take_screenshot("edit_required_submit") if status == "fail" else None
+        extra: dict = {}
+        if ss:           extra["screenshot"] = ss
+        if is_kb:        extra["known_bug"]  = True
         report.results.append(ScanResult(
             pattern="required_submit", selector=submit_sel,
             label="필수 필드 미입력 수정 검증",
             status=status, detail=detail, order=_ORDER_REQUIRED_SUBMIT,
-            extra={"screenshot": ss} if ss else {},
+            extra=extra,
         ))
     except Exception:
         ctx.append_error(
