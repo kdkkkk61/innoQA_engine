@@ -524,7 +524,7 @@ class ListPageRunner:
                     )
                     _tab = f" [{tab_label}]" if tab_label else ""
                     if "SHA2" in msg or "해시" in msg:
-                        self._fail_known(
+                        self._fail(
                             "list_modify_bug", "input#sign",
                             f"전자서명 변경 시 SHA2 초기화 (제품 버그){_tab}",
                             f"알려진 버그: 전자서명 수정 → 내부 SHA2 상태 초기화 → 저장 실패: '{msg}'",
@@ -828,17 +828,6 @@ class ListPageRunner:
             pattern=pattern, selector=selector, label=label,
             status="fail", detail=detail, order=order, phase=phase,
             extra={"screenshot": ss} if ss else {},
-        ))
-
-    def _fail_known(self, pattern, selector, label, detail, order, phase=1):
-        """알려진 버그(높음) — 빨간 표시되지만 assertion에서 제외."""
-        ss = self._take_screenshot(label)
-        extra: dict = {"known_bug": True}
-        if ss: extra["screenshot"] = ss
-        self.report.results.append(ScanResult(
-            pattern=pattern, selector=selector, label=label,
-            status="fail", detail=detail, order=order, phase=phase,
-            extra=extra,
         ))
 
     def _err(self, pattern, selector, label, detail, order, phase=1):
