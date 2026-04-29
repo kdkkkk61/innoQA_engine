@@ -293,8 +293,8 @@ def _run_submit_edit(
 
         if not main_still_open:
             if ctx.is_known_bug(submit_sel, "edit_required_submit"):
-                status = "known_bug"
-                detail = "알려진 동작: EDIT 모달에서 필수 필드 비워도 저장됨"
+                status = "fail"
+                detail = "필수 필드 비운 채 수정 시 경고 없이 저장됨 — 알려진 버그: 필수 필드 검증 누락"
             else:
                 status, detail = "fail", "필수 필드 비운 채 수정 시 경고 없이 모달이 닫힘"
         elif warning_appeared:
@@ -302,7 +302,7 @@ def _run_submit_edit(
         else:
             status, detail = "pass", "필수 필드 비운 채 수정 시 모달 닫히지 않음 (필드 검증 동작)"
 
-        ss = ctx.take_screenshot("edit_required_submit") if status in ("known_bug", "fail") else None
+        ss = ctx.take_screenshot("edit_required_submit") if status == "fail" else None
         report.results.append(ScanResult(
             pattern="required_submit", selector=submit_sel,
             label="필수 필드 미입력 수정 검증",

@@ -182,20 +182,16 @@ def _check_radio_require_default(
             rd_sel  = f"[name={name}]"
             rd_test = "radio_require_default"
 
-            if ctx.is_known_bug(rd_sel, rd_test):
-                status = "known_bug"
-                detail = (
-                    f"알려진 UX 결함: 이진 선택 그룹 초기값 없음 ({opt_labels})"
-                )
-            else:
-                status = "fail"
-                detail = (
-                    f"이진 선택 그룹({opt_labels}) 초기값 없음 "
-                    f"→ 선택 없이 저장 시 암묵적 동작 발생 (휴먼에러)"
-                )
+            known = ctx.is_known_bug(rd_sel, rd_test)
+            status = "warn"
+            detail = (
+                f"이진 선택 그룹({opt_labels}) 초기값 없음 "
+                f"→ 선택 없이 저장 시 암묵적 동작 발생 (휴먼에러)"
+                + (" — 알려진 버그" if known else "")
+            )
 
             ctx.log.debug(f"[initial_state] {label!r} → {status}")
-            ss = ctx.take_screenshot(f"{label}_초기값") if status in ("known_bug", "fail") else None
+            ss = None  # warn은 스크린샷 불필요
             report.results.append(ScanResult(
                 pattern="initial_state",
                 selector=rd_sel,

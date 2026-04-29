@@ -186,7 +186,7 @@ def _check_toggle_with_deps(
 
         if issues:
             if is_known_bug:
-                dep_status = "known_bug"
+                dep_status = "warn"
                 known_bug_count += 1
             else:
                 dep_status = "fail"
@@ -210,7 +210,7 @@ def _check_toggle_with_deps(
             msgs.append(f"종속 필드 {real_fail_count}개 검증 실패")
         parent_detail = "; ".join(msgs)
     elif known_bug_count > 0:
-        parent_status = "known_bug"
+        parent_status = "warn"
         parent_detail = (
             f"알려진 버그 — 종속 필드 {known_bug_count}개 비정상"
             f" ({len(dep_fields) - known_bug_count}개 정상)"
