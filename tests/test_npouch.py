@@ -46,7 +46,7 @@ _SHA2_VALID     = "AABB112233445566778899001122334455667788990011223344556677889
 _EXEC_TEST      = r"C:\auto\test_proc.exe"   # 실행경로 테스트용
 
 _STATUS_ICON  = {"pass": "[OK]", "fail": "[FAIL]", "skip": "[SKIP]", "warn": "[WARN]"}
-_STATUS_TO_SR = {"pass": "pass", "fail": "fail", "warn": "known_bug", "skip": "skip"}
+_STATUS_TO_SR = {"pass": "pass", "fail": "fail", "warn": "warn", "skip": "skip"}
 
 # 성공 메시지 키워드 — "저장 하였습니다" / "하시겠습니까" 등 페이지마다 다름
 _SAVE_SUCCESS_KEYWORDS = ("하시겠습니까", "저장 하였습니다", "저장하였습니다",

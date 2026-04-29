@@ -155,16 +155,14 @@ def print_combined_report(combined: PageScanReport) -> None:
     print(f"  전체 결과: {combined.summary()}")
     print(f"{'═' * 60}")
 
-    if combined.known_bugs:
+    if combined.warnings:
         print(f"\n{'─' * 60}")
-        print(f"  [WARN]  추적 중인 결함 {len(combined.known_bugs)}건 — 수정 필요 (fail 카운트 제외)")
+        print(f"  [WARN]  버그(낮음) {len(combined.warnings)}건")
         print(f"{'─' * 60}")
-        for r in combined.known_bugs:
+        for r in combined.warnings:
             scenario_tag = r.extra.get("scenario_tag") if r.extra else None
             ctx = f"[{scenario_tag}]" if scenario_tag else (f"[Phase {r.phase}]" if r.phase else "")
             prefix = f"{ctx} " if ctx else ""
             print(f"  [WARN]  {prefix}[{r.pattern}] {r.label}")
             print(f"       → {r.detail}")
-        print(f"{'─' * 60}")
-        print(f"  [TIP]  known_bugs.yaml 에서 status: open → fixed 로 변경 시 회귀 감지 활성화")
         print(f"{'─' * 60}\n")

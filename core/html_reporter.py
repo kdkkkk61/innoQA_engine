@@ -68,7 +68,8 @@ _LIST_PAGE_PATTERNS = {
 _STATUS_BADGE = {
     "pass":      ('<span class="badge pass">&#x2705; PASS</span>',     "pass"),
     "fail":      ('<span class="badge bug-high">&#x1F534; BUG</span>', "bug-high"),
-    "known_bug": ('<span class="badge bug-low">&#x26A0;&#xFE0F; BUG</span>', "bug-low"),
+    "warn":      ('<span class="badge bug-low">&#x26A0;&#xFE0F; BUG</span>', "bug-low"),
+    "known_bug": ('<span class="badge bug-low">&#x26A0;&#xFE0F; BUG</span>', "bug-low"),  # 하위 호환
     "error":     ('<span class="badge error">&#x26D4; ERROR</span>',   "error"),
     "skip":      ('<span class="badge skip">&#x23ED; SKIP</span>',     "skip"),
 }
@@ -143,8 +144,8 @@ def _expected_vs_actual(r: ScanResult) -> tuple[str, str]:
             return exp, act
 
     # ④ 포맷 없음 — 상태별 기본값
-    if r.status == "known_bug":
-        return "알려진 UX 결함", det
+    if r.status in ("warn", "known_bug"):
+        return "버그 (낮음)", det
     if r.status == "skip":
         return "해당 없음", det
     return "정상 동작", det
@@ -240,20 +241,20 @@ def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
 
 
 def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str:
-    """전체 페이지에서 known_bug + fail 항목 모아서 결함 목록 생성."""
+    """전체 페이지에서 fail + warn + error 항목 모아서 결함 목록 생성."""
     defects = []
     issue_num = 0
     for page_id, report in all_reports:
         label      = _PAGE_LABELS.get(page_id, page_id)
         is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
-        bug_items  = [r for r in report.results if r.status in ("known_bug", "fail", "error")]
+        bug_items  = [r for r in report.results if r.status in ("fail", "warn", "known_bug", "error")]
         for r in bug_items:
             issue_num += 1
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
             scenario   = _scenario_label(r, is_list)
             steps      = _reproduce_steps(r)
             expected, actual = _expected_vs_actual(r)
-            severity   = "높음" if r.status == "fail" else ("낮음" if r.status == "known_bug" else "높음")
+            severity   = "높음" if r.status in ("fail", "error") else "낮음"
             ss_path    = r.extra.get("screenshot") if r.extra else None
             ss_html    = ""
             if ss_path:

@@ -371,7 +371,7 @@ def _make_tag_overflow_result(
         ss = _take_screenshot(page, label)
         return ScanResult(
             pattern="overflow", selector=inp_sel, label=label,
-            status="known_bug",
+            status="warn",
             detail=(
                 f"클라이언트 글자수 제한 없음 — {overflow_len}자 태그 추가 후 "
                 "등록 시 서버 오류 발생 (클라이언트 측 입력 길이 검증 누락)"
@@ -383,10 +383,10 @@ def _make_tag_overflow_result(
         ss = _take_screenshot(page, label)
         return ScanResult(
             pattern="overflow", selector=inp_sel, label=label,
-            status="known_bug",
+            status="fail",
             detail=(
                 f"클라이언트/서버 모두 글자수 제한 없음 — "
-                f"{overflow_len}자 태그 등록 성공 (DB/서버 측 검증도 누락)"
+                f"{overflow_len}자 태그 등록 성공 (DB/서버 측 검증도 누락, 데이터 손상 가능)"
             ),
             extra={"screenshot": ss} if ss else {},
             order=order, phase=_PHASE,
@@ -411,7 +411,7 @@ def _make_text_overflow_result(
         ss = _take_screenshot(page, label)
         return ScanResult(
             pattern="overflow", selector=inp_sel, label=label,
-            status="known_bug",
+            status="warn",
             detail=(
                 f"클라이언트 글자수 제한 없음 — {overflow_len}자 입력 후 "
                 "저장 시 서버 오류 발생 (클라이언트 측 입력 길이 검증 누락)"
@@ -423,10 +423,10 @@ def _make_text_overflow_result(
         ss = _take_screenshot(page, label)
         return ScanResult(
             pattern="overflow", selector=inp_sel, label=label,
-            status="known_bug",
+            status="fail",
             detail=(
                 f"클라이언트/서버 모두 글자수 제한 없음 — "
-                f"{overflow_len}자 입력 저장 성공 (DB/서버 측 검증도 누락)"
+                f"{overflow_len}자 입력 저장 성공 (DB/서버 측 검증도 누락, 데이터 손상 가능)"
             ),
             extra={"screenshot": ss} if ss else {},
             order=order, phase=_PHASE,

@@ -38,7 +38,7 @@ def _ss(page, label: str) -> str | None:
 
 # ── 모듈 상수 ─────────────────────────────────────────────────────
 _STATUS_ICON  = {"pass": "[OK]", "fail": "[FAIL]", "skip": "[SKIP]", "warn": "[WARN]"}
-_STATUS_TO_SR = {"pass": "pass", "fail": "fail", "warn": "known_bug", "skip": "skip"}
+_STATUS_TO_SR = {"pass": "pass", "fail": "fail", "warn": "warn", "skip": "skip"}
 
 _SAVE_SUCCESS_KEYWORDS = ("하시겠습니까", "저장 하였습니다", "저장하였습니다",
                            "추가되었습니다", "수정되었습니다", "하였습니다")

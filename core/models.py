@@ -21,7 +21,7 @@ class ScanResult:
                    "auto_detect" | "modal_open"
         selector : CSS selector 문자열
         label    : 사람이 읽을 수 있는 설명
-        status   : "pass" | "fail" | "skip" | "known_bug" | "error"
+        status   : "pass" | "fail" | "warn" | "skip" | "error"
         detail   : 결과 상세 메시지
         extra    : 패턴별 추가 정보 (dependent_fields, tag_id 등)
         order    : scan_hints yaml의 order 값 — 출력 정렬 기준 (None이면 패턴 타입 순)
@@ -37,7 +37,7 @@ class ScanResult:
     phase:    int           = 0
 
     def is_real_failure(self) -> bool:
-        """known_bug 와 skip 은 실패 카운트에서 제외한다."""
+        """fail 만 실패 카운트에 포함 (pytest FAIL 기준)."""
         return self.status == "fail"
 
 
@@ -58,8 +58,14 @@ class PageScanReport:
         return [r for r in self.results if r.is_real_failure()]
 
     @property
+    def warnings(self) -> list[ScanResult]:
+        """버그 (낮음) — warn 상태 항목."""
+        return [r for r in self.results if r.status in ("warn", "known_bug")]
+
+    @property
     def known_bugs(self) -> list[ScanResult]:
-        return [r for r in self.results if r.status == "known_bug"]
+        """하위 호환용 alias → warnings 와 동일."""
+        return self.warnings
 
     @property
     def errors(self) -> list[ScanResult]:
@@ -70,7 +76,7 @@ class PageScanReport:
             f"[{self.page_id}] "
             f"pass={len(self.passed)} "
             f"fail={len(self.failed)} "
-            f"known_bug={len(self.known_bugs)} "
+            f"warn={len(self.warnings)} "
             f"error={len(self.errors)}"
         )
 
