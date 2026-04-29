@@ -66,10 +66,26 @@
   page_id:       "ransom_detect_policy"
   status:        "open"
 
+# [TODO: YAML화 필요] 아래 두 항목은 list_page_runner.py에 하드코딩된 감지 로직임.
+# 추후 scan_hints/common_process.yaml의 bug_tests: 섹션으로 이동 예정.
+
+- selector:      "input#sign"
+  pattern:       "list_modify_bug"
+  test_name:     "sha2_sign_reset"
+  reason:        "전자서명 변경 시 SHA2 초기화 — sign 필드 변경 후 저장 시도 시 내부 SHA2 상태가 초기화되어 에러 발생, 수정 불가"
+  detect_method: "sign 필드 변경 후 수정 버튼 클릭 → 에러 모달 텍스트에 'SHA2'/'해시' 포함 여부로 감지 (list_page_runner.py 2.5 블록)"
+  severity:      "fail"
+  reported_date: "2026-04-29"
+  ticket:        ""
+  page_id:       "common_process"
+  status:        "open"
+
 - selector:      "button#modifyItemBtn"
   pattern:       "required_submit"
   test_name:     "edit_required_submit"
   reason:        "공통 프로세스 수정 시 SHA2 값이 기존과 동일하면 저장 실패 — SHA2 변경 없이 수정 불가, 정상 수정 흐름 차단"
+  detect_method: "required_submit validator — 수정 모달에서 필수 필드 비운 채 저장 시도"
+  severity:      "fail"
   reported_date: "2026-04-29"
   ticket:        ""
   page_id:       "common_process"
