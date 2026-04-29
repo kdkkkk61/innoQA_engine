@@ -14,7 +14,12 @@ from core.reporter import print_combined_report
 from validators.list_ui import scan_list_ui
 
 _STATUS_ICON = {
-    "pass": "[OK] ", "fail": "[FAIL]", "known_bug": "[WARN]", "skip": "[SKIP]", "error": "[ERR] ",
+    "pass":      "[OK]  ",
+    "fail":      "[FAIL]",
+    "warn":      "[WARN]",
+    "known_bug": "[WARN]",   # 하위 호환
+    "skip":      "[SKIP]",
+    "error":     "[ERR] ",
 }
 _SCENARIO_THRESHOLDS = [
     (0,   "시나리오 1: UI 구조  (탭 · 버튼 · 테이블)"),
