@@ -19,7 +19,12 @@ import os
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request, send_file
-from dashboard import dashboard_bp
+try:
+    from dashboard import dashboard_bp as dashboard_bp
+    _dashboard_available = True
+except ImportError:
+    dashboard_bp = None
+    _dashboard_available = False
 
 # ── 경로 설정 ────────────────────────────────────────────────────────
 # PyInstaller --onedir EXE 로 실행 시: sys._MEIPASS 가 존재하며
@@ -110,13 +115,18 @@ app = Flask(
     static_folder=str(_STATIC_DIR),
 )
 app.config['BASE_DIR'] = BASE_DIR
-app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
+if _dashboard_available and dashboard_bp is not None:
+    app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
 
 # dashboard DB 초기화
-from dashboard.db import init_db as _init_db
 _DB_PATH = BASE_DIR / "data" / "qa.db"
 _DB_PATH.parent.mkdir(exist_ok=True)
-_init_db(str(_DB_PATH))
+if _dashboard_available:
+    try:
+        from dashboard.db import init_db as _init_db
+        _init_db(str(_DB_PATH))
+    except Exception as _e:
+        log.warning(f"dashboard DB 초기화 실패 (무시): {_e}")
 
 # innoRelease 클라이언트 초기화 (settings.yaml 로드)
 try:
