@@ -65,3 +65,12 @@
   ticket:        ""
   page_id:       "ransom_detect_policy"
   status:        "open"
+
+- selector:      "button#modifyItemBtn"
+  pattern:       "required_submit"
+  test_name:     "edit_required_submit"
+  reason:        "공통 프로세스 수정 시 SHA2 값이 기존과 동일하면 저장 실패 — SHA2 변경 없이 수정 불가, 정상 수정 흐름 차단"
+  reported_date: "2026-04-29"
+  ticket:        ""
+  page_id:       "common_process"
+  status:        "open"

@@ -524,10 +524,10 @@ class ListPageRunner:
                     )
                     _tab = f" [{tab_label}]" if tab_label else ""
                     if "SHA2" in msg or "해시" in msg:
-                        self._known_bug(
+                        self._fail(
                             "list_modify_bug", "input#sign",
                             f"전자서명 변경 시 SHA2 초기화 (제품 버그){_tab}",
-                            f"전자서명 수정 → 내부 SHA2 상태 초기화 → 에러: '{msg}'",
+                            f"알려진 버그: 전자서명 수정 → 내부 SHA2 상태 초기화 → 저장 실패: '{msg}'",
                             order=o_save - 1,
                         )
                     else:
@@ -845,7 +845,7 @@ class ListPageRunner:
         ))
 
     def _known_bug(self, pattern, selector, label, detail, order, phase=1):
-        """제품 버그로 확인된 항목. 테스트 실패가 아닌 버그 추적용 [WARN]."""
+        """버그(낮음) — UX 불편, 검증 누락 등 [WARN]."""
         scenario_idx = sum(1 for t, _ in _SCENARIO_THRESHOLDS if order >= t) - 1
         scenario_idx = max(0, min(scenario_idx, len(_SCENARIO_THRESHOLDS) - 1))
         _, scenario_header = _SCENARIO_THRESHOLDS[scenario_idx]
@@ -853,7 +853,7 @@ class ListPageRunner:
         ss = self._take_screenshot(label)
         self.report.results.append(ScanResult(
             pattern=pattern, selector=selector, label=label,
-            status="known_bug", detail=detail, order=order, phase=phase,
+            status="warn", detail=detail, order=order, phase=phase,
             extra={"scenario_tag": scenario_tag, **({"screenshot": ss} if ss else {})},
         ))
 
