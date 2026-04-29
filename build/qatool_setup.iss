@@ -13,13 +13,13 @@
 AppName=QA Tool
 AppVersion=1.0
 AppPublisher=QA Team
-DefaultDirName={localappdata}\QATool
+DefaultDirName={autopf64}\QATool
 DefaultGroupName=QA Tool
 OutputBaseFilename=qatool_setup
 OutputDir=output
 Compression=lzma2/ultra64
 SolidCompression=yes
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
 UninstallDisplayName=QA Tool

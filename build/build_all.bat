@@ -118,7 +118,7 @@ if exist "%SCRIPT_DIR%build_pi" rmdir /s /q "%SCRIPT_DIR%build_pi"
 
 REM cd into build dir to avoid trailing-backslash quote-escape bug in paths
 pushd "%SCRIPT_DIR%"
-python -m PyInstaller --onefile --noconsole --name qatool --distpath dist_launcher --workpath build_pi --specpath . launcher.py
+python -m PyInstaller --onefile --noconsole --uac-admin --name qatool --distpath dist_launcher --workpath build_pi --specpath . launcher.py
 popd
 
 if errorlevel 1 (
