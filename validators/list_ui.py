@@ -46,6 +46,7 @@ def scan_list_ui(
 
     _scan_tabs(page, cfg, report)
     _scan_search(page, cfg, report)
+    _scan_buttons(page, cfg, report)
     _scan_table(page, cfg, report)
 
 
@@ -233,6 +234,47 @@ def _scan_search(page, cfg: dict, report: PageScanReport) -> None:
             label=label, status="error", detail=str(e),
             order=20, phase=_PHASE,
         ))
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 버튼 존재 확인
+# YAML: list_ui.buttons: [{selector, label}, ...]
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _scan_buttons(page, cfg: dict, report: PageScanReport) -> None:
+    buttons = cfg.get("buttons", [])
+    if not buttons:
+        return
+
+    for i, btn in enumerate(buttons):
+        sel   = btn.get("selector", "")
+        label = btn.get("label", sel)
+        order = 25 + i  # 검색(20~21) 다음, 테이블(30) 이전
+        try:
+            exists = page.locator(sel).count() > 0
+            if exists:
+                report.results.append(ScanResult(
+                    pattern="list_button", selector=sel,
+                    label=f"버튼 존재 — {label}",
+                    status="pass",
+                    detail=f"{sel} 존재 확인",
+                    order=order, phase=_PHASE,
+                ))
+            else:
+                report.results.append(ScanResult(
+                    pattern="list_button", selector=sel,
+                    label=f"버튼 존재 — {label}",
+                    status="fail",
+                    detail=f"버튼 없음: {sel}",
+                    order=order, phase=_PHASE,
+                ))
+        except Exception as e:
+            report.results.append(ScanResult(
+                pattern="list_button", selector=sel,
+                label=f"버튼 존재 — {label}",
+                status="error", detail=str(e),
+                order=order, phase=_PHASE,
+            ))
 
 
 # ──────────────────────────────────────────────────────────────────────────────

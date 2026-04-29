@@ -1,0 +1,501 @@
+# config/scan_hints/inno_mark_template.yaml
+# innoMark 템플릿 관리 페이지 스캔 힌트
+# DOM 수집 완료 (2026-04-16) — Chrome MCP 직접 확인
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# [조건부 가시성 매트릭스] Chrome MCP 전수 확인 (2026-04-14 / 2026-04-16)
+#
+#   필드/섹션               DISPLAY+TEXT  DISPLAY+IMAGE  PRINT+TEXT  PRINT+IMAGE
+#   ─────────────────────────────────────────────────────────────────────────
+#   imTemplateName          ✅            ✅             ✅          ✅   항상
+#   textSize / textSizeType ✅            ✅             ✅          ✅   항상
+#   textColor               ✅            ✅             ✅          ✅   항상
+#   textDegree              ✅            ✅             ✅          ✅   항상
+#   splitScreenLocationType ✅            ✅             ✅          ✅   항상
+#   ─────────────────────────────────────────────────────────────────────────
+#   textLetter (CE)         ✅            ❌             ✅          ❌   imTemplateType=TEXT
+#   isTextLetterQrcode      ✅            ❌             ✅          ❌   imTemplateType=TEXT
+#   ─────────────────────────────────────────────────────────────────────────
+#   imageName (read-only)   ❌            ✅             ❌          ✅   imTemplateType=IMAGE
+#   imageWidth              ❌            ✅             ❌          ✅   imTemplateType=IMAGE
+#   imageBottomText (CE)    ❌            ✅             ❌          ✅   imTemplateType=IMAGE
+#   ─────────────────────────────────────────────────────────────────────────
+#   isTextOutline           ✅            ✅             ❌          ❌   imTemplateUseType=DISPLAY
+#   waterMarkOpacity        ✅            ✅             ❌          ❌   imTemplateUseType=DISPLAY
+#   ─────────────────────────────────────────────────────────────────────────
+#
+# [DOM 섹션 ID — 가시성 제어 래퍼]
+#   div#displayTextType         — TEXT  모드 전용 (textLetter + isTextLetterQrcode)
+#   div#displayImageType        — IMAGE 모드 전용 (imageName + imageWidth + imageBottomText)
+#   div#displayTextOutline      — DISPLAY 타입 전용 (isTextOutline)
+#   div#displayWaterMarkOpacity — DISPLAY 타입 전용 (waterMarkOpacity)
+#
+# [구조 특이사항]
+#   - 모달 ID: div#addInnoMarkTemplateControl (class: modal-wrap in)
+#   - 탭 없음 — 단일 뷰
+#   - 확인(ADD) / 수정(EDIT) 버튼이 동일 위치에 display:none 으로 전환
+#
+# [미구현 패턴 — 향후 validator 구현 후 scanner에 연결 예정]
+#   contenteditable : div#textLetter, div#imageBottomText
+#   color_input     : input#textColor
+#   grid_selector   : table#splitScreenLocationType
+#   image_upload    : button#addTemplateImageFileBtn
+#
+# [기본값 — Chrome MCP ADD 모달 최초 열림 확인 (2026-04-14 / 2026-04-16)]
+#   imTemplateUseType      = DISPLAY
+#   imTemplateType         = TEXT
+#   textSize               = 50
+#   textSizeType           = MM
+#   textColor              = #b40431
+#   textDegree             = 0
+#   waterMarkOpacity       = 30
+#   imageWidth             = 100
+#   isTextLetterQrcode     = false
+#   isTextOutline          = false
+#   splitScreenLocationType 기본 선택 = CENTER
+#
+# [order 규칙]
+#   10단위 간격, 화면 상단→하단 순
+#   제출 검증: 9999
+# ──────────────────────────────────────────────────────────────────────────────
+
+page_id:   "inno_mark_template"
+modal_id:  "addInnoMarkTemplateControl"
+scan_mode: "modal_form"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 시나리오 1: UI 구조 (탭 · 검색 · 버튼 · 테이블)
+# ──────────────────────────────────────────────────────────────────────────────
+list_ui:
+  tabs: []   # 목록 페이지 탭 없음 → ⏭ skip
+
+  search:
+    input:     "input#searchText"
+    button:    null            # 검색 버튼 없음 — Enter 키로 실행
+    maxlength: null            # DOM maxlength 없음 (Chrome MCP 확인 2026-04-16)
+    label:     "템플릿 이름 검색창"
+
+  buttons:
+    - selector: "button#addItemBtn"
+      label:    "추가 버튼"
+    - selector: "button#modifyItemBtn"
+      label:    "수정 버튼"
+    - selector: "button#removeItemBtn"
+      label:    "삭제 버튼"
+
+  table:
+    headers:
+      - "템플릿 이름"
+      - "표시형식"
+      - "기울기"
+      - "불투명도"
+      - "위치"
+      - "등록일"
+      - "수정일"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 모달 진입점 · 액션 버튼
+# ──────────────────────────────────────────────────────────────────────────────
+modal_trigger:
+  add:    "button#addItemBtn"
+  modify: "button#modifyItemBtn"
+
+modal_actions:
+  submit_add:    "div#addInnoMarkTemplateControl.in button.btn-primary.btn-sm:has-text('확인')"
+  submit_modify: "div#addInnoMarkTemplateControl.in button.btn-primary.btn-sm:has-text('수정')"
+  close:         "div#addInnoMarkTemplateControl.in button.btn-default.btn-sm"
+
+# 탭 없음 — 단일 뷰
+modal_tabs: []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 시나리오 2: 필수 입력 검증
+# Chrome MCP 직접 테스트 확인 (2026-04-14)
+# ──────────────────────────────────────────────────────────────────────────────
+required_submit_sequence:
+  - step:               "0_dup"
+    description:        "중복 이름 등록 시도"
+    fill_from_context:  "existing_name"
+    fill_target:        "imTemplateName"
+    fill_contenteditable_before:
+      - id:    "textLetter"
+        value: "SCAN_TEST"
+    phases_only:        [2]
+    expected_type:      "any_warning"
+    reset_after:        ["imTemplateName"]
+    missing_field:      "imTemplateName"
+    missing_field_label: "템플릿 이름"
+
+  - step:               1
+    description:        "아무것도 입력 안 함"
+    fill:               []
+    expected_msg:       "템플릿 이름을 입력해 주세요."
+    missing_field:      "imTemplateName"
+    missing_field_label: "템플릿 이름"
+
+  - step:               2
+    description:        "이름만 입력 (표시 문구 없음, TEXT 모드)"
+    fill:               ["imTemplateName"]
+    expected_msg:       "표시할 문구를 입력해 주세요."
+    missing_field:      "textLetter"
+    missing_field_label: "표시할 문구"
+
+  - step:               3
+    description:        "이름 + 표시 문구 입력 → 성공"
+    fill:               ["imTemplateName"]
+    fill_contenteditable:
+      - id:    "textLetter"
+        value: "SCAN_TEST"
+    expected:           "success"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 시나리오 2: 텍스트 입력 필드
+#   visible_when:
+#     "always"                  — 항상 표시
+#     "imTemplateUseType=DISPLAY" — 화면 타입 선택 시만 표시
+#     "imTemplateType=TEXT"      — 텍스트 표시형식 선택 시만 표시
+#     "imTemplateType=IMAGE"     — 이미지 표시형식 선택 시만 표시
+# ──────────────────────────────────────────────────────────────────────────────
+text_inputs:
+  - selector:      "input#imTemplateName"
+    label:         "템플릿 이름"
+    maxlength:     30
+    required:      true
+    test_value:    "[AUTO]_seq"
+    order:         20
+    visible_when:  "always"
+
+  - selector:      "input#textSize"
+    label:         "텍스트 크기"
+    maxlength:     null        # DOM maxlength 없음 — JS 클램핑 여부 미확인
+    required:      false
+    test_value:    "75"
+    default:       "50"
+    order:         70
+    visible_when:  "always"
+
+  - selector:      "input#textDegree"
+    label:         "기울기 (도)"
+    maxlength:     null        # DOM maxlength 없음
+    required:      false
+    test_value:    "30"
+    default:       "0"
+    order:         100
+    visible_when:  "always"
+
+  - selector:      "input#waterMarkOpacity"
+    label:         "워터마크 불투명도"
+    maxlength:     null
+    required:      false
+    test_value:    "80"
+    default:       "30"
+    order:         110
+    visible_when:  "imTemplateUseType=DISPLAY"
+    parent_div:    "displayWaterMarkOpacity"
+
+  - selector:      "input#imageWidth"
+    label:         "이미지 크기"
+    maxlength:     null
+    required:      false       # IMAGE 모드에서만 의미있음
+    test_value:    "150"
+    default:       "100"
+    order:         50
+    visible_when:  "imTemplateType=IMAGE"
+    parent_div:    "displayImageType"
+
+  - selector:      "input#imageName"
+    label:         "이미지 파일명"
+    maxlength:     null
+    required:      false
+    test_value:    ""
+    default:       ""
+    order:         40
+    visible_when:  "imTemplateType=IMAGE"
+    parent_div:    "displayImageType"
+    note:          "read-only — 파일 업로드 시 자동 설정. 직접 입력 불가."
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 시나리오 2: 라디오 버튼 그룹
+# ──────────────────────────────────────────────────────────────────────────────
+radio_groups:
+  - name:    "imTemplateUseType"
+    label:   "템플릿 타입 (화면/출력물)"
+    default: "DISPLAY"
+    order:   10
+    visible_when: "always"
+    options:
+      - selector: "input#templateUseDisplayType"
+        value:    "DISPLAY"
+        label:    "화면"
+      - selector: "input#templateUsePrintType"
+        value:    "PRINT"
+        label:    "출력물"
+    # DISPLAY 선택 시만 표시: div#displayTextOutline, div#displayWaterMarkOpacity
+    controls_visibility:
+      DISPLAY: ["isTextOutline", "waterMarkOpacity"]
+      PRINT:   []
+
+  - name:    "imTemplateType"
+    label:   "표시형식 (텍스트/이미지)"
+    default: "TEXT"
+    order:   30
+    visible_when: "always"
+    options:
+      - selector: "input#textTypeTemplate"
+        value:    "TEXT"
+        label:    "텍스트"
+      - selector: "input#imageTypeTemplate"
+        value:    "IMAGE"
+        label:    "이미지"
+    # TEXT  선택 시만 표시: div#displayTextType (textLetter, isTextLetterQrcode)
+    # IMAGE 선택 시만 표시: div#displayImageType (imageName, imageWidth, imageBottomText)
+    controls_visibility:
+      TEXT:  ["textLetter", "isTextLetterQrcode"]
+      IMAGE: ["imageName", "imageWidth", "imageBottomText"]
+
+  - name:    "textSizeType"
+    label:   "텍스트 크기 단위"
+    default: "MM"
+    order:   80
+    visible_when: "always"
+    options:
+      - selector: "input#textSizeTypeMM"
+        value:    "MM"
+        label:    "mm"
+      - selector: "input#textSizeTypePT"
+        value:    "PT"
+        label:    "pt"
+      - selector: "input#textSizeTypePercent"
+        value:    "PERCENT"
+        label:    "%"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 시나리오 2: 일반 체크박스
+# ──────────────────────────────────────────────────────────────────────────────
+plain_checkboxes:
+  - selector:     "input#isTextLetterQrcode"
+    label:        "표시 문구를 QR코드로 표시"
+    default:      false
+    order:        45
+    visible_when: "imTemplateType=TEXT"
+    parent_div:   "displayTextType"
+
+  - selector:     "input#isTextOutline"
+    label:        "글자 외곽선"
+    default:      false
+    order:        95
+    visible_when: "imTemplateUseType=DISPLAY"
+    parent_div:   "displayTextOutline"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 토글 체크박스 — 없음
+# ──────────────────────────────────────────────────────────────────────────────
+toggle_checkboxes: []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 태그 입력 — 없음
+# ──────────────────────────────────────────────────────────────────────────────
+tag_input: []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# [미구현 패턴 — validator 구현 후 scanner에 연결 예정]
+# ──────────────────────────────────────────────────────────────────────────────
+
+# contenteditable 필드 (div[contenteditable])
+# TEXT  모드 필수: div#textLetter       — 표시할 문구
+# IMAGE 모드 선택: div#imageBottomText  — 이미지 하단 표시 문구
+contenteditable_inputs:
+  - id:           "textLetter"
+    label:        "표시할 문구"
+    required:     true
+    test_value:   "SCAN_TEST"
+    order:        35
+    visible_when: "imTemplateType=TEXT"
+    parent_div:   "displayTextType"
+    note:         "TEXT 모드 필수. getRangeAt(0) 오류 방지 위해 클릭 전 focus+selection 필요."
+
+  - id:           "imageBottomText"
+    label:        "이미지 하단 표시 문구"
+    required:     false
+    test_value:   "SCAN_BOTTOM"
+    order:        55
+    visible_when: "imTemplateType=IMAGE"
+    parent_div:   "displayImageType"
+
+# 색상 입력 (input[type="color"])
+# Chrome MCP 확인 (2026-04-16): input#textColor, type=color, 기본값=#b40431
+color_inputs:
+  - selector:    "input#textColor"
+    label:       "텍스트 색상"
+    default:     "#b40431"
+    test_value:  "#ff0000"
+    order:       90
+    visible_when: "always"
+    note:        "type=color. JS로 value 직접 설정 + change 이벤트 dispatch 필요."
+
+# 위치 그리드 (3×3 td[data-split-location])
+# Chrome MCP 확인 (2026-04-16): table#splitScreenLocationType
+#   셀: td[data-split-location="TOP_LEFT|TOP_CENTER|TOP_RIGHT|
+#                               MIDDLE_LEFT|CENTER|MIDDLE_RIGHT|
+#                               BOTTOM_LEFT|BOTTOM_CENTER|BOTTOM_RIGHT"]
+#   선택 표시: innerText "●" (CSS class 없음)
+#   기본 선택: CENTER
+grid_selector:
+  - selector:    "table#splitScreenLocationType"
+    label:       "분할화면 위치"
+    default:     "CENTER"
+    test_value:  "TOP_RIGHT"
+    order:       120
+    visible_when: "always"
+    cell_attr:   "data-split-location"   # 선택 셀 식별 속성
+    selected_marker: "●"                 # innerText로 선택 여부 판단
+    options:
+      - value: "TOP_LEFT"
+        label: "좌상"
+      - value: "TOP_CENTER"
+        label: "중상"
+      - value: "TOP_RIGHT"
+        label: "우상"
+      - value: "MIDDLE_LEFT"
+        label: "좌중"
+      - value: "CENTER"
+        label: "중앙"
+      - value: "MIDDLE_RIGHT"
+        label: "우중"
+      - value: "BOTTOM_LEFT"
+        label: "좌하"
+      - value: "BOTTOM_CENTER"
+        label: "중하"
+      - value: "BOTTOM_RIGHT"
+        label: "우하"
+
+# 이미지 업로드
+# Chrome MCP 확인 (2026-04-16): button#addTemplateImageFileBtn → OS 파일 다이얼로그
+#   허용 확장자: png만 허용 (그 외 → "업로드 허용되지 않은 확장자 입니다." 팝업)
+#   파일 선택 후 imageName 자동 설정
+#   자동화: expect_file_chooser() + set_files() 방식 (Dropzone OS 다이얼로그 경유)
+image_upload:
+  - selector:       "button#addTemplateImageFileBtn"
+    label:          "이미지 파일 등록"
+    order:          42
+    visible_when:   "imTemplateType=IMAGE"
+    parent_div:     "displayImageType"
+    accept:         ["png"]              # 서버 허용 확장자
+    fixture_file:   "tests/fixtures/test_watermark.png"
+    result_field:   "input#imageName"   # 업로드 성공 시 자동 채워지는 필드
+    error_msg:      "업로드 허용되지 않은 확장자 입니다. (허용 확장자 : png)"
+    note:           "Dropzone.js. OS 다이얼로그 경유 시에만 검증 파이프라인 실행."
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 시나리오 3: CRUD 설정
+# ──────────────────────────────────────────────────────────────────────────────
+crud:
+  name_field:   "input#imTemplateName"
+  name_prefix:  "[AUTO]"
+  base_name:    "[AUTO]_tmpl"
+
+  # 생성 시 기본 입력값 (TEXT 모드 기준)
+  create_defaults:
+    use_type:      "DISPLAY"
+    template_type: "TEXT"
+    text_content:  "SCAN_TEST"
+
+  # 수정 시 변경값
+  modify_values:
+    name_suffix:   "_수정"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 시나리오 4: 수정 검증 — 저장값 복원 확인
+# 비기본값으로 저장 후 수정 모달 재오픈 시 동일 값 확인
+# ──────────────────────────────────────────────────────────────────────────────
+modify_verify:
+  # 저장할 값 (기본값과 다른 값)
+  set_values:
+    "input#textSize":        "75"
+    "input#textSizeTypePT":  "checked"    # PT 단위
+    "input#textDegree":      "30"
+    "input#waterMarkOpacity": "80"
+    "input#textColor":        "#ff0000"   # color_input
+    "input#isTextOutline":   "checked"
+    "input#isTextLetterQrcode": "checked"
+    "grid#splitScreenLocationType": "TOP_RIGHT"   # grid_selector
+    "contenteditable#textLetter":   "S4_VERIFY"  # contenteditable
+
+  # 재오픈 후 확인할 값
+  expected_values:
+    "input#textSize":            "75"
+    "input#textSizeTypePT":      "checked"
+    "input#textDegree":          "30"
+    "input#waterMarkOpacity":    "80"
+    "input#textColor":           "#ff0000"
+    "input#isTextOutline":       "checked"
+    "input#isTextLetterQrcode":  "checked"
+    "grid#splitScreenLocationType":  "TOP_RIGHT"
+    "contenteditable#textLetter":    "S4_VERIFY"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 시나리오 5: 케이스 검증 — 4가지 타입 조합 저장값 복원
+# DISPLAY/PRINT × TEXT/IMAGE 4가지 조합 생성 후 수정 모달 재오픈 시
+# 라디오 버튼 및 조건부 섹션 가시성이 올바르게 복원되는지 확인
+# ──────────────────────────────────────────────────────────────────────────────
+type_combinations:
+  - use_type:      "DISPLAY"
+    template_type: "TEXT"
+    name:          "[AUTO]_s5_disp_text"
+    verify:
+      radio:
+        "input#templateUseDisplayType": "checked"
+        "input#textTypeTemplate":       "checked"
+      sections_visible:
+        - "div#displayTextOutline"       # DISPLAY 전용
+        - "div#displayWaterMarkOpacity"  # DISPLAY 전용
+        - "div#displayTextType"          # TEXT 전용
+      sections_hidden:
+        - "div#displayImageType"         # IMAGE 전용
+
+  - use_type:      "DISPLAY"
+    template_type: "IMAGE"
+    name:          "[AUTO]_s5_disp_img"
+    verify:
+      radio:
+        "input#templateUseDisplayType": "checked"
+        "input#imageTypeTemplate":      "checked"
+      sections_visible:
+        - "div#displayTextOutline"
+        - "div#displayWaterMarkOpacity"
+        - "div#displayImageType"
+      sections_hidden:
+        - "div#displayTextType"
+
+  - use_type:      "PRINT"
+    template_type: "TEXT"
+    name:          "[AUTO]_s5_print_text"
+    verify:
+      radio:
+        "input#templateUsePrintType":   "checked"
+        "input#textTypeTemplate":       "checked"
+      sections_visible:
+        - "div#displayTextType"
+      sections_hidden:
+        - "div#displayTextOutline"       # PRINT에서 숨김
+        - "div#displayWaterMarkOpacity"  # PRINT에서 숨김
+        - "div#displayImageType"
+
+  - use_type:      "PRINT"
+    template_type: "IMAGE"
+    name:          "[AUTO]_s5_print_img"
+    verify:
+      radio:
+        "input#templateUsePrintType":   "checked"
+        "input#imageTypeTemplate":      "checked"
+      sections_visible:
+        - "div#displayImageType"
+      sections_hidden:
+        - "div#displayTextOutline"
+        - "div#displayWaterMarkOpacity"
+        - "div#displayTextType"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 오버플로 테스트 — 해당 없음 (태그 입력 필드 없음)
+# ──────────────────────────────────────────────────────────────────────────────
+overflow_tests: []

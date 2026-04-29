@@ -79,6 +79,25 @@ _dependency_results: dict = {}
 # HTML 리포트용 — (page_id, PageScanReport) 수집 버퍼
 _scan_reports: list = []
 
+def _extract_fail_msg(report) -> str:
+    """pytest report에서 AssertionError 메시지만 추출 (최대 200자)."""
+    try:
+        text = str(report.longrepr)
+        for line in reversed(text.splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            # "E   AssertionError: ..." 형태
+            if "AssertionError:" in line:
+                return line.split("AssertionError:", 1)[-1].strip()[:200]
+            # "E   playwright..." 등 마지막 의미있는 줄
+            if line.startswith("E "):
+                return line[2:].strip()[:200]
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        return lines[-1][:200] if lines else "실패"
+    except Exception:
+        return "실패"
+
 # ------------------------------------------------------------------
 # 테스트 진행 중 주입 요소 JS
 # 1. 클릭 차단 오버레이 (qa-block-overlay): pointer-events:all 로 페이지 클릭 차단
@@ -241,21 +260,37 @@ def pytest_unconfigure(config):
     """테스트 종료 시 HTML 리포트 생성 → 로그 파일 닫고 last_run.log에 복사."""
     from pathlib import Path
 
-    # ── HTML 리포트 생성 (scan_reports 있을 때만) ─────────────────────
+    # ── HTML 리포트 생성 (scan_reports 있을 때만) ────────────────────────
     if _scan_reports:
         try:
             import yaml as _yaml
-            with open(CONFIG_PATH, encoding="utf-8") as _f:
-                _cfg = _yaml.safe_load(_f) or {}
-            product_name = _cfg.get("product_name", "RansomCruncher")
+            from core.models import PageScanReport as _PSR
             from core.html_reporter import generate_html_report
+
+            # 같은 page_id 리포트 머지 (nPouch: 시나리오별 5개 → 1개로 합산)
+            _merged: dict[str, list] = {}
+            for _pid, _rpt in _scan_reports:
+                _merged.setdefault(_pid, []).append(_rpt)
+            _merged_list = [
+                (_pid, _PSR.merge(*_rpts))
+                for _pid, _rpts in _merged.items()
+            ]
+
+            # 제품명 자동 감지 (page_id 접두사 기준)
+            _all_ids = list(_merged.keys())
+            if any(_pid.startswith("npouch_") for _pid in _all_ids):
+                product_name = "nPouch"
+            else:
+                with open(CONFIG_PATH, encoding="utf-8") as _f:
+                    _cfg = _yaml.safe_load(_f) or {}
+                product_name = _cfg.get("product_name", "RansomCruncher")
+
             html_path = generate_html_report(
-                _scan_reports,
+                _merged_list,
                 product_name=product_name,
-                output_dir="reports",
-                screenshot_dir=None,   # 별도 스크린샷 섹션 제거 (결함 카드에 포함됨)
+                output_dir=f"reports/{product_name}",
+                screenshot_dir=None,
             )
-            # stdout이 아직 Tee 상태일 수 있으므로 직접 write
             sys.stdout.write(f"\n[HTML 리포트] {html_path}\n")
             sys.stdout.flush()
         except Exception as _e:
@@ -476,14 +511,15 @@ def pytest_runtest_makereport(item, call):
         if marker and marker.kwargs.get("name"):
             _dependency_results[marker.kwargs["name"]] = report.passed
 
-    # HTML 리포트용 스캔 결과 수집 (test_page_scan 전용)
+    # HTML 리포트용 스캔 결과 수집 (test_page_scan + test_npouch 공통)
     if report.when == "call":
         scan_report = getattr(item, "_scan_report", None)
         if scan_report is not None:
             try:
                 page_id = item.callspec.params.get("page_id")
             except AttributeError:
-                page_id = None
+                # nPouch: 클래스 메서드 방식 — callspec 없음
+                page_id = getattr(item, "_npouch_page_id", None)
             if page_id:
                 _scan_reports.append((page_id, scan_report))
 

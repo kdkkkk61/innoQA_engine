@@ -1,0 +1,636 @@
+# inno_mark_policy 페이지 스캔 힌트
+# DOM 기반 수집 완료 (2026-04-13) — Chrome MCP 직접 확인
+# 휴리스틱보다 이 파일이 항상 우선 적용됨
+#
+# [구조 특이사항]
+# - 모달 ID: div#addInnoMarkPolicyControl
+# - 모달 탭 5개 — data-tab 속성 없음, ul.nav li a 텍스트 기준 (tab_text 폴백 사용)
+# - 정책 이름만 필수 (no 확장자 필드 등 추가 필수 없음)
+# - 화면 / 프린트 워터마크 그리드(3×3): 각 셀 RegistBtn 클릭 → 템플릿 선택 팝업
+#   (grid 패턴은 별도 validator 구현 예정)
+#
+# [order 규칙]
+# - 기본정책 탭:        10 ~ 99
+# - 고급기능 설정 탭:  100 ~ 299
+# - 트리거 설정 탭:    300 ~ 399
+# - 캡처허용 프로세스: 400 ~ 499
+# - 실행차단 프로세스: 500 ~ 599
+# - 제출 검증:        9999
+#
+# [기본값 출처]
+# - Chrome MCP javascript_tool outerHTML 추출 (2026-04-13)
+# - [TODO] 항목: 추가 MCP 확인 필요 (default 미확정)
+
+page_id:   "inno_mark_policy"
+modal_id:  "addInnoMarkPolicyControl"
+scan_mode: "modal_form"   # run_3phase_scan 사용
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 시나리오 1: UI 구조 (테이블 헤더 · 검색)
+# ──────────────────────────────────────────────────────────────────────────────
+list_ui:
+  tabs: []   # 목록 페이지는 탭 없음 → ⏭ skip
+
+  search:
+    input:     "input#searchText"
+    button:    null          # [TODO] 검색 버튼 selector MCP 확인 필요
+    maxlength: null          # [TODO] DOM maxlength MCP 확인 필요
+    label:     "정책 이름 검색창"
+
+  table:
+    headers:
+      - "정책 이름"
+      - "등록일"
+      - "수정일"
+
+# 모달 진입점
+modal_trigger:
+  add:    "button#addItemBtn"
+  modify: "button#modifyItemBtn"
+
+# 모달 닫기 / 확인 버튼 — ID 없음, class 기준
+modal_actions:
+  close:         "div#addInnoMarkPolicyControl button.btn-default.btn-sm"
+  submit_add:    "div#addInnoMarkPolicyControl button.btn-primary.btn-sm:has-text('확인')"
+  submit_modify: "div#addInnoMarkPolicyControl button.btn-primary.btn-sm:has-text('수정')"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 모달 탭 구조 — tab_text 폴백 (data-tab 속성 없음)
+# ──────────────────────────────────────────────────────────────────────────────
+modal_tabs:
+  - tab_id:      "im_tab_basic"
+    tab_text:    "기본정책"
+    label:       "기본정책"
+    start_order: 0           # order 0 ~ 99 항목은 이 탭 구간으로 출력
+
+  - tab_id:      "im_tab_advanced"
+    tab_text:    "고급기능 설정"
+    label:       "고급기능 설정"
+    start_order: 100         # order 100 ~ 299
+
+  - tab_id:      "im_tab_trigger"
+    tab_text:    "트리거 설정"
+    label:       "트리거 설정"
+    start_order: 300         # order 300 ~ 399
+
+  - tab_id:      "im_tab_capture_allow"
+    tab_text:    "캡처허용 프로세스"
+    label:       "캡처허용 프로세스"
+    start_order: 400         # order 400 ~ 499
+
+  - tab_id:      "im_tab_exec_block"
+    tab_text:    "실행차단 프로세스"
+    label:       "실행차단 프로세스"
+    start_order: 500         # order 500 ~ 599
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 필수 입력 검증 순서
+# innoMark 정책: 정책 이름만 필수 (사용자 확인, 2026-04-13)
+# ──────────────────────────────────────────────────────────────────────────────
+required_submit_sequence:
+  - step:               "0_dup"
+    description:        "중복 이름 등록 시도"
+    fill_from_context:  "existing_name"
+    fill_target:        "imPolicyName"
+    phases_only:        [2]
+    expected_type:      "any_warning"
+    reset_after:        ["imPolicyName"]
+    missing_field:      "imPolicyName"
+    missing_field_label: "정책 이름"
+
+  - step:               1
+    description:        "아무것도 입력 안 함"
+    fill:               []
+    expected_msg:       "정책 이름을 입력해 주세요."
+    missing_field:      "imPolicyName"
+    missing_field_label: "정책 이름"
+
+  - step:               2
+    description:        "정책 이름 입력"
+    fill:               ["imPolicyName"]
+    expected:           "success"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 텍스트 입력
+# ──────────────────────────────────────────────────────────────────────────────
+text_inputs:
+  - selector:   "input#imPolicyName"
+    label:      "정책 이름"
+    maxlength:  20          # [TODO] DOM maxlength MCP 확인 필요 — 20으로 추정
+    required:   true
+    test_value: "[AUTO]_seq"
+    tab:        "im_tab_basic"
+    order:      10
+
+  # 고급기능 설정 탭 — 캡처 차단 메시지
+  - selector:   "input#blockPrintScreenText"
+    label:      "캡처 차단 메시지"
+    maxlength:  null        # [TODO] DOM maxlength MCP 확인 필요
+    required:   false
+    test_value: "scan_capture_msg"
+    tab:        "im_tab_advanced"
+    order:      115
+    parent_toggle: "input#isCapturePrevent"
+
+  # 고급기능 설정 탭 — 동적 투명도 설정
+  - selector:   "input#dynamicOpacityAwaySeconds"
+    label:      "동적 투명도 전환 시간(초)"
+    maxlength:  null        # [TODO] MCP 확인 필요 (number type)
+    required:   false
+    test_value: ""
+    tab:        "im_tab_advanced"
+    order:      131
+    parent_toggle: "input#isDynamicOpacity"
+
+  - selector:   "input#dynamicOpacityIncrease"
+    label:      "동적 투명도 증가값"
+    maxlength:  null
+    required:   false
+    test_value: ""
+    tab:        "im_tab_advanced"
+    order:      132
+    parent_toggle: "input#isDynamicOpacity"
+
+  # 고급기능 설정 탭 — 워터마크 위치 이동
+  - selector:   "input#watermarkLocationMoveSeconds"
+    label:      "워터마크 위치 이동 주기(초)"
+    maxlength:  null
+    required:   false
+    test_value: ""
+    tab:        "im_tab_advanced"
+    order:      141
+    parent_toggle: "input#isWatermarkLocationMove"
+
+  - selector:   "input#watermarkLocationMoveWidth"
+    label:      "이동 폭 범위"
+    maxlength:  null
+    required:   false
+    test_value: ""
+    tab:        "im_tab_advanced"
+    order:      142
+    parent_toggle: "input#isWatermarkLocationMove"
+
+  - selector:   "input#watermarkLocationMoveHeight"
+    label:      "이동 높이 범위"
+    maxlength:  null
+    required:   false
+    test_value: ""
+    tab:        "im_tab_advanced"
+    order:      143
+    parent_toggle: "input#isWatermarkLocationMove"
+
+  # 고급기능 설정 탭 — 투명 워터마크 농도
+  - selector:   "input#targetInvisibleWatermarkDensity"
+    label:      "타겟 비가시 워터마크 농도"
+    maxlength:  null
+    required:   false
+    test_value: ""
+    tab:        "im_tab_advanced"
+    order:      161
+    parent_toggle: "input#isTargetWatermark"
+
+  - selector:   "input#invisibleWatermarkScrDensity"
+    label:      "화면 비가시 워터마크 농도"
+    maxlength:  null
+    required:   false
+    test_value: ""
+    tab:        "im_tab_advanced"
+    order:      171
+    parent_toggle: "input#isInvisibleWatermark"
+
+  - selector:   "input#invisibleWatermarkPrtDensity"
+    label:      "프린트 비가시 워터마크 농도"
+    maxlength:  null
+    required:   false
+    test_value: ""
+    tab:        "im_tab_advanced"
+    order:      172
+    parent_toggle: "input#isInvisibleWatermark"
+
+  # 고급기능 설정 탭 — 권한 비밀번호
+  - selector:   "input#authorizationPassword"
+    label:      "권한 해제 비밀번호"
+    maxlength:  null        # [TODO] MCP 확인 필요
+    required:   false
+    test_value: ""
+    tab:        "im_tab_advanced"
+    order:      191
+    parent_toggle: "input#isAuthorizationPassword"
+
+  - selector:   "input#authorizationPasswordConfirm"
+    label:      "비밀번호 확인"
+    maxlength:  null
+    required:   false
+    test_value: ""
+    tab:        "im_tab_advanced"
+    order:      192
+    parent_toggle: "input#isAuthorizationPassword"
+
+  # 고급기능 설정 탭 — 사용자 정의 옵션 텍스트
+  - selector:   "input#customOptionText"
+    label:      "사용자 정의 옵션 텍스트"
+    maxlength:  null        # [TODO] MCP 확인 필요
+    required:   false
+    test_value: "scan_custom"
+    tab:        "im_tab_advanced"
+    order:      200
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 일반 체크박스 (기본정책 탭 — 트리거 조건)
+# default: [TODO] ADD 모달 최초 열림 시 상태 MCP 확인 필요
+# ──────────────────────────────────────────────────────────────────────────────
+plain_checkboxes:
+  - selector: "input#isProcessTrigger"
+    label:    "프로세스 트리거"
+    default:  false         # [TODO] MCP 확인 필요
+    tab:      "im_tab_basic"
+    order:    30
+
+  - selector: "input#isUrlTrigger"
+    label:    "URL 트리거"
+    default:  false
+    tab:      "im_tab_basic"
+    order:    31
+
+  - selector: "input#isIpTrigger"
+    label:    "IP 트리거"
+    default:  false
+    tab:      "im_tab_basic"
+    order:    32
+
+  - selector: "input#isRegistTrigger"
+    label:    "레지스트리 트리거"
+    default:  false
+    tab:      "im_tab_basic"
+    order:    33
+
+  - selector: "input#isRdpIpTrigger"
+    label:    "RDP IP 트리거"
+    default:  false
+    tab:      "im_tab_basic"
+    order:    34
+
+  - selector: "input#workingTimeTrigger"
+    label:    "근무시간 트리거"
+    default:  false
+    tab:      "im_tab_basic"
+    order:    35
+
+  # 고급기능 설정 탭 — 캡처 차단 세부
+  - selector: "input#isBlockPrintScreenText"
+    label:    "캡처 차단 메시지 표시"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    114
+    parent_toggle: "input#isCapturePrevent"
+
+  - selector: "input#isImCaptureAllowProcess"
+    label:    "캡처 허용 프로세스 사용"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    116
+    parent_toggle: "input#isCapturePrevent"
+
+  - selector: "input#isUseCaptureImageCollection"
+    label:    "캡처 이미지 수집 사용"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    117
+    parent_toggle: "input#isCapturePrevent"
+
+  # 고급기능 설정 탭 — 실행 차단 프로세스
+  - selector: "input#isExecuteBlockProcess"
+    label:    "실행 차단 프로세스 사용"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    150
+
+  # 고급기능 설정 탭 — 프린트 마스킹 세부
+  - selector: "input#check_box_menu_id_REGIST"
+    label:    "주민등록번호 마스킹"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    181
+    parent_toggle: "input#isPrintMaskingUse"
+
+  - selector: "input#check_box_menu_id_PASSPORT"
+    label:    "여권번호 마스킹"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    182
+    parent_toggle: "input#isPrintMaskingUse"
+
+  - selector: "input#check_box_menu_id_PHONE"
+    label:    "전화번호 마스킹"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    183
+    parent_toggle: "input#isPrintMaskingUse"
+
+  - selector: "input#check_box_menu_id_CREDIT_CARD"
+    label:    "신용카드번호 마스킹"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    184
+    parent_toggle: "input#isPrintMaskingUse"
+
+  - selector: "input#check_box_menu_id_LICENSE"
+    label:    "운전면허번호 마스킹"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    185
+    parent_toggle: "input#isPrintMaskingUse"
+
+  # 고급기능 설정 탭 — 항상 사용 옵션 세부
+  - selector: "input#check_box_menu_id_CAPTURE_CONTROL"
+    label:    "캡처 차단 항상 사용"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    176
+    parent_toggle: "input#isOptionAlwaysUse"
+
+  - selector: "input#check_box_menu_id_EXCUTE_BLOCK_PROCESS"
+    label:    "실행 차단 프로세스 항상 사용"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    177
+    parent_toggle: "input#isOptionAlwaysUse"
+
+  - selector: "input#check_box_menu_id_TARGET_WATERMARK"
+    label:    "타겟 비가시 워터마크 항상 사용"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    178
+    parent_toggle: "input#isOptionAlwaysUse"
+
+  - selector: "input#check_box_menu_id_INVISIBLE_WATERMARK"
+    label:    "비가시 워터마크 항상 사용"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    179
+    parent_toggle: "input#isOptionAlwaysUse"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 라디오 버튼 그룹 (기본정책 탭)
+# name=isWatermarkTrigger: conditionOn / conditionOff
+# default: [TODO] ADD 모달 최초 열림 시 상태 MCP 확인 필요
+# ──────────────────────────────────────────────────────────────────────────────
+radio_groups:
+  - name:    "isWatermarkTrigger"
+    label:   "워터마크 트리거 조건"
+    default: null            # [TODO] ADD 모달 초기값 MCP 확인 필요
+    tab:     "im_tab_basic"
+    order:   20
+    options:
+      - selector: "input#conditionOn"
+        value:    "ON"
+        label:    "트리거 조건 ON"
+      - selector: "input#conditionOff"
+        value:    "OFF"
+        label:    "트리거 조건 OFF (항상 적용)"
+
+  # 고급기능 설정 탭 — 캡처 차단 방식
+  - name:    "capturePreventMode"
+    label:   "캡처 차단 방식"
+    default: null            # [TODO] MCP 확인 필요
+    tab:     "im_tab_advanced"
+    order:   111
+    parent_toggle: "input#isCapturePrevent"
+    options:
+      - selector: "input#always"
+        value:    "always"
+        label:    "항상 차단"
+      - selector: "input#conditional"
+        value:    "conditional"
+        label:    "조건부 차단"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 토글 체크박스 (고급기능 설정 탭)
+# default: [TODO] ADD 모달 최초 열림 시 상태 MCP 확인 필요 — 전체 false로 추정
+# ──────────────────────────────────────────────────────────────────────────────
+toggle_checkboxes:
+  # 고급기능 설정 탭
+  - selector: "input#isCapturePrevent"
+    label:    "캡처 차단"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    110
+    dependent_fields:
+      - selector: "input#always"
+        label:    "항상 차단 (라디오)"
+        type:     "radio"
+      - selector: "input#conditional"
+        label:    "조건부 차단 (라디오)"
+        type:     "radio"
+      - selector: "input#isBlockPrintScreenText"
+        label:    "캡처 차단 메시지 표시"
+        type:     "plain_checkbox"
+      - selector: "input#blockPrintScreenText"
+        label:    "캡처 차단 메시지 텍스트"
+        type:     "text_input"
+      - selector: "input#isImCaptureAllowProcess"
+        label:    "캡처 허용 프로세스 사용"
+        type:     "plain_checkbox"
+      - selector: "input#isUseCaptureImageCollection"
+        label:    "캡처 이미지 수집 사용"
+        type:     "plain_checkbox"
+
+  - selector: "input#isDynamicOpacity"
+    label:    "동적 투명도"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    130
+    dependent_fields:
+      - selector: "input#dynamicOpacityAwaySeconds"
+        label:    "전환 시간(초)"
+        type:     "number_input"
+      - selector: "input#dynamicOpacityIncrease"
+        label:    "투명도 증가값"
+        type:     "number_input"
+
+  - selector: "input#isWatermarkLocationMove"
+    label:    "워터마크 위치 이동"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    140
+    dependent_fields:
+      - selector: "input#watermarkLocationMoveSeconds"
+        label:    "이동 주기(초)"
+        type:     "number_input"
+      - selector: "input#watermarkLocationMoveWidth"
+        label:    "이동 폭 범위"
+        type:     "number_input"
+      - selector: "input#watermarkLocationMoveHeight"
+        label:    "이동 높이 범위"
+        type:     "number_input"
+
+  - selector: "input#isWatermarkAdaptationPeriod"
+    label:    "워터마크 적용 시간대"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    155
+    dependent_fields:
+      - selector: "input#isWatermarkAdaptationStartTime"
+        label:    "적용 시작 시간"
+        type:     "text_input"
+      - selector: "input#isWatermarkAdaptationEndTime"
+        label:    "적용 종료 시간"
+        type:     "text_input"
+
+  - selector: "input#isTargetWatermark"
+    label:    "타겟 비가시 워터마크"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    160
+    dependent_fields:
+      - selector: "input#isTargetInvisibleWatermark"
+        label:    "타겟 비가시 워터마크 활성"
+        type:     "plain_checkbox"
+      - selector: "input#targetInvisibleWatermarkDensity"
+        label:    "농도"
+        type:     "number_input"
+
+  - selector: "input#isInvisibleWatermark"
+    label:    "비가시 워터마크"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    170
+    dependent_fields:
+      - selector: "input#isInvisibleWatermarkScr"
+        label:    "화면 비가시 워터마크"
+        type:     "plain_checkbox"
+      - selector: "input#invisibleWatermarkScrDensity"
+        label:    "화면 농도"
+        type:     "number_input"
+      - selector: "input#isInvisibleWatermarkPrt"
+        label:    "프린트 비가시 워터마크"
+        type:     "plain_checkbox"
+      - selector: "input#invisibleWatermarkPrtDensity"
+        label:    "프린트 농도"
+        type:     "number_input"
+
+  - selector: "input#isOptionAlwaysUse"
+    label:    "항상 사용 옵션"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    175
+    dependent_fields:
+      - selector: "input#check_box_menu_id_CAPTURE_CONTROL"
+        label:    "캡처 차단 항상 사용"
+        type:     "plain_checkbox"
+      - selector: "input#check_box_menu_id_EXCUTE_BLOCK_PROCESS"
+        label:    "실행 차단 프로세스 항상 사용"
+        type:     "plain_checkbox"
+      - selector: "input#check_box_menu_id_TARGET_WATERMARK"
+        label:    "타겟 비가시 워터마크 항상 사용"
+        type:     "plain_checkbox"
+      - selector: "input#check_box_menu_id_INVISIBLE_WATERMARK"
+        label:    "비가시 워터마크 항상 사용"
+        type:     "plain_checkbox"
+
+  - selector: "input#isPrintMaskingUse"
+    label:    "프린트 마스킹"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    180
+    dependent_fields:
+      - selector: "input#check_box_menu_id_REGIST"
+        label:    "주민등록번호"
+        type:     "plain_checkbox"
+      - selector: "input#check_box_menu_id_PASSPORT"
+        label:    "여권번호"
+        type:     "plain_checkbox"
+      - selector: "input#check_box_menu_id_PHONE"
+        label:    "전화번호"
+        type:     "plain_checkbox"
+      - selector: "input#check_box_menu_id_CREDIT_CARD"
+        label:    "신용카드번호"
+        type:     "plain_checkbox"
+      - selector: "input#check_box_menu_id_LICENSE"
+        label:    "운전면허번호"
+        type:     "plain_checkbox"
+
+  - selector: "input#isAuthorizationPassword"
+    label:    "권한 해제 비밀번호"
+    default:  false
+    tab:      "im_tab_advanced"
+    order:    190
+    dependent_fields:
+      - selector: "input#authorizationPassword"
+        label:    "비밀번호"
+        type:     "text_input"
+      - selector: "input#authorizationPasswordConfirm"
+        label:    "비밀번호 확인"
+        type:     "text_input"
+
+  # 트리거 설정 탭
+  - selector: "input#isUrlScreenWaterMark"
+    label:    "URL 화면 워터마크"
+    default:  false
+    tab:      "im_tab_trigger"
+    order:    310
+
+  - selector: "input#isUrlPrintWaterMark"
+    label:    "URL 프린트 워터마크"
+    default:  false
+    tab:      "im_tab_trigger"
+    order:    320
+
+  - selector: "input#imIpWaterMarkToggle"
+    label:    "IP 워터마크"
+    default:  false
+    tab:      "im_tab_trigger"
+    order:    330
+
+  - selector: "input#imRdpIpWaterMarkToggle"
+    label:    "RDP IP 워터마크"
+    default:  false
+    tab:      "im_tab_trigger"
+    order:    340
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 태그 입력 (캡처허용 프로세스 / 실행차단 프로세스 탭)
+# [TODO] selector MCP 직접 확인 필요 (input, add_btn, container, remove_btn)
+# ──────────────────────────────────────────────────────────────────────────────
+tag_input:
+  - id:         "capture_allow_process"
+    label:      "캡처허용 프로세스"
+    input:      null         # [TODO] MCP 확인 필요
+    add_btn:    null         # [TODO] MCP 확인 필요
+    container:  null         # [TODO] MCP 확인 필요
+    remove_btn: null         # [TODO] MCP 확인 필요
+    tab:        "im_tab_capture_allow"
+    required:   false
+    test_value: "notepad.exe"
+    order:      400
+
+  - id:         "exec_block_process"
+    label:      "실행차단 프로세스"
+    input:      null         # [TODO] MCP 확인 필요
+    add_btn:    null         # [TODO] MCP 확인 필요
+    container:  null         # [TODO] MCP 확인 필요
+    remove_btn: null         # [TODO] MCP 확인 필요
+    tab:        "im_tab_exec_block"
+    required:   false
+    test_value: "block_test.exe"
+    order:      500
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 버튼 동작 검증 (트리거 설정 탭 — URL 추가 버튼)
+# [TODO] button_actions 패턴으로 처리 or 별도 시나리오 구현 검토 필요
+# ──────────────────────────────────────────────────────────────────────────────
+button_actions: []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# [NOTE] 화면/프린트 워터마크 그리드 (3x3)
+# 위치: 기본정책 탭
+# 패턴: grid_template_selector (별도 validator 구현 예정)
+# 셀 버튼 selector 형식:
+#   screen{POSITION}RegistBtn (화면)  e.g. button#screenTOP_LEFTRegistBtn
+#   print{POSITION}RegistBtn  (프린트) e.g. button#printTOP_LEFTRegistBtn
+# POSITION 목록:
+#   TOP_LEFT, TOP_CENTER, TOP_RIGHT
+#   MIDDLE_LEFT, CENTER, MIDDLE_RIGHT
+#   BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT
+# 동작: 버튼 클릭 → 템플릿 선택 팝업 출현 → 템플릿 선택 → 팝업 닫힘 → 그리드 셀에 이름 표시
+# ──────────────────────────────────────────────────────────────────────────────

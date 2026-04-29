@@ -19,6 +19,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request, send_file
+from dashboard import dashboard_bp
 
 # ── 경로 설정 ────────────────────────────────────────────────────────
 # PyInstaller --onedir EXE 로 실행 시: sys._MEIPASS 가 존재하며
@@ -108,6 +109,38 @@ app = Flask(
     template_folder=str(_TEMPLATE_DIR),
     static_folder=str(_STATIC_DIR),
 )
+app.config['BASE_DIR'] = BASE_DIR
+app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
+
+# dashboard DB 초기화
+from dashboard.db import init_db as _init_db
+_DB_PATH = BASE_DIR / "data" / "qa.db"
+_DB_PATH.parent.mkdir(exist_ok=True)
+_init_db(str(_DB_PATH))
+
+# innoRelease 클라이언트 초기화 (settings.yaml 로드)
+try:
+    import yaml as _yaml
+    _settings_path = BASE_DIR / "config" / "settings.yaml"
+    if _settings_path.exists():
+        _settings_data = _yaml.safe_load(_settings_path.read_text(encoding="utf-8")) or {}
+        _irel_cfg = _settings_data.get("innorelease", {})
+        _irel_url = _irel_cfg.get("url", "")
+        _irel_user = _irel_cfg.get("username", "")
+        _irel_pass = _irel_cfg.get("password", "")
+        if _irel_url and _irel_user:
+            from core.innorelease_client import init_client as _init_irel
+            _irel_client = _init_irel(_irel_url, _irel_user, _irel_pass)
+            app.config["INNORELEASE_URL"] = _irel_url
+            log.info(f"[OK] innoRelease 클라이언트 초기화: {_irel_url} ({_irel_user})")
+        # QA 서버 URL (승인 시 testEnvInfo에 포함)
+        _qa_server_url = _settings_data.get("qa_server_url", "").strip()
+        if _qa_server_url:
+            app.config["QA_SERVER_URL"] = _qa_server_url
+        else:
+            log.info("[INFO] innoRelease 미설정 (settings.yaml innorelease.url/username 확인)")
+except Exception as _exc:
+    log.warning(f"[WARN] innoRelease 클라이언트 초기화 실패: {_exc}")
 
 # ── 실행 상태 (세션 단위) ─────────────────────────────────────────────
 _state: dict = {
@@ -120,8 +153,14 @@ _state: dict = {
     "report_path":     None,
     "live_log":        [],     # 최근 pytest 출력 (최대 200줄) — progress 화면 실시간 표시용
     "log_file":        "",     # 현재 세션 로그 파일 경로
+    # innoRelease 파이프라인 연동 (qa_queue에서 테스트 실행 시 설정)
+    "pipeline_id":     None,   # innoRelease pipeline_id (TESTING 상태)
+    "pipeline_repo_id":None,   # innoRelease repoId
+    "pipeline_product":None,   # innoProduct 코드 (1~7)
+    "pipeline_run_id": None,   # 테스트 완료 후 저장된 run_id (local DB)
 }
 _proc: subprocess.Popen | None = None
+_wv: dict = {"window": None}   # pywebview 창 참조 — /open-window 엔드포인트에서 사용
 
 
 # ── 시나리오 사전 정의 ──────────────────────────────────────────────
@@ -139,9 +178,27 @@ _LIST_SCENARIOS = [
     {"num": 1, "label": "시나리오 1: UI 구조  (탭 · 테이블 · 검색)", "status": "pending"},
     {"num": 2, "label": "시나리오 2: 입력 구조  (모달 필드 · 필수입력 검증)", "status": "pending"},
     {"num": 3, "label": "시나리오 3: 동작 검증  (CRUD · 추가 · 수정 · 삭제)", "status": "pending"},
-    {"num": 4, "label": "시나리오 4: 수정 시나리오  — CRUD 내 통합", "status": "pending"},
-    {"num": 5, "label": "시나리오 5: 케이스 검증  — 해당 없음 (list_page)", "status": "pending"},
+    {"num": 4, "label": "시나리오 4: 수정 시나리오  (저장값 로드 · 재확인)", "status": "pending"},
+    {"num": 5, "label": "시나리오 5: 케이스 검증  (전체 채우기 / 필수만 저장 확인)", "status": "pending"},
+    {"num": 6, "label": "시나리오 6: 연계 데이터 준비  (다음 테스트용 항목 생성)", "status": "pending"},
 ]
+
+# nPouch 전용: page_id ↔ 테스트 클래스명 매핑
+_NPOUCH_PAGE_TO_CLASS: dict[str, str] = {
+    "npouch_operation_process": "TestNpouchOperationProcess",
+    "npouch_tag":               "TestNpouchTag",
+    "npouch_control_suite":     "TestControlSuite",
+    "npouch_origin_protect":    "TestNpouchOriginProtect",
+    "npouch_policy":            "TestNpouchPolicy",
+}
+_NPOUCH_CLASS_TO_PAGE: dict[str, str] = {v: k for k, v in _NPOUCH_PAGE_TO_CLASS.items()}
+_NPOUCH_PAGE_TO_FILE: dict[str, str] = {
+    "npouch_operation_process": "test_npouch.py",
+    "npouch_tag":               "test_npouch_tag.py",
+    "npouch_control_suite":     "test_control_suite.py",
+    "npouch_origin_protect":    "test_npouch.py",
+    "npouch_policy":            "test_npouch.py",
+}
 
 
 def _get_default_scenarios(page_id: str) -> list[dict]:
@@ -165,7 +222,10 @@ def _get_products() -> list[dict]:
     """registry.py의 MODULE_GROUPS 기반으로 제품 목록 반환."""
     try:
         from pages.registry import MODULE_GROUPS
-        label_map = {"ransom_cruncher": "랜섬크런처"}
+        label_map = {
+            "ransom_cruncher": "랜섬크런처",
+            "npouch":          "엔파우치",
+        }
         return [
             {
                 "id":     mid,
@@ -183,9 +243,14 @@ def _get_pages(product_id: str) -> list[dict]:
     try:
         from pages.registry import MODULE_GROUPS, PAGE_REGISTRY
         page_label = {
-            "ransom_detect_policy": "탐지정책",
-            "rdp_policy":           "RDP 정책",
-            "common_process":       "공통 프로세스",
+            "ransom_detect_policy":     "탐지정책",
+            "rdp_policy":               "RDP 정책",
+            "common_process":           "공통 프로세스",
+            "npouch_operation_process": "운용 프로세스",
+            "npouch_tag":               "태그 관리",
+            "npouch_control_suite":     "제어 스위트",
+            "npouch_origin_protect":    "원본 보호 정책",
+            "npouch_policy":            "nPouch 정책",
         }
         return [
             {"id": pid, "label": page_label.get(pid, pid)}
@@ -289,22 +354,44 @@ def start():
         log.warning("시작 실패 — 이미 실행 중")
         return jsonify({"ok": False, "error": "이미 실행 중"}), 400
 
-    log.info(f"테스트 시작 | ID={test_id} | 대상={page_ids} | headless={headless}")
+    # innoRelease 파이프라인 컨텍스트 (qa_queue에서 전달 — 없으면 None)
+    pipeline_id      = data.get("pipeline_id")
+    pipeline_repo_id = data.get("pipeline_repo_id")
+    pipeline_product = data.get("pipeline_product")
+
+    log.info(f"테스트 시작 | ID={test_id} | 대상={page_ids} | headless={headless}"
+             + (f" | pipeline={pipeline_id}" if pipeline_id else ""))
 
     # 상태 초기화 — 첫 번째 페이지는 즉시 running으로 (pytest 로딩 중 대기 없이 표시)
-    _state["status"]          = "running"
-    _state["error_log"]       = ""
-    _state["report_path"]     = None
-    _state["live_log"]        = []
-    _state["log_file"]        = str(_LOG_FILE)
-    _state["page_status"]     = {
+    _state["status"]           = "running"
+    _state["error_log"]        = ""
+    _state["report_path"]      = None
+    _state["live_log"]         = []
+    _state["log_file"]         = str(_LOG_FILE)
+    _state["pipeline_id"]      = int(pipeline_id) if pipeline_id else None
+    _state["pipeline_repo_id"] = int(pipeline_repo_id) if pipeline_repo_id else None
+    _state["pipeline_product"] = int(pipeline_product) if pipeline_product else None
+    _state["pipeline_run_id"]  = None
+    _state["page_status"]      = {
         pid: ("running" if i == 0 else "waiting")
         for i, pid in enumerate(page_ids)
     }
     _state["scenario_status"] = {pid: _get_default_scenarios(pid) for pid in page_ids}
 
-    # pytest -k 필터 조합
-    k_filter = " or ".join(page_ids)
+    # pytest 실행 파일 + 필터 결정
+    product_id = _state.get("product", "")
+    if product_id == "npouch":
+        # nPouch: page_id별 test 파일 수집 (중복 제거) — -k 필터로 클래스 선택
+        test_files = list(dict.fromkeys(
+            str(BASE_DIR / "tests" / _NPOUCH_PAGE_TO_FILE.get(pid, "test_npouch.py"))
+            for pid in page_ids
+        ))
+        class_names = [_NPOUCH_PAGE_TO_CLASS.get(pid, pid) for pid in page_ids]
+        k_filter = " or ".join(class_names)
+    else:
+        # 그 외: 범용 test_scan_pages.py — page_id 그대로 -k 필터
+        test_files = [str(BASE_DIR / "tests" / "test_scan_pages.py")]
+        k_filter = " or ".join(page_ids)
 
     env = os.environ.copy()
     env["TEST_ID"] = test_id
@@ -315,7 +402,7 @@ def start():
 
     cmd = [
         _get_python(), "-u", "-m", "pytest",
-        str(BASE_DIR / "tests" / "test_scan_pages.py"),   # 절대 경로 — cwd 의존 제거
+        *test_files,        # 제품별 테스트 파일 선택 (복수 지원)
         "-v", "-s",
         "--timeout=180",    # 테스트 1개당 최대 3분 — Chromium hang 시 강제 종료
         "-k", k_filter,
@@ -370,12 +457,21 @@ def start():
                 if len(_state["live_log"]) > _MAX_LIVE_LOG:
                     _state["live_log"] = _state["live_log"][-_MAX_LIVE_LOG:]
 
-                # 현재 스캔 중인 페이지 감지
+                # ── 현재 스캔 중인 페이지 감지 ──────────────────────────────
+                # test_scan_pages.py: "test_page_scan[page_id]"
+                # test_npouch.py:     "::TestNpouchXxx::"
                 for pid in page_ids:
-                    if f"test_page_scan[{pid}]" in line:
+                    detected = False
+                    if product_id == "npouch":
+                        cls = _NPOUCH_PAGE_TO_CLASS.get(pid, "")
+                        if cls and f"::{cls}::" in line:
+                            detected = True
+                    else:
+                        if f"test_page_scan[{pid}]" in line:
+                            detected = True
+                    if detected:
                         if current_page and current_page != pid:
                             for sc in _state["scenario_status"].get(current_page, []):
-                                # error/stopped는 유지, pending만 stopped로 정리
                                 if sc["status"] == "pending":
                                     sc["status"] = "stopped"
                         if current_page != pid:
@@ -383,7 +479,7 @@ def start():
                         current_page = pid
                         _state["page_status"][pid] = "running"
 
-                # 시나리오 헤더 감지
+                # ── 시나리오 헤더 감지 ──────────────────────────────────────
                 if current_page:
                     sc_list = _state["scenario_status"][current_page]
 
@@ -416,21 +512,35 @@ def start():
                                 })
                             log.info(f"  [{current_page}] 시나리오 {sc_num} 시작: {sc_label}")
 
-                # pytest 결과 줄 감지
-                # pytest -v -s 출력 형식:
-                #   단독 라인: "PASSED" 또는 "FAILED"
-                #   요약 라인: "FAILED tests/.../test_page_scan[pid] - ..."
+                # ── pytest 결과 줄 감지 ─────────────────────────────────────
+                # test_scan_pages.py: 페이지 1개 = 테스트 함수 1개 → PASSED면 페이지 완료
+                # test_npouch.py:     페이지 1개 = 시나리오 5개 → 모든 시나리오 done 시 페이지 완료
                 if current_page:
                     bare        = line.strip()
-                    in_summary  = "test_page_scan" in line
+                    in_summary  = ("test_page_scan" in line) or ("test_npouch" in line)
                     is_passed   = bare == "PASSED"
                     is_failed   = bare == "FAILED" or (in_summary and line.lstrip().startswith("FAILED"))
 
                     if is_passed:
-                        for sc in _state["scenario_status"].get(current_page, []):
-                            sc["status"] = "done"
-                        _state["page_status"][current_page] = "done"
-                        log.info(f"  [{current_page}] PASSED [OK]")
+                        if product_id == "npouch":
+                            # 시나리오 단위: 실행 중인 시나리오만 done 처리
+                            for sc in _state["scenario_status"].get(current_page, []):
+                                if sc["status"] == "running":
+                                    sc["status"] = "done"
+                            # 모든 시나리오 완료 시 페이지 done
+                            all_done = all(
+                                sc["status"] in ("done", "stopped")
+                                for sc in _state["scenario_status"].get(current_page, [])
+                            )
+                            if all_done:
+                                _state["page_status"][current_page] = "done"
+                                log.info(f"  [{current_page}] 전체 시나리오 완료 [OK]")
+                        else:
+                            # 페이지 단위: PASSED = 페이지 전체 완료
+                            for sc in _state["scenario_status"].get(current_page, []):
+                                sc["status"] = "done"
+                            _state["page_status"][current_page] = "done"
+                            log.info(f"  [{current_page}] PASSED [OK]")
                     elif is_failed:
                         for sc in _state["scenario_status"].get(current_page, []):
                             if sc["status"] == "running":
@@ -464,15 +574,6 @@ def start():
 
             if _proc.returncode == 0:
                 _state["status"] = "done"
-                # 최신 HTML 리포트 경로 찾기
-                reports = sorted(
-                    BASE_DIR.glob("reports/QA_*.html"),
-                    key=lambda p: p.stat().st_mtime,
-                    reverse=True,
-                )
-                if reports:
-                    _state["report_path"] = str(reports[0])
-                    log.info(f"HTML 리포트: {reports[0]}")
                 # 미완료 페이지 + 시나리오 전부 done 처리 (returncode=0 보장)
                 for pid in page_ids:
                     for sc in _state["scenario_status"].get(pid, []):
@@ -481,16 +582,109 @@ def start():
                         _state["page_status"][pid] = "done"
             else:
                 _state["status"] = "error"
-                # 오류 발생 시에도 HTML 리포트가 생성됐을 수 있으므로 경로 재확인
-                if not _state.get("report_path"):
-                    reports = sorted(
-                        BASE_DIR.glob("reports/QA_*.html"),
+
+            # ── HTML 리포트 경로 폴백 (conftest [HTML 리포트] 감지 못한 경우) ─
+            # 제품별 폴더만 탐색 — 다른 제품 리포트 혼입 방지
+            if not _state.get("report_path"):
+                _product_label = {
+                    "ransom_cruncher": "RansomCruncher",
+                    "npouch":          "nPouch",
+                }.get(product_id, product_id)
+                _report_dir = BASE_DIR / "reports" / _product_label
+                if _report_dir.exists():
+                    _reports = sorted(
+                        _report_dir.glob("QA_*.html"),
                         key=lambda p: p.stat().st_mtime,
                         reverse=True,
                     )
-                    if reports:
-                        _state["report_path"] = str(reports[0])
-                        log.info(f"HTML 리포트 (오류 후 재탐색): {reports[0]}")
+                    if _reports:
+                        _state["report_path"] = str(_reports[0])
+                        log.info(f"HTML 리포트 (폴백): {_reports[0]}")
+
+            # 리포트 자동 import (로컬 DB + 원격 서버)
+            if _state.get("report_path"):
+                _rp = _state["report_path"]
+
+                # ① 로컬 DB import
+                _local_run_id: int | None = None
+                try:
+                    from core.report_parser import parse_report
+                    from dashboard.db import import_report as _local_import
+                    _parsed = parse_report(_rp)
+                    if _parsed:
+                        _local_run_id = _local_import(str(_DB_PATH), _parsed)
+                        _state["pipeline_run_id"] = _local_run_id
+                        log.info(f"[OK] 로컬 DB import 완료 (run_id={_local_run_id})")
+                except Exception as _e:
+                    log.warning(f"로컬 import 실패: {_e}")
+
+                # ② innoRelease QA 레코드 자동 등록 (pipeline_id가 설정된 경우)
+                _pip_id   = _state.get("pipeline_id")
+                _repo_id  = _state.get("pipeline_repo_id")
+                _prod_id  = _state.get("pipeline_product")
+                if _pip_id and _repo_id and _prod_id:
+                    try:
+                        from core.innorelease_client import get_client as _get_irel_client
+                        from dashboard.db import get_run as _get_run, update_qa_request as _upd_qa
+                        from datetime import date as _date2
+                        _irel = _get_irel_client()
+                        if _irel and _local_run_id:
+                            _run_row = _get_run(str(_DB_PATH), _local_run_id)
+                            if _run_row:
+                                _total    = _run_row["total"]    or 0
+                                _pass_cnt = _run_row["pass_cnt"] or 0
+                                _fail_cnt = _run_row["fail_cnt"] or 0
+                                _bug_cnt  = _run_row["bug_cnt"]  or 0
+                                _err_cnt  = _run_row["error_cnt"]or 0
+                                _rate     = round(_pass_cnt / _total * 100, 1) if _total else 0
+                                _errtxt   = ""
+                                if _fail_cnt or _bug_cnt or _err_cnt:
+                                    _errtxt = (
+                                        f"FAIL: {_fail_cnt}건, BUG: {_bug_cnt}건, ERROR: {_err_cnt}건\n"
+                                        f"PASS율: {_rate}%"
+                                    )
+                                _html_p = _rp if Path(_rp).exists() else None
+                                _qa_ok = _irel.post_qa_result(
+                                    repo_id=_repo_id,
+                                    inno_product=_prod_id,
+                                    platform="MANAGER",
+                                    record_date=_date2.today().isoformat(),
+                                    updates=f"전체: {_total}건, PASS: {_pass_cnt}건",
+                                    errors_bugs=_errtxt,
+                                    pipeline_id=_pip_id,
+                                    html_file_path=_html_p,
+                                )
+                                # 로컬 qa_requests 상태 갱신 (run_id 연결, 결과 대기 상태)
+                                _upd_qa(str(_DB_PATH), _pip_id, run_id=_local_run_id)
+                                log.info(f"[OK] innoRelease QA 레코드 자동 등록: pipeline={_pip_id} qa_ok={_qa_ok}")
+                    except Exception as _e:
+                        log.warning(f"[WARN] innoRelease QA 자동 등록 실패: {_e}")
+
+                # ② 원격 서버 업로드 (QA_SERVER_URL 환경변수 또는 settings.yaml)
+                _server_url = os.environ.get("QA_SERVER_URL", "").strip()
+                if not _server_url:
+                    try:
+                        import yaml as _yaml2
+                        _scfg = _yaml2.safe_load(
+                            (BASE_DIR / "config" / "settings.yaml").read_text(encoding="utf-8")
+                        ) or {}
+                        _server_url = _scfg.get("qa_server_url", "").strip()
+                    except Exception:
+                        pass
+                if _server_url:
+                    try:
+                        import requests as _req
+                        _rp_path = Path(_rp)
+                        with open(_rp_path, "rb") as _rf:
+                            _resp = _req.post(
+                                f"{_server_url.rstrip('/')}/dashboard/import-file",
+                                files={"report": (_rp_path.name, _rf, "text/html")},
+                                timeout=30,
+                            )
+                        _rd = _resp.json()
+                        log.info(f"[OK] 서버 업로드: {_rd.get('message')} (run_id={_rd.get('run_id')})")
+                    except Exception as _e:
+                        log.warning(f"서버 업로드 실패: {_e}")
 
         except Exception as e:
             log.exception(f"_run() 예외 발생: {e}")
@@ -518,6 +712,38 @@ def status():
         "report_path":     _state["report_path"],
         "live_log":        _state.get("live_log", [])[-80:],   # 최신 80줄만 전송
         "log_file":        _state.get("log_file", ""),
+        "pipeline_id":     _state.get("pipeline_id"),
+        "pipeline_run_id": _state.get("pipeline_run_id"),
+    })
+
+
+@app.route("/set-pipeline", methods=["POST"])
+def set_pipeline():
+    """
+    qa_queue 페이지에서 테스트 시작 전 pipeline 컨텍스트를 서버에 사전 등록.
+    테스트 완료 후 _run()이 이 정보를 참조해 innoRelease에 자동 등록한다.
+    Body: { pipeline_id, pipeline_repo_id, pipeline_product }
+    """
+    data = request.get_json(silent=True) or {}
+    _state["pipeline_id"]      = int(data["pipeline_id"])      if data.get("pipeline_id")      else None
+    _state["pipeline_repo_id"] = int(data["pipeline_repo_id"]) if data.get("pipeline_repo_id") else None
+    _state["pipeline_product"] = int(data["pipeline_product"]) if data.get("pipeline_product") else None
+    _state["pipeline_run_id"]  = None
+    log.info(f"[pipeline] 컨텍스트 설정: pipeline_id={_state['pipeline_id']} "
+             f"repo_id={_state['pipeline_repo_id']} product={_state['pipeline_product']}")
+    return jsonify({"ok": True})
+
+
+@app.route("/pipeline-status")
+def pipeline_status():
+    """
+    qa_queue 페이지에서 테스트 완료 여부 + run_id를 폴링하기 위한 API.
+    테스트 완료 후 pipeline_run_id가 설정되면 해당 값을 반환.
+    """
+    return jsonify({
+        "status":       _state["status"],
+        "pipeline_id":  _state.get("pipeline_id"),
+        "run_id":       _state.get("pipeline_run_id"),
     })
 
 
@@ -532,6 +758,19 @@ def stop():
     return jsonify({"ok": True})
 
 
+@app.route("/open-window", methods=["POST"])
+def open_window():
+    """pywebview 앱 창 열기 — 브라우저에서 '앱으로 열기' 버튼 클릭 시 호출."""
+    win = _wv.get("window")
+    if win is not None:
+        try:
+            win.show()
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)})
+    return jsonify({"ok": False, "error": "not_available"})
+
+
 @app.route("/report")
 def report():
     """⑤ 1차 리포트 편집 화면."""
@@ -540,12 +779,22 @@ def report():
 
 @app.route("/report-data")
 def report_data():
-    """리포트 데이터 API — 전체 결과 + 결함 목록."""
-    json_path = BASE_DIR / "reports" / "last_report.json"
-    if not json_path.exists():
+    """리포트 데이터 API — 전체 결과 + 결함 목록.
+    _state["report_path"] 옆의 last_report.json 우선 사용 (제품별 폴더 지원).
+    없으면 reports/ 루트 폴백.
+    """
+    import json as _json
+    # 현재 세션 리포트 경로 기준으로 JSON 파일 탐색
+    rp = _state.get("report_path")
+    candidates = []
+    if rp:
+        candidates.append(Path(rp).parent / "last_report.json")
+    candidates.append(BASE_DIR / "reports" / "last_report.json")
+
+    json_path = next((p for p in candidates if p.exists()), None)
+    if not json_path:
         return jsonify({"pages": [], "html_path": None})
     try:
-        import json as _json
         data = _json.loads(json_path.read_text(encoding="utf-8"))
         return jsonify(data)
     except Exception as e:
@@ -627,9 +876,12 @@ def finalize():
     import re as _re
 
     STATUS_BADGE = {
-        "pass": ('<span class="badge pass">&#x2705; PASS</span>', "pass"),
-        "bug":  ('<span class="badge bug">&#x26A0;&#xFE0F; BUG</span>',  "bug"),
-        "fail": ('<span class="badge fail">&#x274C; FAIL</span>', "fail"),
+        "pass":     ('<span class="badge pass">&#x2705; PASS</span>',          "pass"),
+        "bug_low":  ('<span class="badge bug-low">&#x26A0;&#xFE0F; BUG &#xB099;&#xC74C;</span>', "bug-low"),
+        "bug_high": ('<span class="badge bug-high">&#x1F534; BUG &#xB192;&#xC74C;</span>', "bug-high"),
+        # 구버전 호환 (finalize JSON에 'bug'/'fail' 있을 수 있음)
+        "bug":  ('<span class="badge bug-low">&#x26A0;&#xFE0F; BUG &#xB099;&#xC74C;</span>', "bug-low"),
+        "fail": ('<span class="badge bug-high">&#x1F534; BUG &#xB192;&#xC74C;</span>', "bug-high"),
     }
 
     # 결함 카드 HTML — html_reporter의 defect-card 스타일과 동일
@@ -642,7 +894,7 @@ def finalize():
         label        = _html.escape(it.get("label", ""))
         detail       = _html.escape(it.get("detail", ""))
         user_opinion = _html.escape(it.get("user_opinion", ""))
-        severity     = "높음" if st in ("fail", "error") else "낮음"
+        severity     = "높음" if st in ("bug_high", "fail", "error") else "낮음"
         manual_tag   = '<span class="manual-badge">&#x270F;&#xFE0F; 직접 등록</span>' if it.get("manual") else ""
 
         ss_html = ""
@@ -721,9 +973,14 @@ def finalize():
     # data-page-id 카드를 찾아서 fail/bug/total 카운트에 수동 항목 합산
     manual_by_page: dict[str, dict] = {}
     page_label_rev = {v: k for k, v in {
-        "ransom_detect_policy": "탐지정책",
-        "rdp_policy":           "RDP 정책",
-        "common_process":       "공통 프로세스",
+        "ransom_detect_policy":     "탐지정책",
+        "rdp_policy":               "RDP 정책",
+        "common_process":           "공통 프로세스",
+        "npouch_operation_process": "운용 프로세스",
+        "npouch_tag":               "태그 관리",
+        "npouch_control_suite":     "제어 스위트",
+        "npouch_origin_protect":    "원본 보호 정책",
+        "npouch_policy":            "nPouch 정책",
     }.items()}
     for it in items:
         if not it.get("manual"):
@@ -822,27 +1079,29 @@ if __name__ == "__main__":
 
     _FLASK_URL = "http://127.0.0.1:5321"
 
-    # Flask 준비 대기 후 기본 브라우저로 먼저 열기 (VM 포함 모든 환경에서 동작 보장)
+    # Flask 준비 대기 후 기본 브라우저로 열기
     _time.sleep(1)
     log.info(f"브라우저로 열기: {_FLASK_URL}")
     webbrowser.open(_FLASK_URL)
 
-    # PyWebView 추가 시도 — 지원되는 환경이면 네이티브 창도 열림 (선택적)
+    # PyWebView — 숨김 상태로 준비만 해둠 (브라우저 '앱으로 열기' 버튼 클릭 시 show())
+    # 자동으로 창이 뜨지 않음 — 브라우저가 기본 진입점
     _webview_ok = False
     try:
         import webview
-        webview.create_window(
+        _wv["window"] = webview.create_window(
             title="QA Tool",
             url=_FLASK_URL,
             width=1100,
             height=750,
             min_size=(900, 600),
             resizable=True,
+            hidden=True,   # 기본은 숨김 — 버튼 클릭 시에만 표시
         )
         _webview_ok = True
-        webview.start()   # 블로킹 — pywebview 창이 뜨는 환경에서만 여기서 대기
+        webview.start()   # 블로킹 — pywebview 이벤트 루프 유지
     except Exception as e:
-        log.warning(f"pywebview 사용 불가 ({e}) — 브라우저로 계속 진행")
+        log.warning(f"pywebview 사용 불가 ({e}) — 브라우저로만 운영")
 
     if not _webview_ok:
         # pywebview 없으면 메인 스레드 유지 (Flask daemon 스레드 살려두기)

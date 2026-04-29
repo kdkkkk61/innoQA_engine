@@ -1,0 +1,90 @@
+scan_mode: list_page
+page_id: npouch_operation_process
+
+# ── 필드 정의 ──────────────────────────────────────────────────────
+fields:
+  - id: processName
+    selector: "input#processName"
+    label: "프로세스 이름"
+    required: true
+    order: 10
+    overflow_scan: true       # 글자수 제한 자동 스캔 ON
+    overflow_prefix: "[AUTO]_ov_"
+    # note: DOM maxlength 없음, 서버 측 제한도 확인 필요 — overflow_scan이 알아서 탐색
+  - id: sign
+    selector: "input#sign"
+    label: "서명"
+    required: false
+    order: 20
+  - id: sha2
+    selector: "textarea#sha2"
+    label: "SHA2"
+    required: false
+    order: 30
+    note: "SHA-256 hex 64자 형식이지만 UI에서 포맷 강제 없음 (format_validation_tests 참조)"
+  - id: processExecutePath
+    selector: "textarea#processExecutePath"
+    label: "실행경로"
+    required: false
+    order: 40
+  - id: description
+    selector: "textarea#description"
+    label: "설명"
+    required: false
+    order: 50
+
+# ── 검색 옵션 ──────────────────────────────────────────────────────
+search_options:
+  - label: "프로세스 이름"
+    field: processName
+  - label: "서명"
+    field: sign
+  - label: "설명"
+    field: description
+
+# ── 포맷 검증 테스트 (수동 정의 — 페이지마다 다름) ───────────────
+# "이 필드는 이 형식이어야 하는데 서버가 검증하고 있나?" 를 확인
+# expect_validation: false → 현재 검증 없음 → warn(known_bug) + 스크린샷
+# expect_validation: true  → 검증 존재해야 pass
+format_validation_tests:
+  - field: sha2
+    label: "SHA2 — 비hex 입력 유효성 검사"
+    test_value: "XXXXNOTVALIDHEX"
+    item_name: "[AUTO]_fv_sha2"   # 저장될 경우 이 이름으로 생성됨 (cleanup용)
+    expect_validation: false
+    note: "SHA-256 hex 형식 강제 검증 없음 — 서버 측 추가 시 true로 변경"
+
+# ── Import / Export ────────────────────────────────────────────────
+import_export:
+  excel:
+    auto: true
+    method: download_detect        # 현재 프로세스 목록을 엑셀 형태로 다운로드
+    button_selector: "button#excelDownBtn"
+    check: file_downloaded
+    note: "목록 다운로드 확인만 — 파일 내용 검증은 수동"
+  example:
+    auto: true
+    method: download_detect        # Import에 사용 가능한 양식(예시 파일) 다운로드
+    button_selector: "button#exampleFileBtn"
+    check: file_downloaded
+    note: "양식 파일 다운로드 확인만 — 파일 형식 검증은 수동"
+  import:
+    auto: false
+    manual: true
+    reason: "유효한 형식의 테스트 파일 필요 + 파일 업로드 대화상자 처리 복잡"
+    manual_steps:
+      - "example 버튼으로 양식 파일 다운로드"
+      - "양식에 맞게 데이터 작성 후 Import 버튼 클릭 → 파일 선택 → 업로드"
+      - "목록에 데이터 반영됐는지 확인"
+
+# ── 특수문자 허용 여부 테스트 (수동 정의 — 페이지마다 다름) ───────
+# "이 값이 들어가면 안 되는데 실제로 막히나?" 를 확인
+# expect_block: false → 현재 차단 없음 → warn(known_bug) + 스크린샷
+# expect_block: true  → 차단해야 pass
+# 주의: HTML < > 사용 금지 — inner_text 파싱 실패로 cleanup 불가
+special_char_tests:
+  - field: processName
+    label: "프로세스 이름 — 특수문자 입력 차단 여부"
+    test_value: "[AUTO]_sc';!@#$"
+    expect_block: false
+    note: "특수문자 입력 차단 없음 — 잠재 이슈. HTML <> 사용 금지"

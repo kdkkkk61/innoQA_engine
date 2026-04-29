@@ -29,9 +29,16 @@ def _to_data_uri(path: Path) -> str | None:
 
 # ── 페이지 ID → 표시 이름 ──────────────────────────────────────────
 _PAGE_LABELS: dict[str, str] = {
+    # RansomCruncher
     "ransom_detect_policy": "탐지정책",
     "rdp_policy":           "RDP 정책",
     "common_process":       "공통 프로세스",
+    # nPouch
+    "npouch_operation_process": "운용 프로세스",
+    "npouch_tag":               "태그 관리",
+    "npouch_control_suite":     "제어 스위트",
+    "npouch_origin_protect":    "원본 보호 정책",
+    "npouch_policy":            "nPouch 정책",
 }
 
 # ── 시나리오 번호 → 표시 라벨 (extra["scenario"] 태깅 기준) ────────
@@ -59,11 +66,11 @@ _LIST_PAGE_PATTERNS = {
 }
 
 _STATUS_BADGE = {
-    "pass":      ('<span class="badge pass">&#x2705; PASS</span>', "pass"),
-    "fail":      ('<span class="badge fail">&#x274C; FAIL</span>', "fail"),
-    "known_bug": ('<span class="badge bug">&#x26A0;&#xFE0F; BUG</span>',  "bug"),
-    "error":     ('<span class="badge error">&#x1F534; ERROR</span>', "error"),
-    "skip":      ('<span class="badge skip">&#x23ED; SKIP</span>',  "skip"),
+    "pass":      ('<span class="badge pass">&#x2705; PASS</span>',     "pass"),
+    "fail":      ('<span class="badge bug-high">&#x1F534; BUG</span>', "bug-high"),
+    "known_bug": ('<span class="badge bug-low">&#x26A0;&#xFE0F; BUG</span>', "bug-low"),
+    "error":     ('<span class="badge error">&#x26D4; ERROR</span>',   "error"),
+    "skip":      ('<span class="badge skip">&#x23ED; SKIP</span>',     "skip"),
 }
 
 # ── 재현 단계 자동 생성 ────────────────────────────────────────────
@@ -97,17 +104,50 @@ def _reproduce_steps(r: ScanResult) -> str:
 
 
 def _expected_vs_actual(r: ScanResult) -> tuple[str, str]:
-    """기댓값 / 실제값 추출."""
-    if r.status == "pass":
-        return "정상 동작", r.detail
-    if "기댓값" in r.detail and "실제" in r.detail:
-        parts = r.detail.split(",")
+    """입력/조건 / 결과 추출.
+
+    지원 형식:
+      ① "입력: X / 결과: Y"      — nPouch _r() 헬퍼 신규 표준 포맷
+      ② "기댓값: X / 실제값: Y"  — nPouch _r() 헬퍼 구버전 포맷
+      ③ "기댓값 X, 실제 Y"       — scan_pages 구버전 포맷 (콤마 구분)
+      ④ 그 외                   — detail 전체를 결과로 표시
+    """
+    det = r.detail or ""
+
+    # ① 신규 표준 포맷: "입력: X / 결과: Y"
+    if "입력:" in det and "결과:" in det:
+        try:
+            inp_raw, res_raw = det.split("결과:", 1)
+            inp = inp_raw.replace("입력:", "").strip().rstrip("/ ").strip()
+            res = res_raw.strip()
+            return inp, res
+        except Exception:
+            pass
+
+    # ② 구버전 포맷: "기댓값: X / 실제값: Y"
+    if "기댓값:" in det and "실제값:" in det:
+        try:
+            exp_raw, act_raw = det.split("실제값:", 1)
+            exp = exp_raw.replace("기댓값:", "").strip().rstrip("/ ").strip()
+            act = act_raw.strip()
+            return exp, act
+        except Exception:
+            pass
+
+    # ③ 구버전 포맷: "기댓값 X, 실제 Y"
+    if "기댓값" in det and "실제" in det:
+        parts = det.split(",")
         exp = parts[0].replace("기댓값 ", "").strip().strip("'")
         act = parts[1].replace("실제 ", "").strip().strip("'") if len(parts) > 1 else ""
-        return exp, act
+        if exp or act:
+            return exp, act
+
+    # ④ 포맷 없음 — 상태별 기본값
     if r.status == "known_bug":
-        return "클라이언트 입력 검증 또는 정상 저장", r.detail
-    return "정상 동작", r.detail
+        return "알려진 UX 결함", det
+    if r.status == "skip":
+        return "해당 없음", det
+    return "정상 동작", det
 
 
 # ── 시나리오 레이블 결정 ───────────────────────────────────────────
@@ -136,19 +176,19 @@ def _render_summary_card(page_id: str, report: PageScanReport) -> str:
     p, f   = len(report.passed), len(report.failed)
     k, e   = len(report.known_bugs), len(report.errors)
     total  = p + f + k + e
-    status = "🔴 결함 있음" if (f + e) > 0 else ("🟡 버그 추적 중" if k > 0 else "🟢 정상")
+    status = "🔴 BUG 높음 있음" if f > 0 else ("🟡 BUG 낮음 있음" if k > 0 else ("⛔ 실행 오류" if e > 0 else "🟢 정상"))
     # data-page-id: finalize 후 JS가 수동 이슈 카운트를 업데이트할 때 사용
     return f"""
-    <div class="summary-card {'has-fail' if f+e > 0 else ('has-bug' if k > 0 else 'all-pass')}"
+    <div class="summary-card {'has-fail' if f > 0 else ('has-bug' if k+e > 0 else 'all-pass')}"
          data-page-id="{html.escape(page_id)}"
          data-auto-total="{total}" data-auto-fail="{f}" data-auto-bug="{k}">
       <div class="card-title">{html.escape(label)}</div>
       <div class="card-status" data-status-el="1">{status}</div>
       <div class="card-counts">
         <span class="cnt pass">&#x2705; {p}</span>
-        <span class="cnt fail" data-fail-cnt="1">&#x274C; {f}</span>
-        <span class="cnt bug" data-bug-cnt="1">&#x26A0;&#xFE0F; {k}</span>
-        <span class="cnt error">&#x1F534; {e}</span>
+        <span class="cnt bug-high" data-fail-cnt="1">&#x1F534; {f}</span>
+        <span class="cnt bug-low" data-bug-cnt="1">&#x26A0;&#xFE0F; {k}</span>
+        <span class="cnt error">&#x26D4; {e}</span>
       </div>
       <div class="card-total" data-total-el="1">자동 {total}건 검증</div>
     </div>"""
@@ -190,9 +230,9 @@ def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
       <thead>
         <tr>
           <th class="col-label">검증 항목</th>
-          <th class="col-status">결과</th>
-          <th class="col-expected">기댓값</th>
-          <th class="col-actual">실제값</th>
+          <th class="col-status">판정</th>
+          <th class="col-expected">입력 / 조건</th>
+          <th class="col-actual">결과</th>
         </tr>
       </thead>
       <tbody>{''.join(rows)}</tbody>
@@ -213,7 +253,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             scenario   = _scenario_label(r, is_list)
             steps      = _reproduce_steps(r)
             expected, actual = _expected_vs_actual(r)
-            severity   = "높음" if r.status in ("fail", "error") else "낮음"
+            severity   = "높음" if r.status == "fail" else ("낮음" if r.status == "known_bug" else "높음")
             ss_path    = r.extra.get("screenshot") if r.extra else None
             ss_html    = ""
             if ss_path:
@@ -243,8 +283,8 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
           <div class="defect-title">{html.escape(r.label)}</div>
           <table class="defect-detail">
             <tr><th>재현 방법</th><td>{steps}</td></tr>
-            <tr><th>기댓값</th><td>{html.escape(expected)}</td></tr>
-            <tr><th>실제 결과</th><td>{html.escape(actual)}</td></tr>
+            <tr><th>입력 / 조건</th><td>{html.escape(expected)}</td></tr>
+            <tr><th>결과</th><td>{html.escape(actual)}</td></tr>
             {ss_html}
           </table>
         </div>""")
@@ -295,10 +335,10 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .card-status { font-size: 13px; margin-bottom: 10px; }
 .card-counts { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .cnt { font-size: 13px; font-weight: 600; }
-.cnt.pass  { color: #27ae60; }
-.cnt.fail  { color: #e74c3c; }
-.cnt.bug   { color: #f39c12; }
-.cnt.error { color: #c0392b; }
+.cnt.pass     { color: #27ae60; }
+.cnt.bug-high { color: #e74c3c; }
+.cnt.bug-low  { color: #f39c12; }
+.cnt.error    { color: #c0392b; }
 .card-total { font-size: 12px; color: #888; }
 
 /* 섹션 */
@@ -315,9 +355,9 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .col-status   { width: 10%; text-align: center; white-space: nowrap; }
 .col-expected { width: 22%; font-size: 12px; color: #555; }
 .col-actual   { width: 28%; font-size: 12px; color: #555; }
-.row-fail td  { background: #fff8f8; }
-.row-bug td   { background: #fffdf0; }
-.row-error td { background: #fff5f5; }
+.row-bug-high td { background: #fff8f8; }
+.row-bug-low td  { background: #fffdf0; }
+.row-error td    { background: #fdf0ff; }
 /* 시나리오 구분 헤더 */
 .scenario-header td { background: #e8f0f8; color: #1e3a5f; font-weight: 700;
   font-size: 13px; padding: 8px 14px; border-top: 2px solid #b8cfe8;
@@ -325,11 +365,11 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 
 /* 배지 */
 .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.badge.pass  { background: #e8f8ef; color: #27ae60; }
-.badge.fail  { background: #fde8e8; color: #e74c3c; }
-.badge.bug   { background: #fef9e7; color: #f39c12; }
-.badge.error { background: #fde8e8; color: #c0392b; }
-.badge.skip  { background: #f0f0f0; color: #888; }
+.badge.pass     { background: #e8f8ef; color: #27ae60; }
+.badge.bug-high { background: #fde8e8; color: #e74c3c; }
+.badge.bug-low  { background: #fef9e7; color: #d68000; }
+.badge.error    { background: #f3e8fd; color: #8e44ad; }
+.badge.skip     { background: #f0f0f0; color: #888; }
 
 /* 결함 목록 */
 .defect-card { background: white; border: 1px solid #eee; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
@@ -542,9 +582,13 @@ function switchTab(btn, key) {{
             for pid, rep in reports
         ],
     }
+    _json_str = _json.dumps(json_data, ensure_ascii=False, indent=2)
+    # 제품 폴더에 저장 (히스토리용)
     last_json = Path(output_dir) / "last_report.json"
-    last_json.write_text(
-        _json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    last_json.write_text(_json_str, encoding="utf-8")
+    # 루트 reports/ 에도 항상 덮어쓰기 — app.py /report-data 엔드포인트 폴백 경로
+    root_json = Path("reports") / "last_report.json"
+    root_json.parent.mkdir(parents=True, exist_ok=True)
+    root_json.write_text(_json_str, encoding="utf-8")
 
     return out_path

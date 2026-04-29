@@ -1,0 +1,96 @@
+# inno_mark_template Phase 4 (시나리오 5) 테스트 프로파일
+# DOM 수집 완료 (2026-04-14) — Chrome MCP 직접 확인
+#
+# 목적: 주요 필드 값 전환이 저장까지 정확히 반영되는지 검증
+#
+# 흐름:
+#   1. create: 화면 타입 + 텍스트 표시형식 + 최대 설정으로 생성
+#   2. verify_created: 수정 모달에서 저장값 확인
+#   3. modify_to_off: 출력물 타입 + 이미지 형식 + 기본값으로 변경
+#   4. verify_modified: 재오픈 후 변경값 확인
+
+page_id: inno_mark_template
+
+# ── 1. 생성: 화면/텍스트 타입 + 설정값 ON ──────────────────────────────────────
+create:
+  policy_name: "[AUTO]_im_tmpl_p4"
+
+  actions:
+    - type:     radio_set
+      selector: "input#templateUseDisplayType"   # 화면
+
+    - type:     radio_set
+      selector: "input#textTypeTemplate"          # 텍스트
+
+    - type:     checkbox_set
+      selector: "input#isTextLetterQrcode"
+      value:    true
+
+    - type:     text_set
+      selector: "input#textSize"
+      value:    "80"
+
+    - type:     radio_set
+      selector: "input#textSizeTypePT"            # pt 단위
+
+    - type:     checkbox_set
+      selector: "input#isTextOutline"
+      value:    true
+
+    - type:     text_set
+      selector: "input#textDegree"
+      value:    "45"
+
+    - type:     text_set
+      selector: "input#waterMarkOpacity"
+      value:    "70"
+
+# ── 2. 생성 후 검증 ─────────────────────────────────────────────────────────────
+verify_created:
+  "input#templateUseDisplayType": "checked"
+  "input#textTypeTemplate":       "checked"
+  "input#isTextLetterQrcode":     "checked"
+  "input#textSize":               "80"
+  "input#textSizeTypePT":         "checked"
+  "input#isTextOutline":          "checked"
+  "input#textDegree":             "45"
+  "input#waterMarkOpacity":       "70"
+
+# ── 3. 수정: 기본값으로 복원 ────────────────────────────────────────────────────
+modify_to_off:
+  actions:
+    - type:     radio_set
+      selector: "input#templateUsePrintType"      # 출력물로 변경
+
+    - type:     checkbox_set
+      selector: "input#isTextLetterQrcode"
+      value:    false
+
+    - type:     text_set
+      selector: "input#textSize"
+      value:    "50"
+
+    - type:     radio_set
+      selector: "input#textSizeTypeMM"            # mm 단위로 복원
+
+    - type:     checkbox_set
+      selector: "input#isTextOutline"
+      value:    false
+
+    - type:     text_set
+      selector: "input#textDegree"
+      value:    "0"
+
+    - type:     text_set
+      selector: "input#waterMarkOpacity"
+      value:    "30"
+
+# ── 4. 수정 후 검증 ─────────────────────────────────────────────────────────────
+verify_modified:
+  "input#templateUsePrintType":   "checked"
+  "input#isTextLetterQrcode":     "unchecked"
+  "input#textSize":               "50"
+  "input#textSizeTypeMM":         "checked"
+  "input#isTextOutline":          "unchecked"
+  "input#textDegree":             "0"
+  "input#waterMarkOpacity":       "30"

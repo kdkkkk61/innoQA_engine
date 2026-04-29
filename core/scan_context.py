@@ -44,27 +44,49 @@ class ScanContext:
 
     def activate_tab(self, tab: dict) -> bool:
         """
-        YAML에 정의된 탭을 활성화한다 (data_tab 속성 기준).
+        YAML에 정의된 탭을 활성화한다.
+
+        우선순위:
+          1. data_tab 속성 기준  (data_tab 키 사용)
+          2. 텍스트 기준 폴백    (tab_text 키 사용 — data-tab 없는 제품, 예: innoMark)
 
         반환:
             True  = 탭 정상 활성화
             False = 경고 다이얼로그 출현으로 탭 전환 차단됨
         """
         data_tab = tab.get("data_tab", "")
-        self.log.debug(f"[tab] 활성화 시도: data_tab={data_tab!r}")
+        tab_text = tab.get("tab_text", "")
+        hint     = data_tab or tab_text or "(unknown)"
+        self.log.debug(f"[tab] 활성화 시도: {hint!r}")
         try:
-            tab_link = self.page.locator(f'a[data-tab="{data_tab}"]')
-            if tab_link.count() > 0:
-                tab_link.first.evaluate("el => el.click()")
+            tab_link = None
+            # ① data_tab 속성 기준 (기존 방식)
+            if data_tab:
+                loc = self.page.locator(f'a[data-tab="{data_tab}"]')
+                if loc.count() > 0:
+                    tab_link = loc.first
+                else:
+                    self.log.debug(f"[tab] data-tab 탭 없음: {data_tab!r}")
+
+            # ② 텍스트 기준 폴백 (innoMark 등 data-tab 없는 제품)
+            if tab_link is None and tab_text:
+                loc = self.page.locator(f'ul.nav li a:has-text("{tab_text}")')
+                if loc.count() > 0:
+                    tab_link = loc.first
+                else:
+                    self.log.debug(f"[tab] tab_text 탭 없음: {tab_text!r}")
+
+            if tab_link is not None:
+                tab_link.evaluate("el => el.click()")
                 self.page.wait_for_timeout(self.TAB_SETTLE_MS)
                 if self.dismiss_warning_dialog():
-                    self.log.debug(f"[tab] 경고 다이얼로그로 차단됨: {data_tab!r}")
+                    self.log.debug(f"[tab] 경고 다이얼로그로 차단됨: {hint!r}")
                     return False
             else:
-                self.log.debug(f"[tab] 탭 링크 없음: a[data-tab={data_tab!r}]")
+                self.log.debug(f"[tab] 탭 링크 미발견 — data_tab={data_tab!r} / tab_text={tab_text!r}")
         except Exception:
             self.log.debug(f"[tab] 예외 발생:\n{traceback.format_exc()}")
-        self.log.debug(f"[tab] 활성화 완료: {data_tab!r}")
+        self.log.debug(f"[tab] 활성화 완료: {hint!r}")
         return True
 
     # ── 경고 다이얼로그 ────────────────────────────────────────────────────────

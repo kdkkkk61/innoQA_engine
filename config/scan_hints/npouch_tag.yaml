@@ -1,0 +1,51 @@
+scan_mode: list_page
+page_id: npouch_tag
+
+# ── 필드 정의 ──────────────────────────────────────────────────────
+fields:
+  - id: tagName
+    selector: "input#tagName"
+    label: "태그 이름"
+    required: true
+    order: 10
+    overflow_scan: true
+    overflow_prefix: "[AUTO]_ov_"
+    # 확인일: 2026-04-24 / Chrome MCP 탐색: 100자 OK, 101자 → 서버 오류 → 100자 제한(서버측)
+  - id: description
+    selector: "textarea#description"
+    label: "설명"
+    required: false
+    order: 20
+    # 확인일: 2026-04-24 / Chrome MCP 탐색: 300자 OK, 301자 → 서버 오류 → 300자 제한(서버측)
+    # overflow_scan 미적용: tagName(정상값) + description(오버플로) 복합 제출 필요 → 테스트에서 직접 처리
+
+# ── 설명 필드 글자수 제한 (Chrome MCP 탐색 결과 직접 기록) ─────────
+# description_overflow: ok_at=300, error_at=301
+# → 테스트 scenario2에서 직접 301자 제출 후 서버 오류 확인
+
+# ── Import / Export ────────────────────────────────────────────────
+import_export:
+  export:
+    auto: true
+    method: download_detect        # Playwright download 이벤트 감지 → 파일 저장 확인
+    button_selector: "button#exportFileBtn"
+    check: file_downloaded         # 파일명/확장자 확인 수준
+    note: "다운로드 감지만 확인 — 파일 내용 검증은 수동"
+  import:
+    auto: false
+    manual: true
+    reason: "유효한 형식의 테스트 파일 필요 + 파일 업로드 대화상자 처리 복잡"
+    manual_steps:
+      - "Export로 생성한 파일을 Import 파일로 사용"
+      - "Import 버튼 클릭 → 파일 선택 → 업로드"
+      - "목록에 데이터 반영됐는지 확인"
+
+# ── 특수문자 허용 여부 테스트 ──────────────────────────────────────
+# expect_block: false → 현재 차단 없음 → warn(known_bug)
+# HTML < > 사용 금지 — inner_text 파싱 실패로 cleanup 불가
+special_char_tests:
+  - field: tagName
+    label: "태그 이름 — 특수문자 입력 차단 여부"
+    test_value: "[AUTO]_sc';!@#$"
+    expect_block: false
+    # 확인일: 2026-04-24 / Chrome MCP 탐색: 특수문자 저장됨, 차단 없음

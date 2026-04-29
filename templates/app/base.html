@@ -14,6 +14,11 @@
                   display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
     .app-header h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.5px; }
     .app-header .step { font-size: 12px; opacity: 0.7; margin-left: auto; }
+    .btn-open-app { font-size: 12px; padding: 5px 14px; border-radius: 5px;
+                    background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3);
+                    cursor: pointer; transition: background .15s; white-space: nowrap; }
+    .btn-open-app:hover { background: rgba(255,255,255,0.28); }
+    .btn-open-app.hidden { display: none; }
 
     /* 본문 */
     .app-body { flex: 1; overflow-y: auto; padding: 32px 40px; }
@@ -61,6 +66,7 @@
   <div class="app-header">
     <h1>🔍 QA Tool</h1>
     <span class="step">{% block step %}{% endblock %}</span>
+    <button id="btnOpenApp" class="btn-open-app hidden" onclick="openAppWindow()">앱으로 열기</button>
   </div>
   <div class="app-body">
     {% block body %}{% endblock %}
@@ -69,6 +75,34 @@
     {% block footer %}{% endblock %}
   </div>
   {% block scripts %}{% endblock %}
+
+  <script>
+    // pywebview 환경(앱 창 내부)이면 버튼 숨김, 일반 브라우저면 버튼 표시
+    (function() {
+      var btn = document.getElementById('btnOpenApp');
+      if (!btn) return;
+      // window.pywebview 는 pywebview가 주입하는 객체 — 앱 창 내부에서만 존재
+      if (typeof window.pywebview !== 'undefined') {
+        btn.classList.add('hidden');   // 이미 앱 창 → 버튼 숨김
+      } else {
+        btn.classList.remove('hidden'); // 브라우저 → 버튼 표시
+      }
+    })();
+
+    function openAppWindow() {
+      fetch('/open-window', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.ok) {
+            if (d.error === 'not_available') {
+              alert('앱 창을 지원하지 않는 환경입니다.\n브라우저에서 계속 사용하세요.');
+            } else {
+              alert('앱 창 열기 실패: ' + d.error);
+            }
+          }
+        });
+    }
+  </script>
 
 </body>
 </html>

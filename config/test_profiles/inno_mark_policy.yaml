@@ -1,0 +1,114 @@
+# inno_mark_policy Phase 4 (시나리오 5) 테스트 프로파일
+# DOM 수집 완료 (2026-04-13) — Chrome MCP 직접 확인
+#
+# 목적: 주요 토글 ON/OFF 전환이 저장까지 정확히 반영되는지 검증
+#       (UI 요소 동작은 Phase 1~3에서 완료)
+#
+# 흐름:
+#   1. create: 주요 고급기능 토글 ON + 기본값으로 정책 생성
+#   2. verify_created: 생성 직후 수정 모달에서 ON 상태 확인
+#   3. modify_to_off: 수정 모달에서 전체 OFF로 변경 저장
+#   4. verify_modified: 재오픈 후 전체 OFF 확인
+#
+# verify 값 형식:
+#   "checked"   → el.is_checked() == True
+#   "unchecked" → el.is_checked() == False
+#   그 외 문자열  → el.input_value() == 해당값
+#
+# [TODO] ADD 모달 최초 열림 시 기본값 및 탭 이동 필요 여부 MCP 재확인 필요
+
+page_id: inno_mark_policy
+
+# ── 1. 생성: 고급기능 주요 토글 ON ─────────────────────────────────────────────
+create:
+  policy_name: "[AUTO]_im_p4"
+
+  actions:
+    # 고급기능 설정 탭으로 이동 필요 — 탭 클릭 없이 DOM 조작만 (selector 직접 접근)
+    # (qa_runner는 현재 탭 활성화 없이 DOM el.click() 직접 사용)
+
+    - type:     checkbox_set
+      selector: "input#isCapturePrevent"
+      value:    true
+
+    - type:     checkbox_set
+      selector: "input#isDynamicOpacity"
+      value:    true
+
+    - type:     checkbox_set
+      selector: "input#isWatermarkLocationMove"
+      value:    true
+
+    - type:     checkbox_set
+      selector: "input#isExecuteBlockProcess"
+      value:    true
+
+    - type:     checkbox_set
+      selector: "input#isInvisibleWatermark"
+      value:    true
+
+    - type:     checkbox_set
+      selector: "input#isPrintMaskingUse"
+      value:    true
+
+    # 프린트 마스킹 세부
+    - type:     checkbox_set
+      selector: "input#check_box_menu_id_REGIST"
+      value:    true
+    - type:     checkbox_set
+      selector: "input#check_box_menu_id_PHONE"
+      value:    true
+    - type:     checkbox_set
+      selector: "input#check_box_menu_id_CREDIT_CARD"
+      value:    true
+
+# ── 2. 생성 후 검증: ON 상태 확인 ──────────────────────────────────────────────
+verify_created:
+  "input#isCapturePrevent":              "checked"
+  "input#isDynamicOpacity":              "checked"
+  "input#isWatermarkLocationMove":       "checked"
+  "input#isExecuteBlockProcess":         "checked"
+  "input#isInvisibleWatermark":          "checked"
+  "input#isPrintMaskingUse":             "checked"
+  "input#check_box_menu_id_REGIST":      "checked"
+  "input#check_box_menu_id_PHONE":       "checked"
+  "input#check_box_menu_id_CREDIT_CARD": "checked"
+
+# ── 3. 수정: 전체 OFF로 전환 ────────────────────────────────────────────────────
+modify_to_off:
+  actions:
+    - type:     checkbox_set
+      selector: "input#isCapturePrevent"
+      value:    false
+
+    - type:     checkbox_set
+      selector: "input#isDynamicOpacity"
+      value:    false
+
+    - type:     checkbox_set
+      selector: "input#isWatermarkLocationMove"
+      value:    false
+
+    - type:     checkbox_set
+      selector: "input#isExecuteBlockProcess"
+      value:    false
+
+    - type:     checkbox_set
+      selector: "input#isInvisibleWatermark"
+      value:    false
+
+    - type:     checkbox_set
+      selector: "input#isPrintMaskingUse"
+      value:    false
+
+# ── 4. 수정 후 검증: OFF 상태 확인 ─────────────────────────────────────────────
+verify_modified:
+  "input#isCapturePrevent":              "unchecked"
+  "input#isDynamicOpacity":              "unchecked"
+  "input#isWatermarkLocationMove":       "unchecked"
+  "input#isExecuteBlockProcess":         "unchecked"
+  "input#isInvisibleWatermark":          "unchecked"
+  "input#isPrintMaskingUse":             "unchecked"
+  "input#check_box_menu_id_REGIST":      "unchecked"
+  "input#check_box_menu_id_PHONE":       "unchecked"
+  "input#check_box_menu_id_CREDIT_CARD": "unchecked"

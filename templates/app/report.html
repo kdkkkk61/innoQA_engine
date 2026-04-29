@@ -67,9 +67,9 @@
   /* 배지 */
   .badge { display: inline-block; padding: 3px 10px; border-radius: 12px;
            font-size: 11px; font-weight: 700; cursor: pointer; user-select: none; }
-  .badge-pass { background: #e8f8f0; color: #27ae60; border: 1px solid #a8dfb8; }
-  .badge-bug  { background: #fff3cd; color: #d68000; border: 1px solid #ffc107; }
-  .badge-fail { background: #fde8e8; color: #c0392b; border: 1px solid #f5b7b1; }
+  .badge-pass    { background: #e8f8f0; color: #27ae60; border: 1px solid #a8dfb8; }
+  .badge-bug-low { background: #fff3cd; color: #d68000; border: 1px solid #ffc107; }
+  .badge-bug-high{ background: #fde8e8; color: #c0392b; border: 1px solid #f5b7b1; }
 
   /* 버튼 */
   .add-row-btn {
@@ -164,11 +164,14 @@
 
 {% block scripts %}
 <script>
-  const ICON       = {pass:'✅', fail:'❌', known_bug:'⚠️', error:'💥', skip:'⏭️'};
+  const ICON       = {pass:'✅', fail:'🔴', known_bug:'⚠️', error:'⛔', skip:'⏭️'};
   const ICON_CLASS = {pass:'st-pass', fail:'st-fail', known_bug:'st-bug', error:'st-error', skip:'st-skip'};
-  const BADGE_CLASS = {pass:'badge-pass', bug:'badge-bug', fail:'badge-fail'};
-  const BADGE_LABEL = {pass:'PASS', bug:'BUG', fail:'FAIL'};
-  const CYCLE = ['pass', 'bug', 'fail'];
+  // 수동 뱃지: 사이클 순서 pass → BUG낮음 → BUG높음
+  const BADGE_CLASS = {pass:'badge-pass', bug_low:'badge-bug-low', bug_high:'badge-bug-high'};
+  const BADGE_LABEL = {pass:'PASS', bug_low:'BUG', bug_high:'BUG'};
+  const CYCLE = ['pass', 'bug_low', 'bug_high'];
+  // 내부 status → CYCLE 키 매핑
+  const STATUS_TO_CYCLE = {pass:'pass', fail:'bug_high', known_bug:'bug_low', error:'bug_high', bug:'bug_low'};
 
   let rowCounter = 0;
   let finalized  = false;
@@ -289,8 +292,8 @@
             page:       pg.label,
             pageKey:    pg.page_id,
             label:      r.label,
-            status:     r.status === 'known_bug' ? 'bug' : r.status,
-            detail:     r.detail,
+            status:     r.status,
+            detail:     parseDetail(r.detail || ''),
             screenshot: r.screenshot || '',
           }, tbody);
           defectCnt++;
@@ -332,13 +335,16 @@
   ════════════════════════════════════════════ */
   function appendRow(d, tbody, afterTr = null) {
     const id        = ++rowCounter;
-    const statusVal = d.status || 'fail';
+    // 내부 status → CYCLE 키로 정규화
+    const rawStatus = d.status || 'bug_high';
+    const cycleKey  = STATUS_TO_CYCLE[rawStatus] || 'bug_high';
     // data-page-key: 탭 필터링에 사용 (label 기준)
     const pageKey   = d.page || '';
 
     const tr  = document.createElement('tr');
     tr.id     = `tr-${id}`;
-    tr.dataset.pageKey = pageKey;
+    tr.dataset.pageKey  = pageKey;
+    tr.dataset.cycleKey = cycleKey;
     if (d.manual) tr.className = 'manual-row';
 
     tr.innerHTML = `
@@ -350,8 +356,9 @@
         <button class="add-row-btn" onclick="insertRowBelow(${id})">+ 아래 행 추가</button>
       </td>
       <td>
-        <span class="badge ${BADGE_CLASS[statusVal]||'badge-fail'}" id="badge-${id}"
-              onclick="cycleStatus(${id})">${BADGE_LABEL[statusVal]||'FAIL'}</span>
+        <span class="badge ${BADGE_CLASS[cycleKey]||'badge-bug-high'}" id="badge-${id}"
+              data-cycle="${cycleKey}"
+              onclick="cycleStatus(${id})">${BADGE_LABEL[cycleKey]||'BUG'}</span>
       </td>
       <td>
         <div class="opinion-qa-label">QA Tool 결과</div>
@@ -399,12 +406,14 @@
     if (finalized) return;
     const badge = document.getElementById('badge-' + id);
     if (!badge) return;
-    const cur  = CYCLE.indexOf(
-      Object.entries(BADGE_CLASS).find(([, v]) => badge.classList.contains(v))?.[0] || 'fail'
-    );
+    const cur  = CYCLE.indexOf(badge.dataset.cycle || 'bug_high');
     const next = CYCLE[(cur + 1) % CYCLE.length];
-    badge.className  = `badge ${BADGE_CLASS[next]}`;
+    badge.className   = `badge ${BADGE_CLASS[next]}`;
     badge.textContent = BADGE_LABEL[next];
+    badge.dataset.cycle = next;
+    // tr에도 반영 (탭 필터 재계산용)
+    const tr = document.getElementById('tr-' + id);
+    if (tr) tr.dataset.cycleKey = next;
   }
 
   function insertRowBelow(id) {
@@ -413,7 +422,7 @@
     if (!tr) return;
     const tbody    = tr.closest('tbody');
     const pageKey  = tr.dataset.pageKey || '';
-    const newRow   = appendRow({ manual: true, status: 'fail', page: pageKey }, tbody, tr);
+    const newRow   = appendRow({ manual: true, status: 'bug_high', page: pageKey }, tbody, tr);
     // 새 행은 현재 탭에서 항상 보이게 + 카운트 재갱신
     if (newRow) {
       newRow.style.display = '';
@@ -484,12 +493,14 @@
       for (const r of items) {
         const iconCls = ICON_CLASS[r.status] || '';
         const icon    = ICON[r.status] || '?';
+        // "기댓값: X / 실제값: Y" 형식 파싱 → 실제값만 표시 (기댓값은 별도 컬럼 없음)
+        const detail = parseDetail(r.detail || '');
         html += `<tr>
           <td class="${iconCls}" style="text-align:center;">${icon}</td>
           <td>${esc(r.label)}<br>
             <span style="font-size:10px;color:#bbb;">[${esc(r.pattern)}]</span>
           </td>
-          <td style="color:#555;">${esc(r.detail)}${r.screenshot
+          <td style="color:#555;">${esc(detail)}${r.screenshot
             ? `<br><img src="/screenshot?path=${encodeURIComponent(r.screenshot)}"
                 style="max-width:80px;max-height:50px;margin-top:4px;border-radius:3px;
                        cursor:pointer;border:1px solid #ddd;" onclick="openImg(this.src)">`
@@ -552,7 +563,7 @@
         page:         cells[0]?.querySelector('[contenteditable]')?.textContent?.trim() || '',
         pattern:      '',
         label:        cells[1]?.querySelector('[contenteditable]')?.textContent?.trim() || '',
-        status:       badge?.textContent?.trim()?.toLowerCase() || 'fail',
+        status:       badge?.dataset?.cycle || 'bug_high',
         detail:       cells[3]?.querySelector('.opinion-qa')?.textContent?.trim() || '',
         user_opinion: opinionEl?.textContent?.trim() || '',
         screenshot:   img ? decodeURIComponent(img.src.replace(/.*\?path=/, '')) : '',
@@ -607,6 +618,20 @@
   function esc(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  /**
+   * detail 문자열 파싱 — "기댓값: X / 실제값: Y" 형식이면 실제값만 반환.
+   * 그 외 형식이면 원본 그대로 반환.
+   */
+  function parseDetail(det) {
+    if (det.includes('기댓값:') && det.includes('실제값:')) {
+      try {
+        const actPart = det.split('실제값:')[1];
+        return actPart ? actPart.trim() : det;
+      } catch(e) { return det; }
+    }
+    return det;
   }
 
   loadData();

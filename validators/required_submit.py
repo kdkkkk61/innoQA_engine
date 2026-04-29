@@ -302,10 +302,12 @@ def _run_submit_edit(
         else:
             status, detail = "pass", "필수 필드 비운 채 수정 시 모달 닫히지 않음 (필드 검증 동작)"
 
+        ss = ctx.take_screenshot("edit_required_submit") if status in ("known_bug", "fail") else None
         report.results.append(ScanResult(
             pattern="required_submit", selector=submit_sel,
             label="필수 필드 미입력 수정 검증",
             status=status, detail=detail, order=_ORDER_REQUIRED_SUBMIT,
+            extra={"screenshot": ss} if ss else {},
         ))
     except Exception:
         ctx.append_error(
