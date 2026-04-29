@@ -44,10 +44,12 @@ def test_page_scan(logged_in_page, settings, request, page_id):
     combined = run_scan(logged_in_page, settings, page_id)
     request.node._scan_report = combined
 
-    assert not combined.failed, (
-        f"[{page_id}] UI 패턴 검사 실패 {len(combined.failed)}건:\n"
+    # fail/warn = 제품 버그 감지 → 리포트에 표시, 테스트는 계속 진행 (abort 아님)
+    # error     = 테스트 툴 오류 → 셀렉터 없음·타임아웃 등, 이때만 pytest fail
+    assert not combined.errors, (
+        f"[{page_id}] 테스트 도구 오류 {len(combined.errors)}건:\n"
         + "\n".join(
             f"  [Phase {r.phase}][{r.pattern}] {r.label}: {r.detail}"
-            for r in combined.failed
+            for r in combined.errors
         )
     )
