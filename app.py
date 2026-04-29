@@ -1084,8 +1084,7 @@ if __name__ == "__main__":
     log.info(f"브라우저로 열기: {_FLASK_URL}")
     webbrowser.open(_FLASK_URL)
 
-    # PyWebView — 숨김 상태로 준비만 해둠 (브라우저 '앱으로 열기' 버튼 클릭 시 show())
-    # 자동으로 창이 뜨지 않음 — 브라우저가 기본 진입점
+    # PyWebView — 브라우저와 함께 앱 창도 바로 오픈
     _webview_ok = False
     try:
         import webview
@@ -1096,10 +1095,9 @@ if __name__ == "__main__":
             height=750,
             min_size=(900, 600),
             resizable=True,
-            hidden=True,   # 기본은 숨김 — 버튼 클릭 시에만 표시
         )
         _webview_ok = True
-        webview.start()   # 블로킹 — pywebview 이벤트 루프 유지
+        webview.start()   # 블로킹
     except Exception as e:
         log.warning(f"pywebview 사용 불가 ({e}) — 브라우저로만 운영")
 
