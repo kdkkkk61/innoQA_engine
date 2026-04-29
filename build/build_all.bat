@@ -73,9 +73,9 @@ if errorlevel 1 (
     pause & exit /b 1
 )
 
-echo   Enabling site (uncomment import site in _pth)...
+echo   Enabling site (uncomment import site in _pth) + app root path...
 for %%f in ("%EMBED_DIR%\python*._pth") do (
-    powershell -NoProfile -Command "(Get-Content '%%f') -replace '#import site','import site' | Set-Content '%%f'"
+    powershell -NoProfile -Command "$c = (Get-Content '%%f') -replace '#import site','import site'; if ($c -notcontains '..') { $c += '..' }; $c | Set-Content '%%f'"
 )
 
 if not exist "%SCRIPT_DIR%get-pip.py" (
