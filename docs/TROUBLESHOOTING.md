@@ -5,6 +5,102 @@
 
 ---
 
+## [RESOLVED] 제어 스위트 close_modal/close_proc_modal — 모달 미존재 시 에러 캡처 노이즈
+- **날짜**: 2026-04-30
+- **증상**: `reports/screenshots/error_click_attached_div#controlSuite button.btn-default_*.png`
+  파일이 시나리오 3 실행 시 4건씩 누적됨 (2026-04-28 14:11~14:12 4번 발생).
+  실제 화면은 모달 닫힌 후의 빈 리스트 화면 — 디버깅 가치 없음.
+- **원인**:
+  1. `close_modal()` 이 unconditional 하게 `click_attached(SEL_CANCEL_BTN)` 호출
+  2. 모달이 이미 닫힌 상태에서 호출되면 `click_attached`가 attached 대기 → timeout
+  3. base_page.py:126의 자동 에러 캡처가 **이미 닫힌 화면**을 찍어 노이즈 생성
+  4. 호출자가 `try/except`로 감싸서 테스트는 통과하지만 스크린샷 노이즈만 누적
+- **수정**: `pages/npouch_control_suite_page.py`
+  ```python
+  # close_modal — if 체크 + try/except 안전 패턴 적용
+  def close_modal(self) -> None:
+      try:
+          if self.page.locator(self.SEL_MODAL_OPEN).count() == 0:
+              return  # 이미 닫혀있음 — no-op
+          self.click_attached(self.SEL_CANCEL_BTN)
+          self.wait_for(self.SEL_ADD_BTN)
+      except Exception:
+          pass
+  ```
+  `close_proc_modal` 도 동일하게 if 체크 추가.
+- **참고 — 모범 패턴**: `_close_modal_if_open()`, `close_edit_modal()` 은
+  이미 if 체크 + try/except 가지고 있어서 문제 없음.
+- **연관 작업**: 본 수정은 같은 날 진행한 "스크린샷 캡처 타이밍 통일"과 결이 같음 —
+  "의미 없는 화면 캡처 방지" 원칙. 단, 패턴 A·B·C는 결함 감지 시 캡처 시점 문제,
+  본 건은 도구 에러 시 의미 없는 캡처 차단.
+
+---
+
+## [RESOLVED] 결함 카드 배지에 "BUG 낙음" 한글 오타 (낮음 → 낙음)
+- **날짜**: 2026-04-30
+- **증상**: 빌드된 QATool 리포트의 결함 카드 배지에 `⚠️ BUG 낙음` 으로 표시됨.
+  사용자가 검수 시 가장 먼저 보는 라벨이라 매우 두드러지는 오타.
+- **원인**: `app.py:890, 893` STATUS_BADGE 정의에서 한글이 HTML 엔티티로
+  인코딩되어 있는데, "낮"의 코드포인트(`U+B0AE`)가 아니라
+  "낙"의 코드포인트(`U+B099`)가 들어가 있었음.
+  ```html
+  &#xB099;&#xC74C;   ← "낙음" (오타)
+  &#xB0AE;&#xC74C;   ← "낮음" (정상)
+  ```
+- **발견 어려웠던 이유**: 한글이 HTML 엔티티로 인코딩되어 있어서
+  소스 코드에서 "낙음" 으로 grep해도 안 잡힘. 빌드해서 브라우저로 봐야 보임.
+- **수정**: `app.py` STATUS_BADGE의 `bug_low` / `bug` 항목 두 곳에서
+  `&#xB099;` → `&#xB0AE;` 로 교체.
+- **참고**: `html_reporter.py:180` 의 직접 한글 표기("BUG 낮음")는 정상.
+  app.py 만 HTML 엔티티 사용한 게 화근.
+- **재빌드 필요**: 예. 기존 리포트 파일들도 동일 오타가 박혀있으나
+  히스토리 자료라 그대로 둠. 향후 빌드 결과는 정상.
+
+---
+
+## [RESOLVED] 결함 스크린샷이 dismiss 후 캡처되어 빈 화면 기록됨
+- **날짜**: 2026-04-30
+- **증상**: WARN/FAIL 결함 카드의 스크린샷이 모달 닫힌 후 캡처되어
+  실제 cause(입력값) + effect(에러 모달)가 한 프레임에 안 담김.
+  검수자가 어느 시점이 증거인지 판단 불가.
+- **원인**: 3개 흐름이 모두 `dismiss → 캡처` 순서로 동작
+  1. `core/scan_context.py:dismiss_warning_dialog` — 텍스트만 캡처 후 dismiss
+  2. `core/list_page_runner.py:list_modal_overflow` — 인라인 dismiss 후 `_known_bug` 호출
+  3. `validators/overflow.py:_handle_modal` — dismiss 후 호출자가 별도 캡처
+- **수정**: `dismiss → 캡처` → `캡처 → dismiss` 순서로 변경
+  1. `scan_context.py`: `last_warning_screenshot` 필드 추가, dismiss 직전 자동 캡처
+  2. `list_page_runner.py`: `_known_bug/_fail/_err`에 옵셔널 `screenshot` 인자 추가,
+     `list_modal_overflow`에서 dismiss 전 캡처 후 헬퍼에 전달
+  3. `overflow.py`: `_handle_modal` 시그니처를 `tuple[bool|None, str|None]`로 변경,
+     서버 오류 감지 시 dismiss 전 캡처 후 함께 반환. `_make_*_overflow_result`도
+     `page` 대신 `screenshot` 인자 받도록 변경
+- **검증 결과**: 모든 모듈 import 성공. 실 실행 검증은 인터넷 복구 후 진행.
+- **참고 문서**: `docs/screenshot_capture_cases.md` (Type 분류 + 케이스별 처리 방식)
+- **원칙**: 1결함 = 1스크린샷. 호출자에서 중복 캡처 안 하도록 주의.
+  - `required_submit._run_submit_edit`: dismiss 후 별도 `take_screenshot` 호출 제거
+  - `list_modal_overflow`: dismiss 전 캡처본을 `_known_bug`에 전달 (재촬영 X)
+  - `_make_*_overflow_result`: 받은 ss 그대로 사용 (자체 `_take_screenshot` 호출 제거)
+
+---
+
+## [RESOLVED] QATool UI에서 WARN(BUG Low) 결함이 목록에 안 나타남
+- **날짜**: 2026-04-30
+- **증상**: 테스트 완료 후 앱 결과 화면의 결함 목록에 WARN(노란 버그)이 표시되지 않음.
+  HTML 리포트에서는 정상 표시됨.
+- **원인**: `templates/app/report.html` 288번 줄 JS 필터에 `warn`이 누락됨.
+  `known_bug` → `warn` 으로 status 리팩터 시 필터 목록 미반영.
+  ```js
+  // 수정 전
+  ['fail', 'known_bug', 'error'].includes(r.status)
+  // 수정 후
+  ['fail', 'warn', 'known_bug', 'error'].includes(r.status)
+  ```
+  추가로 `ICON`, `ICON_CLASS`, `STATUS_TO_CYCLE` 맵에도 `warn` 키 추가.
+- **수정 파일**: `templates/app/report.html` (167~168, 174, 288번 줄)
+- **재빌드 필요**: 예 (빌드 배포 시 templates/ 포함됨)
+
+---
+
 ## [RESOLVED] nPouch 제품 선택 화면 🔒 막힘
 - **날짜**: 2026-04-21
 - **증상**: QA 툴 실행 시 엔파우치 카드가 "🔒 준비 중"으로 비활성화되어 선택 불가
