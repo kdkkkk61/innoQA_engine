@@ -887,10 +887,10 @@ def finalize():
 
     STATUS_BADGE = {
         "pass":     ('<span class="badge pass">&#x2705; PASS</span>',          "pass"),
-        "bug_low":  ('<span class="badge bug-low">&#x26A0;&#xFE0F; BUG &#xB099;&#xC74C;</span>', "bug-low"),
+        "bug_low":  ('<span class="badge bug-low">&#x26A0;&#xFE0F; BUG &#xB0AE;&#xC74C;</span>', "bug-low"),
         "bug_high": ('<span class="badge bug-high">&#x1F534; BUG &#xB192;&#xC74C;</span>', "bug-high"),
         # 구버전 호환 (finalize JSON에 'bug'/'fail' 있을 수 있음)
-        "bug":  ('<span class="badge bug-low">&#x26A0;&#xFE0F; BUG &#xB099;&#xC74C;</span>', "bug-low"),
+        "bug":  ('<span class="badge bug-low">&#x26A0;&#xFE0F; BUG &#xB0AE;&#xC74C;</span>', "bug-low"),
         "fail": ('<span class="badge bug-high">&#x1F534; BUG &#xB192;&#xC74C;</span>', "bug-high"),
     }
 

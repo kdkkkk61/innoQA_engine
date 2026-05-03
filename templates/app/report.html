@@ -164,14 +164,14 @@
 
 {% block scripts %}
 <script>
-  const ICON       = {pass:'✅', fail:'🔴', known_bug:'⚠️', error:'⛔', skip:'⏭️'};
-  const ICON_CLASS = {pass:'st-pass', fail:'st-fail', known_bug:'st-bug', error:'st-error', skip:'st-skip'};
+  const ICON       = {pass:'✅', fail:'🔴', warn:'⚠️', known_bug:'⚠️', error:'⛔', skip:'⏭️'};
+  const ICON_CLASS = {pass:'st-pass', fail:'st-fail', warn:'st-bug', known_bug:'st-bug', error:'st-error', skip:'st-skip'};
   // 수동 뱃지: 사이클 순서 pass → BUG낮음 → BUG높음
   const BADGE_CLASS = {pass:'badge-pass', bug_low:'badge-bug-low', bug_high:'badge-bug-high'};
   const BADGE_LABEL = {pass:'PASS', bug_low:'BUG', bug_high:'BUG'};
   const CYCLE = ['pass', 'bug_low', 'bug_high'];
   // 내부 status → CYCLE 키 매핑
-  const STATUS_TO_CYCLE = {pass:'pass', fail:'bug_high', known_bug:'bug_low', error:'bug_high', bug:'bug_low'};
+  const STATUS_TO_CYCLE = {pass:'pass', fail:'bug_high', warn:'bug_low', known_bug:'bug_low', error:'bug_high', bug:'bug_low'};
 
   let rowCounter = 0;
   let finalized  = false;
@@ -285,7 +285,7 @@
 
       for (const pg of data.pages) {
         const defects = (pg.results || []).filter(r =>
-          ['fail', 'known_bug', 'error'].includes(r.status)
+          ['fail', 'warn', 'known_bug', 'error'].includes(r.status)
         );
         for (const r of defects) {
           appendRow({
