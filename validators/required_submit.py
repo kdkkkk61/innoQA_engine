@@ -193,13 +193,18 @@ def _run_submit_sequence(
                 status = "pass"
                 detail = f"경고: '{actual_msg}'"
 
+            # fail/warn 시 dismiss 직전 캡처된 스크린샷 첨부 (모달 + cause 한 프레임)
+            result_extra = {
+                "missing_field":       step_def.get("missing_field", ""),
+                "missing_field_label": step_def.get("missing_field_label", ""),
+            }
+            if status in ("fail", "warn") and ctx.last_warning_screenshot:
+                result_extra["screenshot"] = ctx.last_warning_screenshot
+
             report.results.append(ScanResult(
                 pattern="required_submit", selector=submit_sel, label=label,
                 status=status, detail=detail, order=_ORDER_REQUIRED_SUBMIT,
-                extra={
-                    "missing_field":       step_def.get("missing_field", ""),
-                    "missing_field_label": step_def.get("missing_field_label", ""),
-                },
+                extra=result_extra,
             ))
 
             # ── reset_after: 지정 텍스트 필드 초기화 (중복 테스트 후 폼 리셋) ──
@@ -254,10 +259,21 @@ def _run_submit_simple(
         else:
             status, detail = "pass", f"빈 채로 {mode} 시 모달 닫히지 않음 (필드 검증 동작)"
 
+        # fail 시 캡처: dismiss 직전 캡처본이 있으면 우선, 없으면 현재 화면 폴백
+        result_extra = {}
+        if status == "fail":
+            ss = (
+                ctx.last_warning_screenshot
+                or ctx.take_screenshot(f"required_submit_simple_{mode}")
+            )
+            if ss:
+                result_extra["screenshot"] = ss
+
         report.results.append(ScanResult(
             pattern="required_submit", selector=submit_sel,
             label=f"필수 필드 미입력 {mode} 검증",
             status=status, detail=detail, order=_ORDER_REQUIRED_SUBMIT,
+            extra=result_extra,
         ))
     except Exception:
         ctx.append_error(
@@ -302,7 +318,15 @@ def _run_submit_edit(
         else:
             status, detail = "pass", "필수 필드 비운 채 수정 시 모달 닫히지 않음 (필드 검증 동작)"
 
-        ss = ctx.take_screenshot("edit_required_submit") if status == "fail" else None
+        # fail 시 캡처: dismiss 직전 캡처본 우선 (경고 모달 + 입력 폼 한 프레임).
+        # 경고 없이 닫힌 케이스(main_still_open=False)는 last_warning_screenshot=None →
+        # 현재 화면(목록) 폴백 캡처. 의미는 떨어지지만 기록은 남음.
+        ss = None
+        if status == "fail":
+            ss = (
+                ctx.last_warning_screenshot
+                or ctx.take_screenshot("edit_required_submit_fallback")
+            )
         report.results.append(ScanResult(
             pattern="required_submit", selector=submit_sel,
             label="필수 필드 미입력 수정 검증",

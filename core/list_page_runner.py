@@ -398,15 +398,25 @@ class ListPageRunner:
                 try:
                     self.page.locator(_CONFIRM_MODAL).wait_for(state="attached", timeout=3_000)
                     msg = self.page.locator(_MODAL_TEXT).first.inner_text().strip()
+
+                    # 모달 dismiss 직전에 스크린샷 캡처 (모달 + 입력 폼이 한 프레임에)
+                    # 서버 오류 케이스에서만 의미 있으나, 판정 전에 미리 찍어둠.
+                    is_server_error = "서버" in msg or "오류" in msg or "error" in msg.lower()
+                    pre_dismiss_ss = (
+                        self._take_screenshot(f"overflow_{flabel}_{overflow_len}자")
+                        if is_server_error else None
+                    )
+
                     self.page.locator(_CONFIRM_BTN).first.evaluate("el => el.click()")
                     self.page.locator(_CONFIRM_MODAL).wait_for(state="detached", timeout=3_000)
 
-                    if "서버" in msg or "오류" in msg or "error" in msg.lower():
+                    if is_server_error:
                         self._known_bug(
                             "list_modal_overflow", sel,
                             f"글자수 제한 누락 — {flabel} ({overflow_len}자)",
                             f"클라이언트 검증 없어 서버 오류 발생: '{msg}'",
                             order=order,
+                            screenshot=pre_dismiss_ss,   # dismiss 전 캡처본 전달
                         )
                     else:
                         self._ok(
@@ -827,16 +837,20 @@ class ListPageRunner:
             status="pass", detail=detail, order=order, phase=phase,
         ))
 
-    def _fail(self, pattern, selector, label, detail, order, phase=1):
-        ss = self._take_screenshot(label)
+    def _fail(self, pattern, selector, label, detail, order, phase=1, screenshot=None):
+        """fail 결과 등록.
+        screenshot 인자가 주어지면 그것을 사용 (호출자가 dismiss 전 미리 캡처한 경우).
+        없으면 현재 화면을 캡처 (현장 캡처).
+        """
+        ss = screenshot if screenshot else self._take_screenshot(label)
         self.report.results.append(ScanResult(
             pattern=pattern, selector=selector, label=label,
             status="fail", detail=detail, order=order, phase=phase,
             extra={"screenshot": ss} if ss else {},
         ))
 
-    def _err(self, pattern, selector, label, detail, order, phase=1):
-        ss = self._take_screenshot(label)
+    def _err(self, pattern, selector, label, detail, order, phase=1, screenshot=None):
+        ss = screenshot if screenshot else self._take_screenshot(label)
         self.report.results.append(ScanResult(
             pattern=pattern, selector=selector, label=label,
             status="error", detail=detail, order=order, phase=phase,
@@ -849,13 +863,15 @@ class ListPageRunner:
             status="skip", detail=detail, order=order, phase=phase,
         ))
 
-    def _known_bug(self, pattern, selector, label, detail, order, phase=1):
-        """버그(낮음) — UX 불편, 검증 누락 등 [WARN]."""
+    def _known_bug(self, pattern, selector, label, detail, order, phase=1, screenshot=None):
+        """버그(낮음) — UX 불편, 검증 누락 등 [WARN].
+        screenshot 인자가 주어지면 그것을 사용 (호출자가 dismiss 전 미리 캡처한 경우).
+        """
         scenario_idx = sum(1 for t, _ in _SCENARIO_THRESHOLDS if order >= t) - 1
         scenario_idx = max(0, min(scenario_idx, len(_SCENARIO_THRESHOLDS) - 1))
         _, scenario_header = _SCENARIO_THRESHOLDS[scenario_idx]
         scenario_tag = scenario_header.split(":")[0]
-        ss = self._take_screenshot(label)
+        ss = screenshot if screenshot else self._take_screenshot(label)
         self.report.results.append(ScanResult(
             pattern=pattern, selector=selector, label=label,
             status="warn", detail=detail, order=order, phase=phase,

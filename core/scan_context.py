@@ -20,20 +20,25 @@ class ScanContext:
     스캔 컨텍스트 — validators에 전달되는 공유 상태 + 헬퍼.
 
     Attributes:
-        page              : Playwright Page 객체
-        log               : scan_logger 인스턴스
-        known_bugs        : known_bugs.yaml 로드 결과
-        extra             : 테스트 파일에서 주입하는 런타임 컨텍스트
-                            (existing_name, verify_values 등)
-        phase             : 현재 스캔 단계 (1/2/3/0)
-        last_warning_text : dismiss_warning_dialog 호출 시 캡처된 경고 메시지
+        page                    : Playwright Page 객체
+        log                     : scan_logger 인스턴스
+        known_bugs              : known_bugs.yaml 로드 결과
+        extra                   : 테스트 파일에서 주입하는 런타임 컨텍스트
+                                  (existing_name, verify_values 등)
+        phase                   : 현재 스캔 단계 (1/2/3/0)
+        last_warning_text       : dismiss_warning_dialog 호출 시 캡처된 경고 메시지
+        last_warning_screenshot : dismiss_warning_dialog 호출 시 dismiss 직전에
+                                  캡처된 스크린샷 경로 (모달 + cause가 한 프레임에 담김).
+                                  None = 경고 모달 없었거나 캡처 실패.
+                                  validator는 status 판정 후 fail/warn에만 사용한다.
     """
-    page:              Page
-    log:               object                  # scan_logger (duck-typed)
-    known_bugs:        list[dict] = field(default_factory=list)
-    extra:             dict       = field(default_factory=dict)
-    phase:             int        = 0
-    last_warning_text: str        = ""
+    page:                    Page
+    log:                     object                  # scan_logger (duck-typed)
+    known_bugs:              list[dict]    = field(default_factory=list)
+    extra:                   dict          = field(default_factory=dict)
+    phase:                   int           = 0
+    last_warning_text:       str           = ""
+    last_warning_screenshot: str | None    = None
 
     # ── 공용 상수 ──────────────────────────────────────────────────────────────
     # 앱 공통 경고 다이얼로그 (login_page.py SEL_ERROR_MODAL과 동일)
@@ -99,14 +104,16 @@ class ScanContext:
               메인 모달이 닫힘 — 반드시 #__globalMessageModal 직접 지정 필요.
 
         부수효과:
-            self.last_warning_text 에 경고 메시지 텍스트를 저장한다.
-            경고 없으면 빈 문자열로 초기화.
+            self.last_warning_text       : 경고 메시지 텍스트 (없으면 "")
+            self.last_warning_screenshot : dismiss 직전 캡처 경로 (없으면 None)
+                                           → 모달 + 뒤로 비치는 입력값이 한 프레임에 담김
 
         반환:
             True  = 다이얼로그가 있었고 닫음
             False = 다이얼로그 없음
         """
-        self.last_warning_text = ""
+        self.last_warning_text       = ""
+        self.last_warning_screenshot = None
         try:
             warn_modal = self.page.locator(self.SEL_WARN_MODAL)
             if warn_modal.count() == 0:
@@ -120,6 +127,14 @@ class ScanContext:
                     self.log.debug(f"[warn_dialog] 텍스트: {self.last_warning_text!r}")
             except Exception:
                 pass
+            # 스크린샷 캡처 (dismiss 전 — cause + effect 한 프레임)
+            # validator가 status 판정 후 fail/warn일 때만 ScanResult.extra에 첨부.
+            try:
+                self.last_warning_screenshot = self.take_screenshot("warning_dialog")
+            except Exception:
+                self.log.debug(
+                    f"[warn_dialog] 스크린샷 실패:\n{traceback.format_exc()}"
+                )
             confirm = warn_modal.locator("button")
             if confirm.count() > 0:
                 self.log.debug("[warn_dialog] 확인 버튼 클릭")

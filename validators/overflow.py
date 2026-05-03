@@ -236,11 +236,16 @@ def _run_case(
         page.locator(register_btn_sel).first.evaluate("el => el.click()")
         page.wait_for_timeout(1500)
 
-        # ── 4. 모달 감지 및 판단 ──────────────────────────────────────
-        is_error = _handle_modal(page, confirm_modal_sel, confirm_btn_sel)
+        # ── 4. 모달 감지 및 판단 (dismiss 전 캡처도 같이) ─────────────
+        is_error, pre_dismiss_ss = _handle_modal(
+            page, confirm_modal_sel, confirm_btn_sel, label=label
+        )
 
         # ── 5. 결과 기록 ──────────────────────────────────────────────
-        return _make_tag_overflow_result(inp_sel, label, overflow_len, is_error, order, page)
+        return _make_tag_overflow_result(
+            inp_sel, label, overflow_len, is_error, order,
+            screenshot=pre_dismiss_ss,
+        )
 
     except Exception as e:
         ss = _take_screenshot(page, label)
@@ -306,11 +311,16 @@ def _run_text_input_case(
         page.locator(register_btn_sel).first.evaluate("el => el.click()")
         page.wait_for_timeout(1500)
 
-        # ── 4. 모달 감지 ──────────────────────────────────────────────
-        is_error = _handle_modal(page, confirm_modal_sel, confirm_btn_sel)
+        # ── 4. 모달 감지 (dismiss 전 캡처도 같이) ─────────────────────
+        is_error, pre_dismiss_ss = _handle_modal(
+            page, confirm_modal_sel, confirm_btn_sel, label=label
+        )
 
         # ── 5. 결과 기록 ──────────────────────────────────────────────
-        return _make_text_overflow_result(inp_sel, label, overflow_len, is_error, order, page)
+        return _make_text_overflow_result(
+            inp_sel, label, overflow_len, is_error, order,
+            screenshot=pre_dismiss_ss,
+        )
 
     except Exception as e:
         ss = _take_screenshot(page, label)
@@ -364,11 +374,14 @@ def _fill_required_fields(page, fields: list) -> None:
 
 def _make_tag_overflow_result(
     inp_sel: str, label: str, overflow_len: int,
-    is_error, order: int, page,
+    is_error, order: int, screenshot: str | None = None,
 ) -> ScanResult:
-    """tag_input 오버플로 결과 생성."""
+    """tag_input 오버플로 결과 생성.
+
+    screenshot: _handle_modal에서 dismiss 직전 캡처한 경로.
+    is_error=True (서버 오류) 시에만 의미 있음. is_error=False/None은 None일 수 있음.
+    """
     if is_error is True:
-        ss = _take_screenshot(page, label)
         return ScanResult(
             pattern="overflow", selector=inp_sel, label=label,
             status="warn",
@@ -376,11 +389,12 @@ def _make_tag_overflow_result(
                 f"클라이언트 글자수 제한 없음 — {overflow_len}자 태그 추가 후 "
                 "등록 시 서버 오류 발생 (클라이언트 측 입력 길이 검증 누락)"
             ),
-            extra={"screenshot": ss} if ss else {},
+            extra={"screenshot": screenshot} if screenshot else {},
             order=order, phase=_PHASE,
         )
     elif is_error is False:
-        ss = _take_screenshot(page, label)
+        # 데이터 손상 케이스 — 서버도 막지 못함. 모달 없이 저장된 상태라
+        # dismiss 전 캡처는 없음 → extra 비움. detail 텍스트로 증거 보완.
         return ScanResult(
             pattern="overflow", selector=inp_sel, label=label,
             status="fail",
@@ -388,27 +402,28 @@ def _make_tag_overflow_result(
                 f"클라이언트/서버 모두 글자수 제한 없음 — "
                 f"{overflow_len}자 태그 등록 성공 (DB/서버 측 검증도 누락, 데이터 손상 가능)"
             ),
-            extra={"screenshot": ss} if ss else {},
+            extra={"screenshot": screenshot} if screenshot else {},
             order=order, phase=_PHASE,
         )
     else:
-        ss = _take_screenshot(page, label)
         return ScanResult(
             pattern="overflow", selector=inp_sel, label=label,
             status="error",
             detail="등록 후 응답 모달이 나타나지 않음 (타임아웃 또는 다른 UI 처리)",
-            extra={"screenshot": ss} if ss else {},
+            extra={"screenshot": screenshot} if screenshot else {},
             order=order, phase=_PHASE,
         )
 
 
 def _make_text_overflow_result(
     inp_sel: str, label: str, overflow_len: int,
-    is_error, order: int, page,
+    is_error, order: int, screenshot: str | None = None,
 ) -> ScanResult:
-    """text_input 오버플로 결과 생성."""
+    """text_input 오버플로 결과 생성.
+
+    screenshot: _handle_modal에서 dismiss 직전 캡처한 경로.
+    """
     if is_error is True:
-        ss = _take_screenshot(page, label)
         return ScanResult(
             pattern="overflow", selector=inp_sel, label=label,
             status="warn",
@@ -416,11 +431,10 @@ def _make_text_overflow_result(
                 f"클라이언트 글자수 제한 없음 — {overflow_len}자 입력 후 "
                 "저장 시 서버 오류 발생 (클라이언트 측 입력 길이 검증 누락)"
             ),
-            extra={"screenshot": ss} if ss else {},
+            extra={"screenshot": screenshot} if screenshot else {},
             order=order, phase=_PHASE,
         )
     elif is_error is False:
-        ss = _take_screenshot(page, label)
         return ScanResult(
             pattern="overflow", selector=inp_sel, label=label,
             status="fail",
@@ -428,16 +442,15 @@ def _make_text_overflow_result(
                 f"클라이언트/서버 모두 글자수 제한 없음 — "
                 f"{overflow_len}자 입력 저장 성공 (DB/서버 측 검증도 누락, 데이터 손상 가능)"
             ),
-            extra={"screenshot": ss} if ss else {},
+            extra={"screenshot": screenshot} if screenshot else {},
             order=order, phase=_PHASE,
         )
     else:
-        ss = _take_screenshot(page, label)
         return ScanResult(
             pattern="overflow", selector=inp_sel, label=label,
             status="error",
             detail="저장 후 응답 모달이 나타나지 않음 (타임아웃 또는 다른 UI 처리)",
-            extra={"screenshot": ss} if ss else {},
+            extra={"screenshot": screenshot} if screenshot else {},
             order=order, phase=_PHASE,
         )
 
@@ -458,26 +471,31 @@ def _handle_modal(
     page,
     modal_sel: str,
     confirm_btn_sel: str,
-) -> bool | None:
+    label: str = "overflow",
+) -> tuple[bool | None, str | None]:
     """
     글로벌 메시지 모달을 감지하고 필요 시 확인 클릭.
 
+    서버 오류 감지 시점에 dismiss 직전 스크린샷을 캡처해 함께 반환한다.
+    이렇게 하면 호출자가 모달 + 입력 폼이 한 프레임에 담긴 증거를 받을 수 있다.
+
     반환:
-      True  — 서버 오류 텍스트 감지됨
-      False — 모달 출현했으나 오류 아님 (성공 메시지 or 확인 후 정상 처리)
-      None  — 모달 자체가 출현하지 않음
+      (True,  ss)   — 서버 오류 텍스트 감지됨, ss = dismiss 전 캡처
+      (False, None) — 모달 출현했으나 오류 아님 (성공 메시지 등)
+      (None,  None) — 모달 자체가 출현하지 않음
     """
     modal_loc = page.locator(modal_sel)
     if modal_loc.count() == 0:
-        return None
+        return None, None
 
     modal_text = modal_loc.inner_text()
 
-    # 서버 오류 → 확인 클릭 후 True 반환
+    # 서버 오류 → dismiss 전 스크린샷 캡처 → 확인 클릭 → (True, ss) 반환
     if any(kw in modal_text for kw in _SERVER_ERROR_KW):
+        ss = _take_screenshot(page, label)
         _click_if_exists(page, confirm_btn_sel)
         page.wait_for_timeout(400)
-        return True
+        return True, ss
 
     # 저장 확인 다이얼로그 → 확인 클릭 후 서버 응답 재확인
     if any(kw in modal_text for kw in _CONFIRM_KW):
@@ -486,15 +504,18 @@ def _handle_modal(
         # 서버 응답으로 새 모달이 떴는지 확인
         if modal_loc.count() > 0:
             err_text = modal_loc.inner_text()
+            is_err   = any(kw in err_text for kw in _SERVER_ERROR_KW)
+            # 오류 모달이면 dismiss 전 캡처
+            ss = _take_screenshot(page, label) if is_err else None
             _click_if_exists(page, confirm_btn_sel)
             page.wait_for_timeout(400)
-            return any(kw in err_text for kw in _SERVER_ERROR_KW)
-        return False  # 모달 사라짐 = 저장 성공
+            return is_err, ss
+        return False, None  # 모달 사라짐 = 저장 성공
 
-    # 알 수 없는 모달 → dismiss 후 False
+    # 알 수 없는 모달 → dismiss 후 (False, None)
     _click_if_exists(page, confirm_btn_sel)
     page.wait_for_timeout(400)
-    return False
+    return False, None
 
 
 def _click_if_exists(page, selector: str) -> None:
