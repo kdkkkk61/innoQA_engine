@@ -298,8 +298,21 @@ class NpouchControlSuitePage(BasePage):
         )
 
     def close_modal(self) -> None:
-        self.click_attached(self.SEL_CANCEL_BTN)
-        self.wait_for(self.SEL_ADD_BTN)
+        """주 모달 닫기. 모달이 안 떠있으면 no-op (에러 캡처 노이즈 방지).
+
+        호출 흐름상 try/except로 감싼 호출자가 많은데, 모달이 이미 닫힌
+        상태에서 click_attached가 timeout → base_page의 자동 에러 캡처가
+        의미 없는 리스트 화면을 찍는 부작용을 차단한다.
+        """
+        try:
+            if self.page.locator(self.SEL_MODAL_OPEN).count() == 0:
+                # 이미 닫혀있음 → 호출자 의도(닫힌 상태) 충족, 그냥 종료
+                return
+            self.click_attached(self.SEL_CANCEL_BTN)
+            self.wait_for(self.SEL_ADD_BTN)
+        except Exception:
+            # 닫기 도중 예외(렌더링 타이밍 등) — 호출자가 뒤이어 검증함
+            pass
 
     def save_policy(self, name: str) -> None:
         self.fill(self.SEL_CSU_NAME, name)
@@ -547,8 +560,10 @@ class NpouchControlSuitePage(BasePage):
         self.page.wait_for_timeout(200)
 
     def close_proc_modal(self) -> None:
-        """등록 서브모달 닫기 (× 버튼)."""
+        """등록 서브모달 닫기 (× 버튼). 모달이 안 떠있으면 no-op."""
         try:
+            if self.page.locator(self.SEL_PROC_MODAL_OPEN).count() == 0:
+                return
             self.page.locator(self.SEL_PROC_CLOSE).evaluate("el => el.click()")
             self.page.locator(self.SEL_PROC_MODAL_OPEN).wait_for(
                 state="detached", timeout=self._TIMEOUT_TABLE
