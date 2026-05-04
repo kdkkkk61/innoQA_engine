@@ -307,12 +307,22 @@ def _run_submit_edit(
         warning_appeared = ctx.dismiss_warning_dialog()
         main_still_open  = ctx.page.locator(f"#{main_modal_sel}.in").count() > 0
 
+        # 시나리오 2의 책임 = 1차 검증 (경고 떴는가). 추정 금지 원칙(scenario_2_input.md)
+        # 에 따라 "저장됐다" 같은 표현 사용 금지. 실제 저장값은 시나리오 4-3에서 확인.
         if not main_still_open:
             if ctx.is_known_bug(submit_sel, "edit_required_submit"):
                 status = "fail"
-                detail = "필수 필드 비운 채 수정 시 경고 없이 저장됨 — 알려진 버그: 필수 필드 검증 누락"
+                detail = (
+                    "필수 필드 비운 채 수정 시도 — 경고 없이 모달 닫힘 "
+                    "(클라이언트 검증 누락) [알려진 버그] "
+                    "→ 실제 저장값은 시나리오 4-3 참조"
+                )
             else:
-                status, detail = "fail", "필수 필드 비운 채 수정 시 경고 없이 모달이 닫힘"
+                status = "fail"
+                detail = (
+                    "필수 필드 비운 채 수정 시도 — 경고 없이 모달 닫힘 "
+                    "(클라이언트 검증 누락) → 실제 저장값은 시나리오 4-3 참조"
+                )
         elif warning_appeared:
             status, detail = "pass", "필수 필드 비운 채 수정 시 경고 모달 정상 출력"
         else:

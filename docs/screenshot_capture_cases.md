@@ -96,6 +96,9 @@ list_modal_overflow:
 해당 케이스:
 - `list_crud` (CRUD 추가 후 목록에 없음)
 - `list_modify_verify` (저장값 재확인 실패)
+- `list_modify_required` / `modify_required` (시나리오 4-3 — 필수 비움 저장 시도 후 재오픈하여 실제 값 확인)
+  - cause(빈필드 입력) 화면은 사라짐 → detail에 `original_value` + `actual_value` 텍스트 보완
+  - 캡처는 재오픈된 모달의 실제 저장값 화면
 
 ### Type 4 — Silent block형
 **입력 시도 직후 캡처. 입력값 그대로 + 미반영 상태가 한 프레임에.**

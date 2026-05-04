@@ -33,12 +33,29 @@
 
 | 재오픈 시 실제 값 | 의미 | status |
 |---|---|---|
-| `""` (빈값) | 클라이언트·서버 모두 검증 누락 — 데이터 손상 | **FAIL** |
-| `original` (이전값 유지) | 서버가 빈값 거부 — UX 혼란 (사용자는 "저장됐다" 착각) | **WARN** |
-| 그 외 다른 값 | 예상 못한 동작 (자동 채움 등) | **ERROR** |
+| `""` (빈값) | 클라이언트·서버 모두 검증 누락 — 데이터 손상 | **fail** |
+| `original` (이전값 유지) | 서버가 빈값 거부 — UX 혼란 (사용자는 "저장됐다" 착각) | **warn** |
+| 그 외 다른 값 | 제품의 예상 못한 동작 (자동 채움 등) | **fail** |
 
+> error는 테스트 도구 자체 오류(셀렉터 못 찾음·타임아웃)에만 사용. 제품 동작 결과는
+> fail/warn으로 분류 (`test_scenario_standard.md` status 기준 준수).
+>
 > 시나리오 2의 EDIT 1차 검증 ("경고 떴는가") 에서 "경고 안 뜸"으로 끝난 케이스의
 > 실제 결과를 여기서 분기 판정한다. 정직한 검증의 핵심.
+
+---
+
+## Pattern 명명 (출력·정렬용)
+
+| 페이지 유형 | pattern 이름 |
+|---|---|
+| **list_page** (공통 프로세스, 제어 스위트, nPouch) | `list_modify_required` |
+| **modal_form** (RDP, 랜섬 탐지) | `modify_required` |
+
+**시나리오 4 영역 출력**: `required_submit` 패턴이 시나리오 2 끝(order 9999)에 위치하는 것과
+달리, 신규 pattern은 **시나리오 4 영역 안** 에 위치 (4-2 다음, 시나리오 5 이전).
+
+→ 출력 정렬 규칙은 `scan-output-format.md` 참조.
 
 ---
 
@@ -109,14 +126,15 @@ def test_scenario4_modify(self):
     p.wait_for(SEL_ADD_BTN)
 
     # 재오픈 → 실제 값 확인 (추정 금지)
-    p.open_modify_modal(_AUTO_NAME if original_required != _AUTO_NAME else _AUTO_NAME)
+    p.open_modify_modal(_AUTO_NAME)
     actual = p.get_field_value(REQUIRED_FIELD)
     if actual == "":
         status, detail = "fail", f"빈값 그대로 저장됨 — 데이터 손상 (입력: 비움 / 결과: '')"
     elif actual == original_required:
         status, detail = "warn", f"서버가 빈값 거부 → 이전값 유지 (입력: 비움 / 결과: {actual!r})"
     else:
-        status, detail = "error", f"예상 못한 값 (입력: 비움 / 결과: {actual!r})"
+        status, detail = "fail", f"제품의 예상 못한 동작 (입력: 비움 / 결과: {actual!r})"
+    # pattern: list_modify_required (list_page) / modify_required (modal_form)
     t, s = _r(status, f"{REQUIRED_LABEL} — 빈값 저장 시도 후 결과",
               detail, sc=4)
 

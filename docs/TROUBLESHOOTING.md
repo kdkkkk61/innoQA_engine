@@ -5,6 +5,38 @@
 
 ---
 
+## [DOCS] 시나리오 2/4 책임 영역 재정의 — 추정 금지 + 4-3 신설
+- **날짜**: 2026-04-30
+- **이슈**: `_run_submit_edit` (시나리오 2의 EDIT 분기) 가 "경고 안 뜸 → 저장됐을 것"
+  추정으로 결론. 실제 저장값(빈값/원본/다른값)은 미확인 → `yaml-guide.md` 의
+  "추정 금지 / 직접 확인" 원칙 위반.
+- **분석**: 시나리오 2/4/5 정의 검토 결과 — "위반 입력 통과 후 실제 저장 결과 확인"
+  영역이 어느 시나리오에도 명시되어 있지 않음. 단편적 추가 시 시나리오 5와 행위 중복,
+  pattern 정렬 충돌(`scan-output-format.md` 의 `required_submit` 마지막 출력 규칙) 발생.
+- **수정 (md 일괄)**:
+  - `scenario_4_modify.md` — "정상 흐름만"에서 "수정 흐름 전체 정합성"으로 확장.
+    4-3 신설 (필수 비움 → 저장 → 재오픈 → 실제 값 확인). 분기: 빈값=fail / 원본=warn / 다른값=fail.
+    pattern 명명: `list_modify_required` (list_page) / `modify_required` (modal_form).
+  - `scenario_2_input.md` — 추정 금지 명시. EDIT 분기는 "경고 떴는가" 1차 검증만 책임.
+    실제 결과는 시나리오 4-3로 위임.
+  - `scenario_3_action.md` — 책임 분리 매트릭스 추가. EDIT 모달 필수 비움 후 결과는
+    시나리오 4-3로 위임 명시.
+  - `scenario_5_cases.md` — 시나리오 4-3과의 차이 명시 (케이스B는 "필수 채움", 4-3는 "필수 비움").
+  - `screenshot_capture_cases.md` — Type 3 (결과 검증형) 에 4-3 추가.
+  - `scan-output-format.md` — 신규 pattern 정렬 규칙 명시 (`required_submit` 과 달리 시나리오 4 영역 안).
+  - `test_scenario_standard.md` — 6개 시나리오 요약 + 책임 분리 매트릭스 + fail/error 일관성.
+- **수정 (config)**:
+  - `known_bugs.yaml` 의 RDP `edit_required_submit` reason — 추정 표현("저장 가능") 제거,
+    객관 표현("경고 없이 모달 닫힘 — 실제 저장값은 4-3에서 확인")으로 변경.
+- **status 분기 일관성**: 4-3의 "다른값"은 error가 아닌 fail. error는 테스트 도구 자체
+  오류(셀렉터/타임아웃)에만 사용 (`test_scenario_standard.md` status 기준 준수).
+- **다음 단계 (코드)**:
+  1. `validators/required_submit.py:_run_submit_edit` detail 표현 정정 (이미 1차 진행).
+  2. 페이지별 page object에 4-3 검증 메서드 추가 (list_page) / yaml 콜백 패턴 (modal_form).
+  3. 신규 pattern (`list_modify_required` 등) 출력 매핑 검증.
+
+---
+
 ## [RESOLVED] 제어 스위트 close_modal/close_proc_modal — 모달 미존재 시 에러 캡처 노이즈
 - **날짜**: 2026-04-30
 - **증상**: `reports/screenshots/error_click_attached_div#controlSuite button.btn-default_*.png`

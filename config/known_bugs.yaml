@@ -33,7 +33,7 @@
 - selector:      "button[modify-btn]"
   pattern:       "required_submit"
   test_name:     "edit_required_submit"
-  reason:        "RDP 정책 수정 모달은 정책 이름을 비워도 저장 가능 (EDIT 모달에서 required 필드 검증 없음)"
+  reason:        "RDP 정책 EDIT 모달 — 정책 이름 비운 채 저장 시 경고 없이 모달 닫힘 (클라이언트 측 필수 필드 검증 누락). 실제 저장값은 시나리오 4-3에서 확인."
   reported_date: "2026-03-25"
   ticket:        ""
   page_id:       "rdp_policy"
