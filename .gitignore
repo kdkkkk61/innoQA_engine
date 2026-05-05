@@ -24,3 +24,22 @@ dist/
 
 # 로그
 logs/
+
+# bkit 내부 상태 (자동 생성 — 다른 PC에서 bkit이 자체 재생성)
+.bkit/runtime/
+.bkit/snapshots/
+.bkit/state/
+
+# Claude Code 로컬 설정 (PC별 — 공유 X)
+.claude/settings.local.json
+.claude/launch.json
+
+# 동적 데이터 (DB)
+data/*.db
+
+# 외부 프로젝트 사본 (참고용)
+test_page/
+
+# 빌드 산출물
+build/test file/
+*.exe
