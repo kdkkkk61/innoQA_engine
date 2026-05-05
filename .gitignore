@@ -43,3 +43,6 @@ test_page/
 # 빌드 산출물
 build/test file/
 *.exe
+
+# 실행 결과 (동적)
+reports/
