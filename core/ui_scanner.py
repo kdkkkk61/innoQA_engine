@@ -127,6 +127,10 @@ class UIScanner:
         before_count = len(report.results)
         if hints:
             self._scan_from_hints(ctx, hints, report, phase=phase)
+            # 시나리오 1 — DOM 스캔 + yaml 비교 (회귀 본질, scenario_1_ui.md 참조)
+            # 모달이 열린 상태에서만 의미 있음. ADD 모달 phase(2)에서 1회 수행.
+            if modal_opened and phase in (0, 2):
+                self._scan_diff_yaml_dom(ctx, hints, report)
         else:
             print(f"[UIScanner] scan_hints 없음 — 자동 탐지 폴백: {hints_path}")
             self._scan_auto_fallback(report)
@@ -214,6 +218,77 @@ class UIScanner:
         # 원래 탭으로 복원 (readonly 원칙)
         if original_tab:
             ctx.activate_tab(original_tab)
+
+    # ── 시나리오 1: DOM 스캔 + yaml 비교 (회귀 본질) ──────────────────────────
+
+    def _scan_diff_yaml_dom(
+        self,
+        ctx:    ScanContext,
+        hints:  dict,
+        report: PageScanReport,
+    ) -> None:
+        """
+        yaml 정의 셀렉터 set과 모달 DOM의 실제 요소 set을 비교한다.
+
+        - DOM에만 존재     → 🆕 신규 요소 (pattern: discovered_new, status: warn)
+        - yaml에만 존재    → ❌ 제거 요소 (pattern: discovered_missing, status: warn)
+        - 둘 다 존재       → 정상 (다른 시나리오에서 검증됨)
+
+        설계 근거:
+          - docs/scenario_1_ui.md "DOM 스캔 + yaml 비교"
+          - docs/scan-output-format.md "신규 pattern 정렬 규칙"
+
+        order=9 — 시나리오 1 영역 가장 앞 (검수자가 보고서에서 즉시 인지).
+        extra["scenario"]=1 명시 (다른 phase에서 호출돼도 시나리오 1 영역 출력).
+        """
+        from core.scan_diff import (
+            extract_yaml_selectors, extract_dom_selectors, compare,
+        )
+
+        # 모달 컨텍스트 셀렉터 결정 (Bootstrap modal 열림 = .in)
+        modal_id = hints.get("modal_id") or ""
+        if not modal_id:
+            return  # 컨텍스트 미정 → 비교 불가, 조용히 스킵
+        context_sel = f"#{modal_id}.in"
+
+        try:
+            yaml_set = extract_yaml_selectors(hints)
+            dom_set  = extract_dom_selectors(self.page, context_sel)
+            diff     = compare(yaml_set, dom_set)
+        except Exception:
+            ctx.append_error(
+                report, "discovered_new", context_sel,
+                "DOM ↔ yaml 비교 실패", order=9, phase=1,
+            )
+            return
+
+        # 🆕 신규 요소 (DOM에만 존재)
+        for sel in sorted(diff["new"]):
+            report.results.append(ScanResult(
+                pattern="discovered_new", selector=sel,
+                label=f"신규 요소 감지 — {sel}",
+                status="warn",
+                detail=(
+                    f"DOM에 존재하나 yaml에 미정의 / 결과: {sel} "
+                    "→ scan_hints/{page_id}.yaml에 추가 후 정식 검증"
+                ),
+                order=9, phase=1,
+                extra={"scenario": 1, "scenario_tag": "시나리오 1"},
+            ))
+
+        # ❌ 제거된 요소 (yaml에만 존재)
+        for sel in sorted(diff["missing"]):
+            report.results.append(ScanResult(
+                pattern="discovered_missing", selector=sel,
+                label=f"제거된 요소 감지 — {sel}",
+                status="warn",
+                detail=(
+                    f"yaml에 정의되었으나 DOM에 없음 / 결과: {sel} "
+                    "→ 의도된 제거면 yaml 정리, 회귀면 제품 버그 보고"
+                ),
+                order=9, phase=1,
+                extra={"scenario": 1, "scenario_tag": "시나리오 1"},
+            ))
 
     # ── 자동 탐지 폴백 ────────────────────────────────────────────────────────
 
