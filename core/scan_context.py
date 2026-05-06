@@ -156,13 +156,14 @@ class ScanContext:
         selector: str,
         label:    str,
         order=None,
+        phase:    int = 0,
     ) -> None:
         """예외 발생 시 로그 기록 후 ScanResult(error)를 report에 추가한다."""
         tb = traceback.format_exc()
         self.log.error(f"[{pattern}] {label!r} ({selector}) 예외 발생:\n{tb}")
         report.results.append(ScanResult(
             pattern=pattern, selector=selector, label=label,
-            status="error", detail=tb, order=order,
+            status="error", detail=tb, order=order, phase=phase,
         ))
 
     def is_known_bug(self, selector: str, test_name: str) -> bool:

@@ -12,7 +12,8 @@ import traceback
 from core.models import PageScanReport, ScanResult
 from core.scan_context import ScanContext
 
-_ORDER_REQUIRED_SUBMIT = 9999   # 항상 출력 맨 마지막
+_ORDER_REQUIRED_SUBMIT = 9999   # 항상 출력 맨 마지막 (시나리오 2 끝)
+_ORDER_MODIFY_REQUIRED = 9000   # 시나리오 4-3 — 시나리오 4 영역 마지막
 
 
 def scan_required_submit(
@@ -343,6 +344,21 @@ def _run_submit_edit(
             status=status, detail=detail, order=_ORDER_REQUIRED_SUBMIT,
             extra={"screenshot": ss} if ss else {},
         ))
+
+        # ── 시나리오 4-3: 위반 결과 확인 (modal_form) ────────────────────
+        # 1차에서 "fail (경고 없이 모달 닫힘)" 인 경우만 진행 — 실제 저장값을
+        # 직접 재오픈해서 확인 (추정 금지 원칙, scenario_4_modify.md 4-3).
+        # 호출 조건: ctx.phase == 4 + reopen_edit_fn 콜백 + 1차 fail + 모달 닫힘
+        reopen_fn = ctx.extra.get("reopen_edit_fn")
+        if (
+            status == "fail"
+            and not main_still_open
+            and required_input_sel
+            and reopen_fn
+        ):
+            _run_modify_required_check(
+                ctx, report, required_input_sel, original_value, reopen_fn
+            )
     except Exception:
         ctx.append_error(
             report, "required_submit", submit_sel,
@@ -358,3 +374,76 @@ def _run_submit_edit(
                 ctx.log.debug(
                     f"[required_submit] EDIT 복원 실패:\n{traceback.format_exc()}"
                 )
+
+
+def _run_modify_required_check(
+    ctx:           ScanContext,
+    report:        PageScanReport,
+    required_sel:  str,
+    original_val:  str,
+    reopen_fn:     callable,
+) -> None:
+    """
+    시나리오 4-3: 필수 필드 비움 시도 후 실제 저장값 확인 (modal_form).
+
+    1차 검증(_run_submit_edit)에서 "경고 없이 모달 닫힘"으로 끝난 케이스의 후속.
+    재오픈 → 실제 값 확인 → 분기 판정 (scenario_4_modify.md 4-3).
+
+    분기:
+        "" (빈값)   → fail   (데이터 손상)
+        original    → warn   (서버 거부, UX 혼란)
+        그 외 다른값 → fail   (제품의 예상 못한 동작)
+
+    호출 후 모달은 재오픈된 상태 — 호출자(_run_submit_edit)의 finally에서
+    원본 복원 처리. 정리 책임은 호출자에 있다.
+    """
+    label = "필수 필드 — 빈값 저장 시도 후 결과"
+    try:
+        # 모달 재오픈 (콜백)
+        reopen_fn()
+        ctx.page.wait_for_timeout(300)
+
+        # 실제 저장값 읽기
+        loc = ctx.page.locator(required_sel)
+        if loc.count() == 0:
+            ctx.append_error(
+                report, "modify_required", required_sel,
+                label + " (재오픈 후 필드 미발견)", _ORDER_MODIFY_REQUIRED, phase=4,
+            )
+            return
+        actual = loc.input_value()
+
+        # 분기 판정
+        if actual == "":
+            status = "fail"
+            detail = (
+                f"빈값 그대로 저장됨 — 데이터 손상 "
+                f"(입력: 비움 / 결과: '')"
+            )
+        elif actual == original_val:
+            status = "warn"
+            detail = (
+                f"서버가 빈값 거부 → 이전값 유지 "
+                f"(입력: 비움 / 결과: {actual!r}) — UX 혼란 유발"
+            )
+        else:
+            status = "fail"
+            detail = (
+                f"제품의 예상 못한 동작 "
+                f"(입력: 비움 / 원본: {original_val!r} / 결과: {actual!r})"
+            )
+
+        # 캡처: 재오픈된 모달 화면 (실제 저장값 보임 — Type 3 결과 검증형)
+        ss = ctx.take_screenshot("modify_required_actual") if status in ("fail", "warn") else None
+
+        report.results.append(ScanResult(
+            pattern="modify_required", selector=required_sel, label=label,
+            status=status, detail=detail,
+            order=_ORDER_MODIFY_REQUIRED, phase=4,
+            extra={"screenshot": ss} if ss else {},
+        ))
+    except Exception:
+        ctx.append_error(
+            report, "modify_required", required_sel, label,
+            _ORDER_MODIFY_REQUIRED, phase=4,
+        )

@@ -107,6 +107,12 @@ class UIScanner:
             phase=phase,
         )
 
+        # Phase 4 (수정 시나리오) 한정 — 4-3 위반 결과 확인용 재오픈 콜백 노출.
+        # validators/required_submit.py:_run_submit_edit 가 1차 검증 후
+        # 모달 재오픈 → 실제 저장값 확인에 사용 (시나리오 4-3, scenario_4_modify.md 참조).
+        if phase == 4 and modal_open_fn:
+            ctx.extra.setdefault("reopen_edit_fn", modal_open_fn)
+
         # 모달 열기
         modal_opened = False
         if modal_open_fn:
