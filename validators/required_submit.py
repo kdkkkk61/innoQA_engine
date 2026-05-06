@@ -329,36 +329,38 @@ def _run_submit_edit(
         else:
             status, detail = "pass", "필수 필드 비운 채 수정 시 모달 닫히지 않음 (필드 검증 동작)"
 
-        # fail 시 캡처: dismiss 직전 캡처본 우선 (경고 모달 + 입력 폼 한 프레임).
-        # 경고 없이 닫힌 케이스(main_still_open=False)는 last_warning_screenshot=None →
-        # 현재 화면(목록) 폴백 캡처. 의미는 떨어지지만 기록은 남음.
-        ss = None
-        if status == "fail":
-            ss = (
-                ctx.last_warning_screenshot
-                or ctx.take_screenshot("edit_required_submit_fallback")
-            )
-        report.results.append(ScanResult(
-            pattern="required_submit", selector=submit_sel,
-            label="필수 필드 미입력 수정 검증",
-            status=status, detail=detail, order=_ORDER_REQUIRED_SUBMIT,
-            extra={"screenshot": ss} if ss else {},
-        ))
-
-        # ── 시나리오 4-3: 위반 결과 확인 (modal_form) ────────────────────
-        # 1차에서 "fail (경고 없이 모달 닫힘)" 인 경우만 진행 — 실제 저장값을
-        # 직접 재오픈해서 확인 (추정 금지 원칙, scenario_4_modify.md 4-3).
-        # 호출 조건: ctx.phase == 4 + reopen_edit_fn 콜백 + 1차 fail + 모달 닫힘
+        # ── 4-3 진행 가능 여부 판정 ─────────────────────────────────────
+        # 4-3 진행 = 1차 fail + 모달 닫힘 + reopen 콜백 있음 (modal_form phase 4)
+        # 4-3 진행 시 1차 ScanResult는 등록하지 않고 4-3 결과로 통합 — "한 결함 = 한 카드".
+        # 4-3 미진행 시 1차 단독 등록 (ADD 모달, modal_form 외, list_page 등).
         reopen_fn = ctx.extra.get("reopen_edit_fn")
-        if (
+        will_run_43 = (
             status == "fail"
             and not main_still_open
             and required_input_sel
-            and reopen_fn
-        ):
+            and reopen_fn is not None
+        )
+
+        if will_run_43:
+            # 1차 결과 정보를 4-3 검사로 통합 전달 (1차 카드 별도 등록 X)
             _run_modify_required_check(
-                ctx, report, required_input_sel, original_value, reopen_fn
+                ctx, report, required_input_sel, original_value, reopen_fn,
+                primary_detail=detail,
             )
+        else:
+            # 4-3 미진행 — 1차 결과 단독 등록 (기존 동작 유지)
+            ss = None
+            if status == "fail":
+                ss = (
+                    ctx.last_warning_screenshot
+                    or ctx.take_screenshot("edit_required_submit_fallback")
+                )
+            report.results.append(ScanResult(
+                pattern="required_submit", selector=submit_sel,
+                label="필수 필드 미입력 수정 검증",
+                status=status, detail=detail, order=_ORDER_REQUIRED_SUBMIT,
+                extra={"screenshot": ss} if ss else {},
+            ))
     except Exception:
         ctx.append_error(
             report, "required_submit", submit_sel,
@@ -377,11 +379,12 @@ def _run_submit_edit(
 
 
 def _run_modify_required_check(
-    ctx:           ScanContext,
-    report:        PageScanReport,
-    required_sel:  str,
-    original_val:  str,
-    reopen_fn:     callable,
+    ctx:            ScanContext,
+    report:         PageScanReport,
+    required_sel:   str,
+    original_val:   str,
+    reopen_fn:      callable,
+    primary_detail: str = "",
 ) -> None:
     """
     시나리오 4-3: 필수 필드 비움 시도 후 실제 저장값 확인 (modal_form).
@@ -389,13 +392,15 @@ def _run_modify_required_check(
     1차 검증(_run_submit_edit)에서 "경고 없이 모달 닫힘"으로 끝난 케이스의 후속.
     재오픈 → 실제 값 확인 → 분기 판정 (scenario_4_modify.md 4-3).
 
+    detail은 1차 + 2차 정보를 통합해 한 카드에 담는다 ("한 결함 = 한 카드").
+    1차 ScanResult는 호출자(_run_submit_edit)에서 등록하지 않는다.
+
     분기:
         "" (빈값)   → fail   (데이터 손상)
         original    → warn   (서버 거부, UX 혼란)
         그 외 다른값 → fail   (제품의 예상 못한 동작)
 
-    호출 후 모달은 재오픈된 상태 — 호출자(_run_submit_edit)의 finally에서
-    원본 복원 처리. 정리 책임은 호출자에 있다.
+    호출 후 모달은 재오픈된 상태 — 호출자의 finally에서 원본 복원 처리.
     """
     label = "필수 필드 — 빈값 저장 시도 후 결과"
     try:
@@ -413,25 +418,31 @@ def _run_modify_required_check(
             return
         actual = loc.input_value()
 
-        # 분기 판정
+        # 2차 분기 판정
         if actual == "":
             status = "fail"
-            detail = (
-                f"빈값 그대로 저장됨 — 데이터 손상 "
-                f"(입력: 비움 / 결과: '')"
-            )
+            second_detail = "빈값 그대로 저장됨 — 데이터 손상 (입력: 비움 / 결과: '')"
         elif actual == original_val:
             status = "warn"
-            detail = (
+            second_detail = (
                 f"서버가 빈값 거부 → 이전값 유지 "
                 f"(입력: 비움 / 결과: {actual!r}) — UX 혼란 유발"
             )
         else:
             status = "fail"
-            detail = (
+            second_detail = (
                 f"제품의 예상 못한 동작 "
                 f"(입력: 비움 / 원본: {original_val!r} / 결과: {actual!r})"
             )
+
+        # 1차 + 2차 정보 통합 — 한 카드에 모든 진단 흐름 표시
+        if primary_detail:
+            detail = (
+                f"[1차 — 클라이언트 검증] {primary_detail}\n"
+                f"[2차 — 실제 저장값] {second_detail}"
+            )
+        else:
+            detail = second_detail
 
         # 캡처: 재오픈된 모달 화면 (실제 저장값 보임 — Type 3 결과 검증형)
         ss = ctx.take_screenshot("modify_required_actual") if status in ("fail", "warn") else None
