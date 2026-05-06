@@ -39,6 +39,9 @@
    - `required_submit` 패턴은 탭 구분 제외 (항상 마지막, order 9999).
    - 시나리오 4-3 패턴 (`list_modify_required` / `modify_required`)은 일반 정렬 적용
      (시나리오 4 영역 안에 위치 — order 4-2 다음, 시나리오 5 이전).
+   - DOM 스캔 패턴 (`discovered_new` / `discovered_missing`)은 시나리오 1 영역
+     마지막에 위치 — 검수자가 즉시 인지하도록 시나리오 1 끝 (order: 시나리오 1 범위
+     안에서 가장 큰 값, 다른 시나리오보다는 앞).
    - 탭 없는 페이지도 동일 코드 사용 (단순히 헤더 출력 안 됨).
 3. **종속 필드**: `toggle_checkbox`의 `dep_fields`는 부모 바로 아래 `└` 트리로 출력.
    - `r.extra.get("dependent_labels")` / `dependent_types` / `dependent_results` 활용.
