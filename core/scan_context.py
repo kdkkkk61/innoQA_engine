@@ -181,8 +181,14 @@ class ScanContext:
                 return status != "fixed"
         return False
 
-    def take_screenshot(self, label: str) -> str | None:
-        """결함 발견 시점 스크린샷 저장. 오버레이 숨김 → 캡처 → 복원."""
+    def take_screenshot(self, label: str, element_sel: str | None = None) -> str | None:
+        """결함 발견 시점 스크린샷 저장. 오버레이 숨김 → 캡처 → 복원.
+
+        element_sel:
+          None      : viewport 캡처 (기본 — 보이는 영역만)
+          CSS sel   : 해당 element 전체 캡처 (스크롤 영역 포함)
+                      모달처럼 viewport보다 큰 영역 통째 보고 싶을 때 사용.
+        """
         try:
             from pathlib import Path
             from datetime import datetime
@@ -194,8 +200,18 @@ class ScanContext:
             _hide  = "['qa-block-overlay','qa-test-banner'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';})"
             _show  = "['qa-block-overlay','qa-test-banner'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='';})"
             self.page.evaluate(_hide)
-            self.page.screenshot(path=str(path))
-            self.page.evaluate(_show)
+            try:
+                if element_sel:
+                    # element 전체 캡처 (스크롤 영역 포함). 못 찾으면 viewport 폴백.
+                    loc = self.page.locator(element_sel).first
+                    if loc.count() > 0:
+                        loc.screenshot(path=str(path))
+                    else:
+                        self.page.screenshot(path=str(path))
+                else:
+                    self.page.screenshot(path=str(path))
+            finally:
+                self.page.evaluate(_show)
             return str(path)
         except Exception:
             return None

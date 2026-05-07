@@ -308,13 +308,15 @@ class UIScanner:
             )
             return
 
-        # 신규/제거 발견되면 모달 화면 1장 캡처 → 모든 카드가 공유.
-        # 같은 모달 컨텍스트라 매번 찍으면 동일 화면 N장 = 비효율.
-        # 1결함 = 1스크린샷이 아니라 1세션 신규감지 = 1스크린샷 (메커니즘 본질상).
+        # 신규/제거 발견되면 모달 element 통째 캡처 (스크롤 영역 포함).
+        # viewport 만 찍으면 길어진 모달의 위쪽만 보임 → 신규 요소가 스크롤 아래면 의미 X.
+        # element_sel 사용해서 모달 전체 캡처 — 검수자가 신규 요소 위치까지 확인 가능.
         shared_ss = None
         if diff["new"] or diff["missing"]:
             try:
-                shared_ss = ctx.take_screenshot("scan_diff_modal")
+                shared_ss = ctx.take_screenshot(
+                    "scan_diff_modal", element_sel=context_sel
+                )
             except Exception:
                 pass
 
