@@ -142,6 +142,60 @@ def _save_snapshot(page_id: str, case_name: str, verify_dict: dict) -> None:
     print(f"  [SAVE] 스냅샷 저장: {path}")
 
 
+def _fill_discovered_text_fields(page, hints: dict) -> None:
+    """
+    B-1-B-4: 시나리오 3 자동 채우기 — 신규 자동 발견된 단독 text/number input 자동 fill.
+
+    호출 시점: ADD 모달이 열린 상태에서 save_policy() 호출 직전.
+    신규 input 의 type 이 text/textarea/number/password/email 인 것만 자동 채움.
+    checkbox/toggle/radio 는 default 유지 (안전).
+
+    yaml 등록되지 않은 신규 필드가 시나리오 3 추가 흐름을 깨지 않도록 함.
+    원칙: 추정 최소화 — DOM 속성 추출만, 입력값은 안전 표준값 사용.
+    """
+    from core.scan_diff import (
+        extract_yaml_selectors, extract_dom_selectors,
+        extract_dom_attributes, compare,
+    )
+
+    modal_id = hints.get("modal_id") or ""
+    if not modal_id:
+        return
+    context_sel = f"#{modal_id}.in"
+
+    try:
+        yaml_set = extract_yaml_selectors(hints)
+        dom_set  = extract_dom_selectors(page, context_sel)
+        diff     = compare(yaml_set, dom_set)
+    except Exception:
+        return
+
+    if not diff["new"]:
+        return
+
+    try:
+        attrs = extract_dom_attributes(page, context_sel, diff["new"])
+    except Exception:
+        return
+
+    for sel in diff["new"]:
+        a = attrs.get(sel) or {}
+        t = a.get("type", "")
+        if t not in ("text", "textarea", "number", "password", "email"):
+            continue  # checkbox/toggle/radio 등은 default 유지
+        try:
+            loc = page.locator(sel).first
+            if loc.count() == 0:
+                continue
+            if not loc.is_enabled():
+                continue  # disabled (종속 input 등) — 토글 ON 후 검증은 다른 단계
+            value = "1" if t == "number" else "auto_test"
+            loc.fill(value)
+        except Exception:
+            # 채우기 실패는 무시 — 회귀 위험 없게
+            pass
+
+
 def run_phase3_cases(
     playwright_page,
     settings: dict,
@@ -455,9 +509,22 @@ def run_3phase_scan(
     # 시나리오 3: 동작 검증 (UI 인터랙션 + 중복 처리)
     # ─────────────────────────────────────────────────────────────
     p2_saved = False
+    # B-1-B-4: 시나리오 3 자동 채우기용 hints 미리 로드 (close_phase2 클로저에서 참조)
+    hints_path_for_fill = Path(config_dir) / "scan_hints" / f"{page_id}.yaml"
+    try:
+        with open(hints_path_for_fill, encoding="utf-8") as _f:
+            _hints_for_fill = yaml.safe_load(_f) or {}
+    except FileNotFoundError:
+        _hints_for_fill = {}
 
     def close_phase2():
         nonlocal p2_saved
+        # 신규 자동 발견 text/number input fill — save_policy() 직전.
+        # 시나리오 3 추가 흐름에 신규 필드 default 값으로 같이 저장.
+        try:
+            _fill_discovered_text_fields(page_obj.page, _hints_for_fill)
+        except Exception:
+            pass  # 자동 채우기 실패는 무시 (회귀 위험 없게)
         page_obj.save_policy(p2_name)
         p2_saved = True
 

@@ -331,7 +331,14 @@ class UIScanner:
             # B-1-A 자동 검증 — 읽기 전용 (DOM 속성 점검만, 동작 검증 X)
             auto_check = _format_auto_check(attrs)
 
-            extra_data = {"scenario": 1, "scenario_tag": "시나리오 1"}
+            # extra에 자동 분류 정보 저장 — qa_runner phase 3 자동 채우기에 사용
+            extra_data = {
+                "scenario":     1,
+                "scenario_tag": "시나리오 1",
+                "auto_type":    attrs.get("type", ""),
+                "auto_label":   ko,
+                "auto_maxlength": attrs.get("maxlength"),
+            }
             if shared_ss:
                 extra_data["screenshot"] = shared_ss
             report.results.append(ScanResult(

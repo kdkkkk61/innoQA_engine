@@ -238,12 +238,24 @@ class RansomDetectPolicyPage(BasePage):
     # ------------------------------------------------------------------
     # CRUD
     # ------------------------------------------------------------------
-    def add_policy(self, name: str, extensions: list[str]) -> str:
+    def add_policy(
+        self,
+        name:              str,
+        extensions:        list[str],
+        discovered_fields: dict[str, str] | None = None,
+    ) -> str:
         """
         정책 추가.
         중복 이름 오류 시 이름 뒤에 숫자(_2, _3, ...)를 붙여 재시도한다.
         실패 시 navigate_to() 후 1회 재시도한다.
         반환값: 실제 생성된 정책 이름 (중복 시 suffix 포함)
+
+        discovered_fields:
+          시나리오 1 자동 발견 (B-1) 으로 등장한 신규 input 필드들의 자동 채우기.
+          {selector: value} 매핑. 예: {"input#newField": "auto_test"}
+          None 또는 빈 dict 면 기존 동작 (이름 + 확장자만 채움).
+          기존 yaml 등록 필드와 별개로 추가 fill 후 등록 버튼 클릭.
+          fill 실패는 무시 (안전 — disabled/숨김 등).
         """
         actual_name = [name]  # list로 감싸 내부 함수에서 수정 가능
 
@@ -257,6 +269,16 @@ class RansomDetectPolicyPage(BasePage):
             for ext in extensions:
                 self.fill(self.SEL_EXTENSION_INPUT, ext)
                 self.click(self.SEL_EXTENSION_ADD_BTN)
+            # 신규 자동 발견 필드 채우기 (B-1-B-4 끼워넣기)
+            if discovered_fields:
+                for sel, value in discovered_fields.items():
+                    try:
+                        loc = self.page.locator(sel).first
+                        if loc.count() > 0 and loc.is_enabled():
+                            loc.fill(str(value))
+                    except Exception:
+                        # 채우기 실패는 무시 — disabled/숨김 등 정상 케이스 가능
+                        pass
             self.click(self.SEL_REGISTER_BTN)
             # 등록 결과 모달 처리 (중복이면 suffix 붙여 재시도, 최대 9회)
             for suffix in range(2, 11):
