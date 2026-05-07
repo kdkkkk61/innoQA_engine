@@ -191,7 +191,10 @@ def _check_radio_require_default(
             )
 
             ctx.log.debug(f"[initial_state] {label!r} → {status}")
-            ss = None  # warn은 스크린샷 불필요
+            # warn 도 스크린샷 필요 — 검수자가 카드만 보고 의미 파악할 수 있게.
+            # 회귀 (known_bug→warn 리팩터 910fd04 에서 잃어버림) 복구.
+            # 다른 validator(overflow, toggle_checkbox)와 일관성 유지.
+            ss = ctx.take_screenshot(f"{label}_초기값")
             report.results.append(ScanResult(
                 pattern="initial_state",
                 selector=rd_sel,

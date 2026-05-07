@@ -5,6 +5,24 @@
 
 ---
 
+## [RESOLVED] initial_state warn 케이스 스크린샷 회귀 (910fd04 리팩터)
+- **날짜**: 2026-05-07
+- **증상**: "행위기반 탐지등급 설정 초기값" 같은 warn 카드에 스크린샷 첨부 X.
+  사용자가 "스크린샷이 없어졌다" 보고. 다른 warn 카드(overflow, toggle)는 정상 첨부.
+- **원인**: `validators/initial_state.py:194` — `known_bug` 상태 제거 리팩터(`910fd04`)
+  과정에서 `ss = ctx.take_screenshot(...) if status in ("known_bug", "fail") else None`
+  를 `ss = None  # warn은 스크린샷 불필요` 로 단순 치환. 의도와 다른 회귀.
+  - 이전 `known_bug` → 현재 `warn` 으로 통합 시 status 분기 깨짐.
+  - 의도상 warn(BUG 낮음)도 스크린샷 필요 (검수자 카드만 보고 의미 파악).
+- **수정**: `validators/initial_state.py:_check_radio_init_default`
+  ```python
+  ss = ctx.take_screenshot(f"{label}_초기값")
+  ```
+  status 분기 제거 — 모든 결과 (warn 포함) 캡처. 다른 validator와 일관성 회복.
+- **재발 방지**: 향후 status 리팩터 시 "각 validator의 캡처 분기 모두 검토" 체크.
+
+---
+
 ## [DOCS] 시나리오 2/4 책임 영역 재정의 — 추정 금지 + 4-3 신설
 - **날짜**: 2026-04-30
 - **이슈**: `_run_submit_edit` (시나리오 2의 EDIT 분기) 가 "경고 안 뜸 → 저장됐을 것"
