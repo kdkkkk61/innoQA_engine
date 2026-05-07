@@ -405,8 +405,11 @@ class UIScanner:
                         scan_toggle_checkboxes(ctx, temp_hints, report)
                     if temp_hints.get("plain_checkboxes"):
                         scan_plain_checkboxes(ctx, temp_hints, report)
-                    # 자동 분류 결과 표시 — detail에 "[자동 분류]" 명시
+                    # 자동 분류 결과 표시 — label/detail에 "[신규]" 명시
+                    # 검수자가 카드 목록에서 즉시 자동 분류 결과 식별 가능.
+                    # CP949 환경 호환 — 이모지/em-dash 대신 한국어 텍스트만.
                     for r in report.results[pre_count:]:
+                        r.label  = "[신규] " + r.label
                         r.detail = "[자동 분류 — yaml 미등록] " + r.detail
                         r.extra = {**r.extra, "scenario": 2, "scenario_tag": "시나리오 2"}
             except Exception:
