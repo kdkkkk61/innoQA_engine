@@ -367,6 +367,45 @@ class UIScanner:
                 extra=extra_data,
             ))
 
+        # ── B-1-B-1: 신규 요소 자동 분류 → 시나리오 2 자동 동작 검증 ─────────
+        # 비전 B 핵심 — yaml 등록 없이도 신규 요소가 시나리오 2 검증을 받도록.
+        # 임시 hints 확장 후 기존 validators 재호출. 결과는 시나리오 2 영역 카드.
+        if diff["new"]:
+            try:
+                from core.scan_diff import expand_hints_with_discovered
+                temp_hints = expand_hints_with_discovered(
+                    diff["new"], new_attrs, new_labels,
+                )
+                # 임시 hints에 모달 컨텍스트 정보도 복사 (validator 일부가 사용)
+                temp_hints["modal_id"]      = hints.get("modal_id", "")
+                temp_hints["modal_actions"] = hints.get("modal_actions", {})
+
+                # 자동 분류된 항목이 있을 때만 validator 재호출
+                has_auto = (
+                    temp_hints.get("text_inputs") or
+                    temp_hints.get("toggle_checkboxes") or
+                    temp_hints.get("plain_checkboxes")
+                )
+                if has_auto:
+                    # 호출 전 결과 카운트 (자동 분류분만 식별 위해)
+                    pre_count = len(report.results)
+                    # 시나리오 2 영역 검증만 — 입력 필드 동작
+                    if temp_hints.get("text_inputs"):
+                        scan_text_inputs(ctx, temp_hints, report)
+                    if temp_hints.get("toggle_checkboxes"):
+                        scan_toggle_checkboxes(ctx, temp_hints, report)
+                    if temp_hints.get("plain_checkboxes"):
+                        scan_plain_checkboxes(ctx, temp_hints, report)
+                    # 자동 분류 결과 표시 — detail에 "[자동 분류]" 명시
+                    for r in report.results[pre_count:]:
+                        r.detail = "[자동 분류 — yaml 미등록] " + r.detail
+                        r.extra = {**r.extra, "scenario": 2, "scenario_tag": "시나리오 2"}
+            except Exception:
+                ctx.append_error(
+                    report, "discovered_new", context_sel,
+                    "신규 요소 자동 분류/검증 실패", order=9, phase=1,
+                )
+
     # ── 자동 탐지 폴백 ────────────────────────────────────────────────────────
 
     def _scan_auto_fallback(self, report: PageScanReport) -> None:

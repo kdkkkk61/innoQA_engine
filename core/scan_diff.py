@@ -266,6 +266,88 @@ def extract_yaml_labels(hints: dict) -> dict[str, str]:
     return out
 
 
+# ── B-1-B-1: 신규 요소 자동 분류 + 임시 hints 확장 ────────────────────────────
+
+# 자동 분류 결과를 기존 validators 재사용에 적합한 yaml 항목 형식으로 변환.
+# 사용자 비전 B 핵심 — "신규 요소 발견 시 yaml 등록 없이도 시나리오 2 검증 자동".
+#
+# 안전 메커니즘 (추정 위험 완화):
+#   - DOM에서 추출 가능한 정보만 사용 (label, type, maxlength, checked).
+#   - DOM에 없는 정보(required, dependent_fields)는 안전 default (False, []).
+#   - validator 결과 status는 호출자에서 warn 강제 가능.
+
+# 자동 검증 시 사용할 표준 test_value (시나리오 2 동작 검증용 임시 값)
+_AUTO_TEST_VALUE = "[AUTO]_seq"
+
+
+def expand_hints_with_discovered(
+    new_selectors: Iterable[str],
+    attrs:         dict[str, dict],
+    labels:        dict[str, str],
+) -> dict:
+    """
+    신규 발견 셀렉터들을 기존 validators가 처리할 수 있는 yaml 항목 형식으로 변환.
+
+    반환:
+      {
+        "text_inputs":       [{selector, label, maxlength, required, test_value, order}, ...],
+        "toggle_checkboxes": [{selector, label, default, dependent_fields, order}, ...],
+        "plain_checkboxes":  [{selector, label, default, order}, ...],
+        # radio_groups 는 그룹 식별 정보(name)가 필요해 자동 분류 어려움 — B-1-C에서.
+      }
+
+    호출자(ui_scanner)는 이 dict를 임시 hints로 사용해 _scan_from_hints 재호출.
+    기존 yaml의 항목은 포함 안 됨 — 중복 검증 방지.
+
+    안전 default:
+      required = False (DOM에서 안 보임 — 보수적)
+      dependent_fields = [] (B-1-C에서 매칭하기 전엔 단독 검증만)
+    """
+    text_inputs:       list[dict] = []
+    toggle_checkboxes: list[dict] = []
+    plain_checkboxes:  list[dict] = []
+
+    # 자동 분류 항목의 order 시작 — 시나리오 2 영역 끝 (다른 yaml 항목 뒤)
+    base_order = 8000
+
+    for i, sel in enumerate(sorted(new_selectors)):
+        a   = attrs.get(sel) or {}
+        lab = (labels.get(sel) or "").strip() or sel  # 라벨 없으면 셀렉터로 폴백
+        t   = a.get("type", "")
+        order = base_order + i
+
+        if t in ("text", "textarea", "number", "password", "email"):
+            text_inputs.append({
+                "selector":   sel,
+                "label":      lab,
+                "maxlength":  a.get("maxlength"),  # None 가능
+                "required":   False,               # DOM에서 모름 — 안전 default
+                "test_value": _AUTO_TEST_VALUE,
+                "order":      order,
+            })
+        elif t == "checkbox":
+            entry = {
+                "selector": sel,
+                "label":    lab,
+                "default":  bool(a.get("checked")),
+                "order":    order,
+            }
+            # toggle 속성 있으면 toggle_checkboxes, 없으면 plain
+            if a.get("has_toggle"):
+                entry["dependent_fields"] = []  # B-1-C 매칭 전엔 빈 리스트 (단독 검증만)
+                toggle_checkboxes.append(entry)
+            else:
+                plain_checkboxes.append(entry)
+        # radio: 그룹 name 식별 필요 → B-1-C 단계
+        # textarea 외 select 등: 미지원
+
+    return {
+        "text_inputs":       text_inputs,
+        "toggle_checkboxes": toggle_checkboxes,
+        "plain_checkboxes":  plain_checkboxes,
+    }
+
+
 def extract_dom_attributes(page, context_sel: str, selectors: Iterable[str]) -> dict[str, dict]:
     """
     DOM 컨텍스트에서 각 셀렉터의 검증 관련 속성 추출.
