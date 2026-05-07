@@ -12,9 +12,11 @@ core/scan_diff.py — DOM 스캔 ↔ yaml 정의 비교 헬퍼
   - list_page : list_page_runner 시나리오 1 단계
 
 원칙 (md 작성 규칙 준수):
-  - Karpathy 2 (Simplicity): 함수 3개. 추상화 X.
-  - Karpathy 3 (Surgical): 호출자 ScanResult 변환은 별도. 본 헬퍼는 비교만.
+  - Karpathy 2 (Simplicity): 함수 5개. 추상화 X.
+  - Karpathy 3 (Surgical): 호출자 ScanResult 변환은 별도. 본 헬퍼는 비교/추출만.
   - 추정 금지: yaml의 명시된 셀렉터만 추출. 추정으로 type 매핑 X.
+  - 이모지 금지: 콘솔/로그 CP949 환경에서 깨짐 (TROUBLESHOOTING "BUG 낙음" 케이스).
+                 한국어 텍스트만 사용. HTML 리포트 측 status_badge가 아이콘 처리.
 """
 from __future__ import annotations
 
@@ -193,3 +195,140 @@ def compare(yaml_set: Iterable[str], dom_set: Iterable[str]) -> dict:
         "missing": y - d,
         "common":  d & y,
     }
+
+
+# ── 라벨 추출 (한국어 의미 파악용) ────────────────────────────────────────────
+
+def extract_yaml_labels(hints: dict) -> dict[str, str]:
+    """
+    yaml hints에서 셀렉터 → 한국어 label 매핑 추출.
+
+    extract_yaml_selectors 와 같은 섹션 순회. label 필드가 있으면 매핑.
+    discovered_missing 카드에 사람이 읽을 수 있는 의미 표시용.
+
+    반환:
+      {selector: label} 매핑. 라벨 없으면 빈 문자열.
+    """
+    out: dict[str, str] = {}
+    if not hints:
+        return out
+
+    # text_inputs
+    for ti in hints.get("text_inputs", []) or []:
+        if isinstance(ti, dict):
+            sel = ti.get("selector"); lab = ti.get("label", "")
+            if sel:
+                out[sel] = lab
+
+    # radio_groups - options
+    for rg in hints.get("radio_groups", []) or []:
+        if not isinstance(rg, dict):
+            continue
+        rg_label = rg.get("label", "")
+        for opt in rg.get("options", []) or []:
+            if not isinstance(opt, dict):
+                continue
+            sel = opt.get("selector")
+            opt_lab = opt.get("label", "")
+            if sel:
+                out[sel] = f"{rg_label} - {opt_lab}".strip(" -") if rg_label else opt_lab
+
+    # plain_checkboxes
+    for cb in hints.get("plain_checkboxes", []) or []:
+        if isinstance(cb, dict):
+            sel = cb.get("selector"); lab = cb.get("label", "")
+            if sel:
+                out[sel] = lab
+
+    # toggle_checkboxes
+    for tg in hints.get("toggle_checkboxes", []) or []:
+        if isinstance(tg, dict):
+            sel = tg.get("selector"); lab = tg.get("label", "")
+            if sel:
+                out[sel] = lab
+
+    # tag_input — input 키만
+    for tg in hints.get("tag_input", []) or []:
+        if isinstance(tg, dict):
+            sel = tg.get("input"); lab = tg.get("label", "")
+            if sel:
+                out[sel] = lab
+
+    # add_modal.fields (list_page)
+    add_modal = hints.get("add_modal") or {}
+    if isinstance(add_modal, dict):
+        for f in add_modal.get("fields", []) or []:
+            if isinstance(f, dict):
+                sel = f.get("selector"); lab = f.get("label", "")
+                if sel:
+                    out[sel] = lab
+
+    return out
+
+
+def extract_dom_labels(page, context_sel: str, selectors: Iterable[str]) -> dict[str, str]:
+    """
+    DOM 컨텍스트에서 각 셀렉터의 한국어 label 추출.
+
+    discovered_new 카드에 사람이 읽을 수 있는 의미 표시용
+    (yaml에 정의 없는 신규 요소라 yaml 라벨 없음 → DOM에서 가져옴).
+
+    추출 우선순위 (페이지 구조마다 다름 — 가장 흔한 패턴부터):
+      1. <label for="{id}">텍스트</label>
+      2. 부모 <label> 텍스트
+      3. aria-label 속성
+      4. placeholder 속성
+
+    반환:
+      {selector: label} 매핑. 라벨 못 찾으면 빈 문자열.
+    """
+    sel_list = list(selectors)
+    if not context_sel or not sel_list:
+        return {s: "" for s in sel_list}
+
+    js = """
+    (args) => {
+        const root = document.querySelector(args.root_sel);
+        if (!root) return {};
+        const result = {};
+        args.selectors.forEach(sel => {
+            const el = root.querySelector(sel);
+            if (!el) { result[sel] = ''; return; }
+
+            // 1. <label for="{id}">
+            if (el.id) {
+                const labelEl = root.querySelector('label[for="' + el.id + '"]');
+                if (labelEl) {
+                    const txt = (labelEl.textContent || '').trim();
+                    if (txt) { result[sel] = txt; return; }
+                }
+            }
+
+            // 2. 부모 <label>
+            const parentLabel = el.closest && el.closest('label');
+            if (parentLabel) {
+                const txt = (parentLabel.textContent || '').trim();
+                if (txt) { result[sel] = txt; return; }
+            }
+
+            // 3. aria-label
+            const aria = el.getAttribute && el.getAttribute('aria-label');
+            if (aria) { result[sel] = aria.trim(); return; }
+
+            // 4. placeholder
+            const ph = el.getAttribute && el.getAttribute('placeholder');
+            if (ph) { result[sel] = ph.trim(); return; }
+
+            result[sel] = '';
+        });
+        return result;
+    }
+    """
+    try:
+        result = page.evaluate(js, {"root_sel": context_sel, "selectors": sel_list})
+        if isinstance(result, dict):
+            # 결과 정규화 (None 방지)
+            return {s: (result.get(s) or "") for s in sel_list}
+    except Exception:
+        pass
+    return {s: "" for s in sel_list}

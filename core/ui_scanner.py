@@ -243,6 +243,7 @@ class UIScanner:
         """
         from core.scan_diff import (
             extract_yaml_selectors, extract_dom_selectors, compare,
+            extract_yaml_labels, extract_dom_labels,
         )
 
         # 모달 컨텍스트 셀렉터 결정 (Bootstrap modal 열림 = .in)
@@ -255,6 +256,9 @@ class UIScanner:
             yaml_set = extract_yaml_selectors(hints)
             dom_set  = extract_dom_selectors(self.page, context_sel)
             diff     = compare(yaml_set, dom_set)
+            # 라벨 추출 — 검수자가 카드에서 즉시 어느 기능인지 알아챌 수 있게
+            new_labels     = extract_dom_labels(self.page, context_sel, diff["new"])
+            yaml_label_map = extract_yaml_labels(hints)
         except Exception:
             ctx.append_error(
                 report, "discovered_new", context_sel,
@@ -262,29 +266,39 @@ class UIScanner:
             )
             return
 
-        # 🆕 신규 요소 (DOM에만 존재)
+        # 신규 기능 (DOM에만 존재) — DOM에서 한국어 라벨 추출
         for sel in sorted(diff["new"]):
+            ko = (new_labels.get(sel) or "").strip()
+            label_text = (
+                f'신규 기능 감지 — "{ko}" ({sel})' if ko
+                else f"신규 기능 감지 — {sel}"
+            )
             report.results.append(ScanResult(
                 pattern="discovered_new", selector=sel,
-                label=f"신규 요소 감지 — {sel}",
+                label=label_text,
                 status="warn",
                 detail=(
-                    f"DOM에 존재하나 yaml에 미정의 / 결과: {sel} "
-                    "→ scan_hints/{page_id}.yaml에 추가 후 정식 검증"
+                    "DOM에 존재 / yaml 미정의\n"
+                    "검수자 조치: 의도된 추가면 yaml에 등록 (정식 검증 시작), 임시 요소면 무시"
                 ),
                 order=9, phase=1,
                 extra={"scenario": 1, "scenario_tag": "시나리오 1"},
             ))
 
-        # ❌ 제거된 요소 (yaml에만 존재)
+        # 제거된 기능 (yaml에만 존재) — yaml에 있던 한국어 라벨 사용
         for sel in sorted(diff["missing"]):
+            ko = (yaml_label_map.get(sel) or "").strip()
+            label_text = (
+                f'제거된 기능 감지 — "{ko}" ({sel})' if ko
+                else f"제거된 기능 감지 — {sel}"
+            )
             report.results.append(ScanResult(
                 pattern="discovered_missing", selector=sel,
-                label=f"제거된 요소 감지 — {sel}",
+                label=label_text,
                 status="warn",
                 detail=(
-                    f"yaml에 정의되었으나 DOM에 없음 / 결과: {sel} "
-                    "→ 의도된 제거면 yaml 정리, 회귀면 제품 버그 보고"
+                    "yaml 정의 / DOM 미발견\n"
+                    "검수자 조치: 의도된 제거면 yaml 정리, 회귀(의도치 않음)면 제품팀 보고"
                 ),
                 order=9, phase=1,
                 extra={"scenario": 1, "scenario_tag": "시나리오 1"},
