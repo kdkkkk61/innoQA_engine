@@ -87,14 +87,16 @@ def extract_yaml_selectors(hints: dict) -> set[str]:
                 if d_sel:
                     selectors.add(d_sel)
 
-    # tag_input (modal_form)
+    # tag_input (modal_form) — input 필드만 비교 대상.
+    # add_btn(button#...), container(div#/ul#...), remove_btn은 폼 요소가 아니라
+    # 액션·컨테이너 요소. DOM 자동 탐지 대상(input/textarea/select)과 결이 달라
+    # 비교에 포함하면 false positive 발생 (DOM에 안 잡혀 "제거됨"으로 오분류).
     for tg in hints.get("tag_input", []) or []:
         if not isinstance(tg, dict):
             continue
-        for key in ("input", "add_btn", "container"):
-            sel = tg.get(key)
-            if sel:
-                selectors.add(sel)
+        sel = tg.get("input")
+        if sel:
+            selectors.add(sel)
 
     # add_modal.fields (list_page)
     add_modal = hints.get("add_modal") or {}
@@ -104,7 +106,12 @@ def extract_yaml_selectors(hints: dict) -> set[str]:
             if sel:
                 selectors.add(sel)
 
-    return selectors
+    # 비교 대상은 폼 입력 요소 한정. button/div/ul 등 액션·컨테이너는 제외.
+    # extract_dom_selectors 가 input/textarea/select 만 반환하므로 일치시킴.
+    return {
+        s for s in selectors
+        if s.startswith(("input#", "textarea#", "select#"))
+    }
 
 
 # ── DOM 자동 탐지 ────────────────────────────────────────────────────────────
