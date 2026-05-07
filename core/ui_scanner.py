@@ -44,6 +44,47 @@ from validators.required_submit import scan_required_submit
 from validators.button_action   import scan_button_actions
 
 
+# ── B-1-A: 신규 요소 1차 자동 검증 (DOM 속성 점검만, 동작 X) ─────────────────
+
+def _format_auto_check(attrs: dict) -> str:
+    """
+    DOM 속성 정보를 1차 자동 검증 결과로 포맷.
+
+    안전 기준 (B-1-A):
+      - 읽기 전용 — 클릭/입력 같은 동작 X.
+      - DOM 속성 점검 결과를 사람이 읽을 수 있는 형식으로 출력.
+      - 동작 검증은 yaml 등록 후 정식 시나리오에서 진행.
+
+    추출 정보 (extract_dom_attributes 의 키):
+      type, maxlength, checked, disabled, readonly, has_toggle, placeholder
+    """
+    if not attrs:
+        return "타입: (DOM에서 정보 추출 실패)"
+
+    t = attrs.get("type", "?")
+    parts = [f"타입: {t}"]
+    if attrs.get("has_toggle"):
+        parts.append("toggle 속성 있음")
+    if t in ("text", "textarea", "number", "password", "email"):
+        ml = attrs.get("maxlength")
+        parts.append(
+            f"maxlength={ml} (속성 명시)" if ml is not None
+            else "maxlength 속성 없음 (서버 측 제한 yaml 등록 후 검증 권장)"
+        )
+        ph = attrs.get("placeholder", "")
+        if ph:
+            parts.append(f"placeholder={ph!r}")
+    elif t in ("checkbox", "radio"):
+        parts.append(f"초기 상태: {'checked' if attrs.get('checked') else 'unchecked'}")
+        if attrs.get("disabled"):
+            parts.append("현재 disabled — 종속 관계 가능성 (yaml 등록 시 점검)")
+    if attrs.get("readonly"):
+        parts.append("readonly")
+
+    body = " / ".join(parts)
+    return f"자동 검증 (DOM 속성 점검):\n  {body}"
+
+
 class UIScanner:
     """
     scan_hints yaml + known_bugs yaml을 기반으로 페이지 UI를 검사한다.
@@ -243,7 +284,7 @@ class UIScanner:
         """
         from core.scan_diff import (
             extract_yaml_selectors, extract_dom_selectors, compare,
-            extract_yaml_labels, extract_dom_labels,
+            extract_yaml_labels, extract_dom_labels, extract_dom_attributes,
         )
 
         # 모달 컨텍스트 셀렉터 결정 (Bootstrap modal 열림 = .in)
@@ -256,8 +297,9 @@ class UIScanner:
             yaml_set = extract_yaml_selectors(hints)
             dom_set  = extract_dom_selectors(self.page, context_sel)
             diff     = compare(yaml_set, dom_set)
-            # 라벨 추출 — 검수자가 카드에서 즉시 어느 기능인지 알아챌 수 있게
+            # 라벨 + 속성 추출 — 신규 요소의 의미 파악 + B-1-A 자동 검증용
             new_labels     = extract_dom_labels(self.page, context_sel, diff["new"])
+            new_attrs      = extract_dom_attributes(self.page, context_sel, diff["new"])
             yaml_label_map = extract_yaml_labels(hints)
         except Exception:
             ctx.append_error(
@@ -266,19 +308,24 @@ class UIScanner:
             )
             return
 
-        # 신규 기능 (DOM에만 존재) — DOM에서 한국어 라벨 추출
+        # 신규 기능 (DOM에만 존재) — DOM에서 한국어 라벨 + 속성 추출
         for sel in sorted(diff["new"]):
-            ko = (new_labels.get(sel) or "").strip()
+            ko    = (new_labels.get(sel) or "").strip()
+            attrs = new_attrs.get(sel) or {}
             label_text = (
                 f'신규 기능 감지 — "{ko}" ({sel})' if ko
                 else f"신규 기능 감지 — {sel}"
             )
+            # B-1-A 자동 검증 — 읽기 전용 (DOM 속성 점검만, 동작 검증 X)
+            auto_check = _format_auto_check(attrs)
+
             report.results.append(ScanResult(
                 pattern="discovered_new", selector=sel,
                 label=label_text,
                 status="warn",
                 detail=(
                     "DOM에 존재 / yaml 미정의\n"
+                    f"{auto_check}\n"
                     "검수자 조치: 의도된 추가면 yaml에 등록 (정식 검증 시작), 임시 요소면 무시"
                 ),
                 order=9, phase=1,

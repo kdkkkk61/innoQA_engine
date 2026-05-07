@@ -266,6 +266,69 @@ def extract_yaml_labels(hints: dict) -> dict[str, str]:
     return out
 
 
+def extract_dom_attributes(page, context_sel: str, selectors: Iterable[str]) -> dict[str, dict]:
+    """
+    DOM 컨텍스트에서 각 셀렉터의 검증 관련 속성 추출.
+
+    B-1-A 자동 검증의 안전 기준 = "DOM 속성 점검만, 동작 검증 X".
+    클릭/입력 같은 데이터 변경 작업은 yaml 등록 후 정식 검증에서.
+
+    추출 속성:
+      type        : "text" | "checkbox" | "radio" | "number" | "textarea" | ...
+      maxlength   : int | None  (text/textarea만)
+      checked     : bool        (checkbox/radio만)
+      disabled    : bool
+      readonly    : bool
+      has_toggle  : bool        (input의 'toggle' 커스텀 속성 여부 — 종속 패턴 힌트용)
+      placeholder : str         (없으면 "")
+
+    반환:
+      {selector: {type, maxlength, checked, disabled, readonly, has_toggle, placeholder}}
+      셀렉터를 못 찾으면 빈 dict (없는 게 아니라 모든 키가 None/빈값).
+    """
+    sel_list = list(selectors)
+    if not context_sel or not sel_list:
+        return {s: {} for s in sel_list}
+
+    js = """
+    (args) => {
+        const root = document.querySelector(args.root_sel);
+        if (!root) return {};
+        const result = {};
+        args.selectors.forEach(sel => {
+            const el = root.querySelector(sel);
+            if (!el) { result[sel] = {}; return; }
+            const tag = el.tagName.toLowerCase();
+            // 'type' 결정 — input은 type 속성, textarea/select는 태그명
+            let type;
+            if (tag === 'input') {
+                type = (el.getAttribute('type') || 'text').toLowerCase();
+            } else {
+                type = tag;  // textarea, select
+            }
+            const ml = el.getAttribute('maxlength');
+            result[sel] = {
+                type:        type,
+                maxlength:   ml ? parseInt(ml, 10) : null,
+                checked:     !!el.checked,
+                disabled:    !!el.disabled,
+                readonly:    !!el.readOnly,
+                has_toggle:  el.hasAttribute('toggle'),
+                placeholder: el.getAttribute('placeholder') || '',
+            };
+        });
+        return result;
+    }
+    """
+    try:
+        result = page.evaluate(js, {"root_sel": context_sel, "selectors": sel_list})
+        if isinstance(result, dict):
+            return {s: (result.get(s) or {}) for s in sel_list}
+    except Exception:
+        pass
+    return {s: {} for s in sel_list}
+
+
 def extract_dom_labels(page, context_sel: str, selectors: Iterable[str]) -> dict[str, str]:
     """
     DOM 컨텍스트에서 각 셀렉터의 한국어 label 추출.
