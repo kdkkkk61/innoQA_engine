@@ -390,8 +390,12 @@ def extract_dom_labels(page, context_sel: str, selectors: Iterable[str]) -> dict
     try:
         result = page.evaluate(js, {"root_sel": context_sel, "selectors": sel_list})
         if isinstance(result, dict):
-            # 결과 정규화 (None 방지)
-            return {s: (result.get(s) or "") for s in sel_list}
+            # 결과 정규화 (None 방지) + trailing 콜론/공백 정리
+            # DOM 라벨이 "이름 :" 같이 콜론 포함된 경우 깔끔하게 표시
+            return {
+                s: (result.get(s) or "").strip().rstrip(":：").strip()
+                for s in sel_list
+            }
     except Exception:
         pass
     return {s: "" for s in sel_list}

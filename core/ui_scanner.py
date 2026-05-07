@@ -308,6 +308,16 @@ class UIScanner:
             )
             return
 
+        # 신규/제거 발견되면 모달 화면 1장 캡처 → 모든 카드가 공유.
+        # 같은 모달 컨텍스트라 매번 찍으면 동일 화면 N장 = 비효율.
+        # 1결함 = 1스크린샷이 아니라 1세션 신규감지 = 1스크린샷 (메커니즘 본질상).
+        shared_ss = None
+        if diff["new"] or diff["missing"]:
+            try:
+                shared_ss = ctx.take_screenshot("scan_diff_modal")
+            except Exception:
+                pass
+
         # 신규 기능 (DOM에만 존재) — DOM에서 한국어 라벨 + 속성 추출
         for sel in sorted(diff["new"]):
             ko    = (new_labels.get(sel) or "").strip()
@@ -319,6 +329,9 @@ class UIScanner:
             # B-1-A 자동 검증 — 읽기 전용 (DOM 속성 점검만, 동작 검증 X)
             auto_check = _format_auto_check(attrs)
 
+            extra_data = {"scenario": 1, "scenario_tag": "시나리오 1"}
+            if shared_ss:
+                extra_data["screenshot"] = shared_ss
             report.results.append(ScanResult(
                 pattern="discovered_new", selector=sel,
                 label=label_text,
@@ -329,7 +342,7 @@ class UIScanner:
                     "검수자 조치: 의도된 추가면 yaml에 등록 (정식 검증 시작), 임시 요소면 무시"
                 ),
                 order=9, phase=1,
-                extra={"scenario": 1, "scenario_tag": "시나리오 1"},
+                extra=extra_data,
             ))
 
         # 제거된 기능 (yaml에만 존재) — yaml에 있던 한국어 라벨 사용
@@ -339,6 +352,9 @@ class UIScanner:
                 f'제거된 기능 감지 — "{ko}" ({sel})' if ko
                 else f"제거된 기능 감지 — {sel}"
             )
+            extra_data = {"scenario": 1, "scenario_tag": "시나리오 1"}
+            if shared_ss:
+                extra_data["screenshot"] = shared_ss
             report.results.append(ScanResult(
                 pattern="discovered_missing", selector=sel,
                 label=label_text,
@@ -348,7 +364,7 @@ class UIScanner:
                     "검수자 조치: 의도된 제거면 yaml 정리, 회귀(의도치 않음)면 제품팀 보고"
                 ),
                 order=9, phase=1,
-                extra={"scenario": 1, "scenario_tag": "시나리오 1"},
+                extra=extra_data,
             ))
 
     # ── 자동 탐지 폴백 ────────────────────────────────────────────────────────
