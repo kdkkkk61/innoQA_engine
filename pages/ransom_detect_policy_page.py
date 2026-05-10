@@ -1,4 +1,16 @@
+import time
+from contextlib import contextmanager
 from pages.base_page import BasePage
+
+
+@contextmanager
+def _t(label: str):
+    """Timing 헬퍼 — [TIMING] {label} took {sec}s 출력 (예외 시도 기록)."""
+    t0 = time.time()
+    try:
+        yield
+    finally:
+        print(f"[TIMING] {label} took {time.time()-t0:.2f}s")
 
 
 class RansomDetectPolicyPage(BasePage):
@@ -416,9 +428,12 @@ class RansomDetectPolicyPage(BasePage):
         [AUTO] 접두사 안전 규칙에 따라 실수 삭제 방지.
         복사본 등 [AUTO] 접두사가 없는 정책은 건드리지 않는다.
         """
-        auto_names = [n for n in self.get_policy_names() if n.startswith("[AUTO]")]
-        for name in auto_names:
-            self.delete_policy(name)
+        with _t("delete_all_auto_policies"):
+            auto_names = [n for n in self.get_policy_names() if n.startswith("[AUTO]")]
+            print(f"[TIMING]   대상 {len(auto_names)}건: {auto_names}")
+            for name in auto_names:
+                with _t(f"  └ delete_policy({name!r})"):
+                    self.delete_policy(name)
 
     def delete_policy(self, policy_name: str) -> None:
         """
@@ -474,14 +489,33 @@ class RansomDetectPolicyPage(BasePage):
         정책 행 선택 → 수정 버튼 클릭 → 모달 열림 대기.
         저장하지 않고 모달만 연다 (UIScanner 스캔 전용).
         모달이 열리지 않으면 Exception 발생.
+
+        성능: race 패턴 — 에러 모달 또는 EDIT 모달 둘 중 먼저 attached 즉시 진행.
+              기존 _fail_if_modal(3000ms) 풀 timeout 대기 회피 (일반 케이스 ~100ms).
         """
-        self.click_policy_row(policy_name)
+        with _t(f"open_modify_modal({policy_name!r})"):
+            with _t("  └ click_policy_row"):
+                self.click_policy_row(policy_name)
+            with _t("  └ click modify + race wait"):
+                self._open_modify_modal_inner()
+
+    def _open_modify_modal_inner(self) -> None:
         self.click(self.SEL_MODIFY_BTN)
-        self._fail_if_modal(self._TIMEOUT_MODAL)
+        # race: 에러 모달 vs EDIT 모달 — 둘 중 먼저 attached
+        race_sel = f"{self.SEL_CONFIRM_MODAL_OPENED}, {self.SEL_ADD_MODAL}"
         try:
-            self.wait_for(self.SEL_ADD_MODAL, state="attached")
+            self.page.locator(race_sel).first.wait_for(
+                state="attached", timeout=self._TIMEOUT_MODAL
+            )
         except Exception as e:
             raise Exception(f"정책 수정 모달이 열리지 않음: {e}") from e
+        # 에러 모달이 떴으면 처리
+        if self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).count() > 0:
+            msg = self.get_modal_message()
+            self.take_screenshot("unexpected_modal")
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+            raise Exception(f"예상치 못한 모달 발생: {msg!r}")
 
     def close_modal(self) -> None:
         """모달 닫기 버튼 클릭 → 목록 페이지 복귀 대기"""
@@ -647,18 +681,19 @@ class RansomDetectPolicyPage(BasePage):
         예상치 못한 모달이 나타나면 스크린샷 저장 후 Exception 발생.
         정상 상황(모달 없음)이면 아무 동작 없이 반환.
         사용: click_policy_row() 직후 에러 모달 조기 감지
+
+        성능: 짧은 polling — 에러 모달은 거의 즉시 뜸. 1s 안에 안 뜨면 안 뜬 것으로 판정.
+              full timeout(3s) 대기 회피.
         """
-        try:
-            self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).wait_for(
-                state="attached", timeout=timeout
-            )
-        except Exception:
-            return  # 모달 없음 → 정상
-        msg = self.get_modal_message()
-        self.take_screenshot("unexpected_modal")
-        self.click_attached(self.SEL_CONFIRM_BTN)
-        self.wait_for_modal_closed()
-        raise Exception(f"예상치 못한 모달 발생: {msg!r}")
+        poll_attempts = max(1, min(5, timeout // 200))
+        for _ in range(poll_attempts):
+            if self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).count() > 0:
+                msg = self.get_modal_message()
+                self.take_screenshot("unexpected_modal")
+                self.click_attached(self.SEL_CONFIRM_BTN)
+                self.wait_for_modal_closed()
+                raise Exception(f"예상치 못한 모달 발생: {msg!r}")
+            self.page.wait_for_timeout(200)
 
     # ------------------------------------------------------------------
     # Universal Scanner 표준 인터페이스 구현
@@ -669,34 +704,37 @@ class RansomDetectPolicyPage(BasePage):
 
     def save_policy(self, name: str) -> None:
         """Phase 1/2 완료 후 정책 저장 (이름 + 확장자 필수)."""
-        self.fill(self.SEL_POLICY_NAME, name)
-        if self.page.locator("i.extentionDeleteBtn").count() == 0:
-            self.fill(self.SEL_EXTENSION_INPUT, "txt")
-            self.click(self.SEL_EXTENSION_ADD_BTN)
-            self.page.wait_for_timeout(300)
-        self.click(self.SEL_REGISTER_BTN)
-        self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).wait_for(
-            state="attached", timeout=self._TIMEOUT_MODAL
-        )
-        self.click_attached(self.SEL_CONFIRM_BTN)
-        self.wait_for_modal_closed()
-        self.wait_for(self.SEL_ADD_BTN)
+        with _t(f"save_policy({name!r})"):
+            self.fill(self.SEL_POLICY_NAME, name)
+            if self.page.locator("i.extentionDeleteBtn").count() == 0:
+                self.fill(self.SEL_EXTENSION_INPUT, "txt")
+                self.click(self.SEL_EXTENSION_ADD_BTN)
+                self.page.wait_for_timeout(300)
+            self.click(self.SEL_REGISTER_BTN)
+            self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).wait_for(
+                state="attached", timeout=self._TIMEOUT_MODAL
+            )
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+            self.wait_for(self.SEL_ADD_BTN)
 
     def close_edit_modal(self) -> None:
         """Phase 3 EDIT 모달 닫기 — known_bug로 이미 닫혔을 수 있으므로 조건부."""
-        try:
-            if self.page.locator(self.SEL_ADD_MODAL).count() > 0:
-                self.close_modal()
-            else:
-                self.wait_for(self.SEL_ADD_BTN)
-        except Exception:
-            pass
+        with _t("close_edit_modal"):
+            try:
+                if self.page.locator(self.SEL_ADD_MODAL).count() > 0:
+                    self.close_modal()
+                else:
+                    self.wait_for(self.SEL_ADD_BTN)
+            except Exception:
+                pass
 
     def save_edit_modal(self) -> None:
         """Phase 4: 수정 모달에서 변경 내용 저장 (수정 저장 버튼 클릭 + 확인 처리)."""
-        self.click_attached(self.SEL_SAVE_BTN)
-        self._dismiss_modal()
-        self.wait_for(self.SEL_ADD_BTN)
+        with _t("save_edit_modal"):
+            self.click_attached(self.SEL_SAVE_BTN)
+            self._dismiss_modal()
+            self.wait_for(self.SEL_ADD_BTN)
 
     def get_verify_values(self, saved_name: str) -> dict:
         """Phase 3: EDIT 모달 로드 후 정책 이름 필드 값 확인."""

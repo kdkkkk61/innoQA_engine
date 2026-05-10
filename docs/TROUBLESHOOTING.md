@@ -5,6 +5,188 @@
 
 ---
 
+## [RESOLVED] scan_diff_modal element 캡처 30초 hang (시나리오 2/4 누적 60초 낭비)
+- **날짜**: 2026-05-08
+- **증상**: 시나리오 2 끝(save_policy 직전)과 시나리오 4 끝(close_edit_modal 직전)에서
+  각 30초씩 멈춤. 사용자 보고: "det_p2 가기 전 / 모달 닫고 삭제 전 20~30초 wait".
+- **원인**: `core/ui_scanner.py:329` `_scan_diff_yaml_dom` 에서
+  `ctx.take_screenshot("scan_diff_modal", element_sel="#addItemModal.in")` 호출.
+  Playwright `loc.screenshot()` 은 actionability/stability 내부 대기를 가지며 `timeout=N`
+  파라미터를 무시함 (실측). element 가 attached 상태이나 visible 대기에서 30초 timeout 발생.
+- **로그 증거**:
+  ```
+  [TIMING] take_screenshot 'scan_diff_modal' FAILED 30022ms:
+           Locator.screenshot: Timeout 30000ms exceeded.
+  ```
+- **수정**: `core/scan_context.py` `take_screenshot`
+  - element 캡처 시도 자체 제거 → 항상 viewport 캡처 사용
+  - element_sel 인자는 mode 라벨용으로만 유지
+  - 로직: `self.page.screenshot(path=str(path))` 단일 호출
+- **손실 평가**: 0 — 기존 동작도 30초 hang 후 fail 하여 결과 None.
+  viewport 폴백이 오히려 evidence 보존 ✓.
+- **검증** (재실행 후):
+  - take_screenshot 'scan_diff_modal' 39ms (이전 30022ms, 770배 단축)
+  - 시나리오 2: 38.68s → 8.89s
+  - 시나리오 4: 56.95s → 26.96s
+  - 전체 ~158s → ~98s (60초 단축, 38% 빨라짐)
+  - 카드 수 동일 (pass=88 fail=0 warn=8 error=0)
+- **재발 방지**: `loc.screenshot()` 사용 금지. element 영역이 필요해도 viewport 우선.
+  실제 element 캡처가 꼭 필요하면 사전 `is_visible()` synchronous 체크 후 호출.
+
+---
+
+## [RESOLVED] take_screenshot hide/show evaluate CDP round-trip 비용
+- **날짜**: 2026-05-08
+- **증상**: 단발 take_screenshot 200~400ms 소요. 사용자 지적: "캡처/클릭 동작 늘어지는 게 이슈".
+- **원인**: `core/scan_context.py` `take_screenshot` 가 캡처 전후로 `_hide`/`_show` JavaScript 를
+  `page.evaluate()` 로 실행. 각 evaluate = CDP round-trip ~50-100ms × 2회 = ~200ms 추가 비용.
+- **분석 (사용자 design 의도 재확인)**:
+  - 잠깐 끄기 패턴(`_toggle_overlay`)은 click 핸들러에서 사용 — 의도된 설계
+  - 그러나 screenshot 에서는 overlay 풀 필요 X (overlay 0.15 검정 + 우측하단 배너는 evidence 에 살짝
+    비쳐도 무방, 오히려 "테스트 진행 중" 표식)
+- **수정**: `core/scan_context.py`
+  - hide/show evaluate 호출 제거
+  - 단발 동작 ~50% 단축 (CDP round-trip 2회 = 100~200ms 절약)
+  - overlay 항상 ON 유지 (사용자 design 강화 — 풀리는 시간 0초)
+- **재발 방지**: screenshot 시 overlay 조작 추가 금지.
+
+---
+
+## [RESOLVED] take_screenshot opacity:0 시도 → display:none 복원 (사용자 design 회귀)
+- **날짜**: 2026-05-08
+- **증상**: 사용자가 "modal 위로 입력 가능" 보고 → 임시로 `display:none` → `opacity:0` 변경 시도
+  (opacity:0 + pointer-events:all 로 overlay 시각만 투명, 클릭 차단 유지 의도).
+- **분석 (사용자 피드백)**:
+  > "저런 특정 이슈에 대해선 끄는걸 허용했어, 캡처나 이럴때도 오버레이를 아주잠깐 끄고
+  > 동작시키는게 가능하다고 코드짤때 설계했어"
+  - 사용자: 잠깐 끄기는 설계 의도 — opacity:0 변경은 design 회귀
+- **수정**: 위 [RESOLVED] take_screenshot hide/show evaluate 제거 fix 와 통합
+  - 전체 hide/show 로직 제거 (display:none 도 opacity:0 도 아닌 "조작 안 함")
+  - overlay 항상 ON 상태로 screenshot 진행
+- **교훈**: 사용자 design 의도 확인 없이 동작 변경 금지. 시각/기능 모두 보존해야 함.
+
+---
+
+## [RESOLVED] 상세 timing 로그 인프라 구축 (추측 차단)
+- **날짜**: 2026-05-08
+- **배경**: 사용자 지적 — "로그는 너가 확인하지 못하는 모든 정보를 포함해야 해, 추측성 수정 막아야지".
+- **추가 위치**:
+  - `core/qa_runner.py`: 시나리오 1~5 시작/종료 + 정리 단계 timing
+  - `core/ui_scanner.py`: validator 별 timing + 생성 cards 수
+    ```
+    [TIMING]   scan_initial_state took 0.19s (cards=11)
+    [TIMING]   scan_toggle_checkboxes took 7.65s (cards=6)
+    [TIMING]   ...
+    ```
+  - `core/scan_context.py`:
+    - `take_screenshot`: 모드/시간/파일명 출력
+    - `dismiss_warning_dialog`: 총 시간/screenshot 시간/텍스트 출력
+    - `activate_tab`: OK/BLOCKED/NO-LINK 분기 시간 출력
+  - `pages/ransom_detect_policy_page.py`: 핵심 메서드 timing (open_modify_modal,
+    save_policy, close_edit_modal, save_edit_modal, delete_all_auto_policies)
+  - `_t()` contextmanager 헬퍼 — `[TIMING] {label} took {sec}s` 통일 포맷
+- **효과**: 30초 hang 의 정확한 위치를 다음 1회 측정에서 즉시 식별 가능.
+  추측 루프 종결.
+- **유지 정책**: 다음 회귀 분석 시 활용. 로그 양이 커지면 verbose 플래그로 분리 검토.
+
+---
+
+## [RESOLVED] open_modify_modal 매 호출 3초 음의 대기 (39초 시나리오 2 hot spot)
+- **날짜**: 2026-05-08
+- **증상**: 시나리오 2 = 39s, 시나리오 4 open_modify_modal 5회 호출 = ~17s 누적.
+  사용자 보고: "또 멈추고 보호기 풀잖아".
+- **원인**: `_fail_if_modal(self._TIMEOUT_MODAL)` — 에러 모달 출현 여부를 **3초 풀 timeout**
+  으로 매번 확인. 99% 안 뜨는데도 매 호출 3s 손실.
+- **수정**:
+  1. `open_modify_modal`: race 패턴 — `SEL_CONFIRM_MODAL_OPENED, SEL_ADD_MODAL` 둘 중
+     먼저 attached 즉시 진행. 일반 케이스 ~100ms.
+  2. `_fail_if_modal`: 200ms × 5회 polling (max 1s)으로 변경 — 다른 호출자도 단축 효과.
+- **timing 로그 (이번 회귀 식별 도구)**: `pages/ransom_detect_policy_page.py` 와 
+  `core/qa_runner.py` 에 `_t()` contextmanager 추가 — 모든 주요 단계 [TIMING] 출력.
+  → 추측 루프 끊고 데이터 기반 분석 가능.
+- **재발 방지**: "wait_for(state="attached", timeout=N)" 으로 음의 대기를 표현하지 말 것.
+  race 패턴 (둘 중 빨리 attached) 이나 짧은 polling 사용.
+
+---
+
+## [RESOLVED] qa-block-overlay 시각 강화 (사용자 오인 방지)
+- **날짜**: 2026-05-08
+- **증상**: 사용자가 멈춤 동안 "오버레이 풀렸다" 반복 보고. 실제 로그상 오버레이는 ON 상태.
+  기존 `rgba(0, 0, 0, 0.15)` 너무 옅어서 모달 위로 덮였을 때 시각 인식 불가 → 오인.
+- **수정**: `conftest.py` `_OVERLAY_INJECT`
+  - background: 주황·검정 빗금 패턴 (`repeating-linear-gradient`)
+  - z-index: 99998 → 2147483600 (max int 근접) — Bootstrap 모달 위 100% 보장
+- **재발 방지**: 향후 시각 인식 문제는 명확한 디버깅 패턴 (빗금/줄무늬) 우선.
+
+---
+
+## [RESOLVED] ransom_detect_policy / common_process 행 클릭 hang + overlay 이탈
+- **날짜**: 2026-05-08
+- **증상**:
+  1. 시나리오 진행 중 갑자기 `qa-block-overlay` 클릭 차단이 풀려 사람이 직접 입력 가능.
+  2. det_p2 EDIT 모달 영역에서 멈춤. 일정 시간 지나면 진행되거나 pytest 180s timeout 발화 → 강제 종료.
+  3. delete_all_auto_policies 정리 단계에서 두 번째 정책 삭제 후 hang.
+- **원인**:
+  `pages/ransom_detect_policy_page.py` `click_policy_row` / `check_policy_row` 와
+  `pages/common_process_page.py` `open_modify_modal` / `delete_item` 가
+  `_toggle_overlay(False)` + `click()` (force=True 누락) 조합 사용.
+  - Playwright actionability 기본 30s 대기 시작
+  - 그 30s 동안 overlay pointer-events:none 상태 → 사람 클릭 가능
+  - retry 3회 누적 시 누적 90s+ → pytest --timeout=180 발화
+  - rdp_policy_page는 같은 함수에 `force=True, timeout=3000` 패턴이 이미 적용되어 있어 정상 동작 → 회귀 발견의 기준점
+- **md 근거**: `docs/ui-interaction.md` L37-43 — "테이블 행 선택: `_toggle_overlay(False)` + `click(force=True)` 조합 필수. 둘 다 필요. 하나만 쓰면 안 됨."
+- **수정**:
+  - `click_policy_row`: `row.click(force=True, timeout=3000)` + `wait_for_timeout(80)` settle
+  - `check_policy_row`: `_toggle_overlay` 제거, `checkbox.evaluate("el => el.click()")` 로 단순화 (overlay/actionability 무관)
+  - `common_process_page.delete_item` 체크박스: 동일하게 JS click 변경
+- **재발 방지**: 행 클릭/체크박스 패턴 추가 시 rdp_policy_page 정답 패턴 복제. ui-interaction.md 표준 위반 검출용 grep 체크 권장: `grep -n "_toggle_overlay(False)" pages/*.py | grep -v "force=True"`
+
+---
+
+## [OPEN] ADD 모달 phase 2/3 에서 예외처리 탭 required_toggle 강제 클릭 — 부수효과
+- **날짜**: 2026-05-08
+- **증상**: AUTO 정책 생성 시나리오 중 `isExceptDetect` 토글이 자동으로 ON 되었다가 OFF 복원되는 부수효과.
+  사용자 보고: "auto seq 만드는 곳에서 예외처리 리스트 건드리는 부분 — 강제로 확인하다가 오버레이 풀리는 듯".
+- **원인**: `validators/tag_input.py` 가 `tab + required_toggle` 항목(예외처리 3종)을 ADD 모달에서도
+  탭 진입 시도 → 차단됨 → required_toggle 클릭 ON → 탭 재시도 흐름을 수행.
+  ADD 모달은 정책 미저장 상태에서 탭 차단이 정상 동작이므로 "차단 확인" 카드만 기록하면 됨.
+  EDIT 모달(phase 4)에서만 토글 ON 후 진입해야 의미 있음.
+- **md 근거**: `scenario_4_modify.md` 책임 분리 — 예외처리 리스트는 EDIT 모달 검증 영역.
+- **수정**: `validators/tag_input.py`
+  ```python
+  phase_allows_toggle = ctx.phase in (4,)
+  if not tab_activated and required_toggle and phase_allows_toggle:
+      ...
+  ```
+  ADD 모달 phase에서는 `required_toggle` 클릭하지 않음. 차단 확인 메시지만 카드 기록.
+- **재발 방지**: tag_input/required_toggle 동작은 EDIT 모달 전용. 신규 페이지 yaml 작성 시
+  `tab + required_toggle` 조합은 항상 EDIT 모달 검증 대상으로만 정의.
+
+---
+
+## [OPEN-DEBUG] app.py pytest --timeout=180 임시 해제 (2026-05-08)
+- **날짜**: 2026-05-08
+- **상태**: 디버깅 목적 임시 해제 — **반드시 복원 필요**
+- **이유**: 위 hang 이슈 식별 단계에서 timeout이 hang 위치 식별을 방해. 사용자가 "끝까지 진행 확인" 요청.
+- **현재 상태**: `app.py` L417 `--timeout=180` 주석 처리.
+- **복원 조건**: hang 재현 안 되는 것 PoC 검증 후 즉시 복원 (`--timeout=300` 권장 — overflow 대기 여유).
+- **위험**: 운영 환경에 이 상태로 배포 시 Chromium hang 발생해도 강제 종료 안 됨.
+
+---
+
+## [RESOLVED] 시나리오 5 신규 자동 발견 필드 카드 누락
+- **날짜**: 2026-05-08
+- **증상**: yaml 미등록 신규 필드(예: input#isSoftwareCertificate)가 시나리오 1/2/3/4 영역에는
+  자동 분류 카드 출력되나 시나리오 5(케이스 검증) 영역에서는 카드 0건.
+- **md 근거**: `test_scenario_standard.md` 공통 설계 원칙 5번 "모든 필드 커버 — 선택 필드도 시나리오 3·5에서 반드시 확인".
+- **원인**: `core/qa_runner.py` `run_phase3_cases` 가 profile yaml 정의(verify_created/verify_modified) 기반으로만
+  검증 → yaml에 없는 신규 필드는 verify 대상에서 누락.
+- **수정**: `_scenario5_discovered_cards` 헬퍼 신설. verify_modified 후 EDIT 모달 열린 상태에서
+  DOM ↔ yaml selector 비교 → 신규 필드별 `pattern="discovered_case"` pass 카드 등록 (yaml 등록 시 profile 추가 필요 안내).
+- **회귀 안전**: DOM 읽기만, 클릭/입력 없음. modal_already_open=True일 때만 동작.
+
+---
+
 ## [RESOLVED] initial_state warn 케이스 스크린샷 회귀 (910fd04 리팩터)
 - **날짜**: 2026-05-07
 - **증상**: "행위기반 탐지등급 설정 초기값" 같은 warn 카드에 스크린샷 첨부 X.

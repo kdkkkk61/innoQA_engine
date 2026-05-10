@@ -18,7 +18,9 @@ Phase 이름 생성 규칙:
 from __future__ import annotations
 
 import json
+import time
 import yaml
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib  import Path
 
@@ -28,6 +30,16 @@ from core.reporter          import print_phase_report, print_combined_report
 from pages.registry         import PAGE_REGISTRY
 from validators.overflow    import scan_overflow_tests
 from validators.list_ui     import scan_list_ui
+
+
+@contextmanager
+def _t(label: str):
+    """Timing 헬퍼 — [TIMING] {label} took {sec}s 출력."""
+    t0 = time.time()
+    try:
+        yield
+    finally:
+        print(f"[TIMING] {label} took {time.time()-t0:.2f}s")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -142,7 +154,7 @@ def _save_snapshot(page_id: str, case_name: str, verify_dict: dict) -> None:
     print(f"  [SAVE] 스냅샷 저장: {path}")
 
 
-def _fill_discovered_text_fields(page, hints: dict) -> None:
+def _fill_discovered_text_fields(page, hints: dict) -> list[ScanResult]:
     """
     B-1-B-4: 시나리오 3 자동 채우기 — 신규 자동 발견된 단독 text/number input 자동 fill.
 
@@ -150,17 +162,22 @@ def _fill_discovered_text_fields(page, hints: dict) -> None:
     신규 input 의 type 이 text/textarea/number/password/email 인 것만 자동 채움.
     checkbox/toggle/radio 는 default 유지 (안전).
 
-    yaml 등록되지 않은 신규 필드가 시나리오 3 추가 흐름을 깨지 않도록 함.
-    원칙: 추정 최소화 — DOM 속성 추출만, 입력값은 안전 표준값 사용.
+    md 정의 (test_scenario_standard.md "모든 필드 커버")에 따라 모든 신규 필드의
+    시나리오 3 처리 결과를 ScanResult 로 등록 — 검수자가 카드에서 확인 가능.
+
+    반환:
+      list[ScanResult] — 신규 필드별 시나리오 3 처리 결과 카드.
+      호출자가 report.results 에 extend 해서 시나리오 3 영역에 표시.
     """
     from core.scan_diff import (
         extract_yaml_selectors, extract_dom_selectors,
-        extract_dom_attributes, compare,
+        extract_dom_attributes, extract_dom_labels, compare,
     )
+    out: list[ScanResult] = []
 
     modal_id = hints.get("modal_id") or ""
     if not modal_id:
-        return
+        return out
     context_sel = f"#{modal_id}.in"
 
     try:
@@ -168,32 +185,86 @@ def _fill_discovered_text_fields(page, hints: dict) -> None:
         dom_set  = extract_dom_selectors(page, context_sel)
         diff     = compare(yaml_set, dom_set)
     except Exception:
-        return
+        return out
 
     if not diff["new"]:
-        return
+        return out
 
     try:
-        attrs = extract_dom_attributes(page, context_sel, diff["new"])
+        attrs  = extract_dom_attributes(page, context_sel, diff["new"])
+        labels = extract_dom_labels(page, context_sel, diff["new"])
     except Exception:
-        return
+        return out
 
-    for sel in diff["new"]:
-        a = attrs.get(sel) or {}
-        t = a.get("type", "")
+    # order: 시나리오 3 영역 끝 (다른 검증보다 뒤, 9990 list_check 보다는 앞)
+    order_base = 9000
+
+    for i, sel in enumerate(sorted(diff["new"])):
+        a   = attrs.get(sel) or {}
+        ko  = (labels.get(sel) or "").strip() or sel
+        t   = a.get("type", "")
+        order = order_base + i
+
         if t not in ("text", "textarea", "number", "password", "email"):
-            continue  # checkbox/toggle/radio 등은 default 유지
+            # checkbox/toggle/radio — default 유지 (시나리오 3 회귀 X)
+            out.append(ScanResult(
+                pattern="discovered_fill", selector=sel,
+                label=f"[신규] {ko}",
+                status="pass",
+                detail=(
+                    f"[자동 분류 — yaml 미등록] 타입: {t or '?'} / "
+                    "default 유지 (시나리오 3 추가 흐름 영향 없음)"
+                ),
+                order=order, phase=3,
+            ))
+            continue
+
         try:
             loc = page.locator(sel).first
             if loc.count() == 0:
+                out.append(ScanResult(
+                    pattern="discovered_fill", selector=sel,
+                    label=f"[신규] {ko}",
+                    status="skip",
+                    detail="[자동 분류] 요소 미발견",
+                    order=order, phase=3,
+                ))
                 continue
             if not loc.is_enabled():
-                continue  # disabled (종속 input 등) — 토글 ON 후 검증은 다른 단계
+                # disabled — 종속 필드 가능성. 토글 ON 후 검증은 B-1-C에서.
+                out.append(ScanResult(
+                    pattern="discovered_fill", selector=sel,
+                    label=f"[신규] {ko}",
+                    status="skip",
+                    detail=(
+                        "[자동 분류 — yaml 미등록] disabled 상태 — "
+                        "종속 필드 가능성 (yaml 등록 시 dependent_fields 확인)"
+                    ),
+                    order=order, phase=3,
+                ))
+                continue
             value = "1" if t == "number" else "auto_test"
             loc.fill(value)
-        except Exception:
-            # 채우기 실패는 무시 — 회귀 위험 없게
-            pass
+            out.append(ScanResult(
+                pattern="discovered_fill", selector=sel,
+                label=f"[신규] {ko}",
+                status="pass",
+                detail=(
+                    f"[자동 분류 — yaml 미등록] 자동 채우기 {value!r} → "
+                    "시나리오 3 추가 흐름 포함됨"
+                ),
+                order=order, phase=3,
+            ))
+        except Exception as e:
+            out.append(ScanResult(
+                pattern="discovered_fill", selector=sel,
+                label=f"[신규] {ko}",
+                status="error",
+                detail=f"[자동 분류] 자동 채우기 실패: {e}",
+                order=order, phase=3,
+            ))
+
+    return out
 
 
 def run_phase3_cases(
@@ -256,6 +327,15 @@ def run_phase3_cases(
                 "전체 ON", phase=4, order_base=1010,
             ))
             _save_snapshot(page_id, "created_all_on", verify_created)
+            # 신규 발견 필드 — 전체 ON 시점 카드 (md "모든 필드 커버")
+            try:
+                report.results.extend(_scenario5_discovered_cards(
+                    playwright_page, page_obj, page_id,
+                    modal_already_open=True, case_label="전체 ON",
+                    order_base=1900,
+                ))
+            except Exception:
+                pass
         except Exception as e:
             report.results.append(ScanResult(
                 pattern="profile_verify", selector="",
@@ -293,16 +373,17 @@ def run_phase3_cases(
 
     # ── 4. 수정 후 검증: 전체 OFF 확인 ───────────────────────────
     verify_modified = profile.get("verify_modified", {})
+    modal_open_at_end = False
     if verify_modified:
         try:
             page_obj.open_modify_modal(policy_name)
             playwright_page.wait_for_timeout(500)
+            modal_open_at_end = True
             report.results.extend(_verify_profile_case(
                 playwright_page, verify_modified,
                 "전체 OFF", phase=4, order_base=2010,
             ))
             _save_snapshot(page_id, "modified_all_off", verify_modified)
-            page_obj.close_edit_modal()
         except Exception as e:
             report.results.append(ScanResult(
                 pattern="profile_verify", selector="",
@@ -311,7 +392,118 @@ def run_phase3_cases(
                 order=2010, phase=4,
             ))
 
+    # ── 5. 신규 발견 필드 — 전체 OFF 시점 카드 ─────────────────────
+    # md 정의 (test_scenario_standard.md "모든 필드 커버") 따라
+    # yaml 미등록 신규 필드도 시나리오 5 영역 카드 등록 (ON·OFF 각각).
+    # 추정 X — DOM 비교로 발견만, 케이스 동작은 yaml 등록 후 verify_*에서 다룸.
+    try:
+        report.results.extend(_scenario5_discovered_cards(
+            playwright_page, page_obj, page_id,
+            modal_already_open=modal_open_at_end,
+            case_label="전체 OFF", order_base=2900,
+        ))
+    except Exception as e:
+        report.results.append(ScanResult(
+            pattern="discovered_case", selector="",
+            label="신규 필드 자동 분류 (시나리오 5)",
+            status="error", detail=f"자동 분류 중 오류: {e}",
+            order=2900, phase=4,
+        ))
+    finally:
+        if modal_open_at_end:
+            try:
+                page_obj.close_edit_modal()
+            except Exception:
+                pass
+
     return report if report.results else None
+
+
+def _scenario5_discovered_cards(
+    playwright_page, page_obj, page_id: str,
+    modal_already_open: bool, case_label: str = "",
+    order_base: int = 3000,
+) -> list[ScanResult]:
+    """시나리오 5 영역 자동 분류 카드 — yaml 미등록 신규 필드 감지 표시.
+
+    동작:
+      1. EDIT 모달이 열려 있는지 확인 (없으면 빈 리스트 반환 — 보수적)
+      2. DOM ↔ yaml selector 비교 → 신규 필드 추출
+      3. 각 신규 필드에 대해 케이스(ON/OFF) 시점의 DOM 값 + 케이스 분류 카드 등록
+
+    case_label: "전체 ON" / "전체 OFF" (라벨 prefix 부착용). 빈 문자열이면 prefix 없음.
+
+    회귀 안전:
+      - 모달 재오픈/닫기 부수효과 없음 (modal_already_open=True 일 때만 스캔)
+      - 추가 액션 없음 — DOM 읽기만
+    """
+    out: list[ScanResult] = []
+    if not modal_already_open:
+        return out
+
+    from core.scan_diff import (
+        extract_yaml_selectors, extract_dom_selectors,
+        extract_dom_attributes, extract_dom_labels, compare,
+    )
+    config_dir = "config"
+    hints_path = Path(config_dir) / "scan_hints" / f"{page_id}.yaml"
+    try:
+        with open(hints_path, encoding="utf-8") as f:
+            hints = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return out
+
+    modal_id = hints.get("modal_id") or ""
+    if not modal_id:
+        return out
+    context_sel = f"#{modal_id}.in"
+
+    try:
+        yaml_set = extract_yaml_selectors(hints)
+        dom_set  = extract_dom_selectors(playwright_page, context_sel)
+        diff     = compare(yaml_set, dom_set)
+    except Exception:
+        return out
+
+    if not diff["new"]:
+        return out
+
+    try:
+        attrs  = extract_dom_attributes(playwright_page, context_sel, diff["new"])
+        labels = extract_dom_labels(playwright_page, context_sel, diff["new"])
+    except Exception:
+        return out
+
+    case_prefix = f"[{case_label}] " if case_label else ""
+    for i, sel in enumerate(sorted(diff["new"])):
+        a   = attrs.get(sel) or {}
+        ko  = (labels.get(sel) or "").strip() or sel
+        t   = a.get("type", "")
+        # 현재 DOM 값 추출 (ON/OFF 시점 스냅샷)
+        state_str = "?"
+        try:
+            loc = playwright_page.locator(sel).first
+            if loc.count() > 0:
+                if t in ("checkbox", "radio"):
+                    state_str = "ON" if loc.is_checked() else "OFF"
+                elif t in ("text", "number", "textarea", "password", "email"):
+                    val = loc.input_value()
+                    state_str = f"'{val}'" if val else "(빈값)"
+        except Exception:
+            pass
+        out.append(ScanResult(
+            pattern="discovered_case", selector=sel,
+            label=f"[신규] {case_prefix}{ko}",
+            status="pass",
+            detail=(
+                f"[자동 분류 — yaml 미등록] 타입: {t or '?'} / 현재 값: {state_str} / "
+                "케이스 검증(전체 ON·전체 OFF) 대상 외 — "
+                "yaml 등록 시 test_profiles 의 verify_* 에 추가 필요"
+            ),
+            order=order_base + i, phase=4,
+        ))
+
+    return out
 
 
 def run_scan(
@@ -451,8 +643,10 @@ def run_3phase_scan(
 
     PageClass = PAGE_REGISTRY[page_id]
     page_obj  = PageClass(playwright_page, settings)
-    page_obj.navigate_to()
-    page_obj.delete_all_auto_policies()
+    with _t(f"[{page_id}] 초기 navigate_to"):
+        page_obj.navigate_to()
+    with _t(f"[{page_id}] 사전 정리 (delete_all_auto_policies)"):
+        page_obj.delete_all_auto_policies()
 
     config_dir = settings.get("config_dir", "config")
     scanner    = UIScanner(playwright_page, config_dir=config_dir)
@@ -475,14 +669,15 @@ def run_3phase_scan(
 
     report1: PageScanReport | None = None
     if _hints.get("list_ui"):
-        try:
-            report1 = PageScanReport(page_id=page_id)
-            page_obj.navigate_to()
-            scan_list_ui(playwright_page, _hints, report1)
-            _tag_scenario(report1, 1)
-            print_phase_report(report1, 1)
-        except Exception as e:
-            print(f"  [ERR]  [{page_id}] 시나리오 1 실행 중 예외: {e}")
+        with _t("[시나리오 1] UI 구조"):
+            try:
+                report1 = PageScanReport(page_id=page_id)
+                page_obj.navigate_to()
+                scan_list_ui(playwright_page, _hints, report1)
+                _tag_scenario(report1, 1)
+                print_phase_report(report1, 1)
+            except Exception as e:
+                print(f"  [ERR]  [{page_id}] 시나리오 1 실행 중 예외: {e}")
     else:
         print(f"\n  [SKIP] 시나리오 1: UI 구조 — 해당 없음 (list_ui 섹션 없음)")
 
@@ -496,14 +691,15 @@ def run_3phase_scan(
         page_obj.save_policy(p1_name)
         p1_saved = True
 
-    report2 = scanner.scan(
-        page_id, phase=2,
-        modal_open_fn=page_obj.open_add_modal,
-        modal_close_fn=close_phase1,
-    )
-    _append_list_check(report2, page_obj, p1_name, phase=2, order=9990)
-    _tag_scenario(report2, 2)
-    print_phase_report(report2, 2)
+    with _t("[시나리오 2] 입력 구조"):
+        report2 = scanner.scan(
+            page_id, phase=2,
+            modal_open_fn=page_obj.open_add_modal,
+            modal_close_fn=close_phase1,
+        )
+        _append_list_check(report2, page_obj, p1_name, phase=2, order=9990)
+        _tag_scenario(report2, 2)
+        print_phase_report(report2, 2)
 
     # ─────────────────────────────────────────────────────────────
     # 시나리오 3: 동작 검증 (UI 인터랙션 + 중복 처리)
@@ -517,12 +713,16 @@ def run_3phase_scan(
     except FileNotFoundError:
         _hints_for_fill = {}
 
+    # 자동 채우기 결과 ScanResult 누적 — scanner.scan() 끝난 후 report3 에 합침
+    discovered_fill_results: list[ScanResult] = []
+
     def close_phase2():
         nonlocal p2_saved
         # 신규 자동 발견 text/number input fill — save_policy() 직전.
-        # 시나리오 3 추가 흐름에 신규 필드 default 값으로 같이 저장.
+        # md 정의 (모든 필드 커버) 따라 결과 카드 등록.
         try:
-            _fill_discovered_text_fields(page_obj.page, _hints_for_fill)
+            results = _fill_discovered_text_fields(page_obj.page, _hints_for_fill)
+            discovered_fill_results.extend(results)
         except Exception:
             pass  # 자동 채우기 실패는 무시 (회귀 위험 없게)
         page_obj.save_policy(p2_name)
@@ -534,12 +734,16 @@ def run_3phase_scan(
     else:
         print(f"  [SKIP] [{page_id}] 시나리오 3: existing_name 스킵 — 시나리오 2 저장 실패")
 
-    report3 = scanner.scan(
-        page_id, phase=3,
-        modal_open_fn=page_obj.open_add_modal,
-        modal_close_fn=close_phase2,
-        context_extra=context2,
-    )
+    with _t("[시나리오 3] 동작 검증 (scan)"):
+        report3 = scanner.scan(
+            page_id, phase=3,
+            modal_open_fn=page_obj.open_add_modal,
+            modal_close_fn=close_phase2,
+            context_extra=context2,
+        )
+    # B-1-B-4: 자동 채우기 결과를 시나리오 3 영역 카드로 추가 (md 정의 "모든 필드 커버")
+    if discovered_fill_results:
+        report3.results.extend(discovered_fill_results)
     _append_list_check(report3, page_obj, p2_name, phase=3, order=9990)
 
     # 시나리오 3 연장: 오버플로 검증 (overflow_tests 섹션 있을 때)
@@ -552,18 +756,19 @@ def run_3phase_scan(
         _hints = {}
 
     if _hints.get("overflow_tests"):
-        try:
-            page_obj.navigate_to()
-            scan_overflow_tests(
-                playwright_page, _hints, report3,
-                open_modal_fn=page_obj.open_add_modal,
-                open_edit_modal_fn=(
-                    (lambda: page_obj.open_modify_modal(p2_name))
-                    if p2_saved else None
-                ),
-            )
-        except Exception as e:
-            print(f"  [ERR]  [{page_id}] 시나리오 3 오버플로 실행 중 예외: {e}")
+        with _t("[시나리오 3] 오버플로"):
+            try:
+                page_obj.navigate_to()
+                scan_overflow_tests(
+                    playwright_page, _hints, report3,
+                    open_modal_fn=page_obj.open_add_modal,
+                    open_edit_modal_fn=(
+                        (lambda: page_obj.open_modify_modal(p2_name))
+                        if p2_saved else None
+                    ),
+                )
+            except Exception as e:
+                print(f"  [ERR]  [{page_id}] 시나리오 3 오버플로 실행 중 예외: {e}")
 
     _tag_scenario(report3, 3)
     print_phase_report(report3, 3)
@@ -582,47 +787,51 @@ def run_3phase_scan(
     if not p2_saved:
         print(f"  [SKIP] 시나리오 4: 수정 시나리오 스킵 — 시나리오 3 저장 실패 (p2 정책 없음)")
     else:
-        try:
-            report4 = scanner.scan(
-                page_id, phase=4,
-                modal_open_fn=lambda: page_obj.open_modify_modal(p2_name),
-                modal_close_fn=page_obj.close_edit_modal,
-                context_extra={"verify_values": page_obj.get_verify_values(p2_name)},
-            )
-            _append_list_check(report4, page_obj, p2_name, phase=4, order=9990)
-            _tag_scenario(report4, 4)
-            print_phase_report(report4, 4)
-        except Exception as e:
-            print(f"  [ERR]  [{page_id}] 시나리오 4 실행 중 예외: {e}")
-        finally:
+        with _t("[시나리오 4] 수정 시나리오"):
             try:
-                page_obj.navigate_to()
-                page_obj.delete_all_auto_policies()
-            except Exception as e:
-                print(
-                    f"\n  [WARN]  [{page_id}] 정리 실패 — "
-                    f"잔여 [AUTO] 정책이 남아있을 수 있습니다: {e}"
+                report4 = scanner.scan(
+                    page_id, phase=4,
+                    modal_open_fn=lambda: page_obj.open_modify_modal(p2_name),
+                    modal_close_fn=page_obj.close_edit_modal,
+                    context_extra={"verify_values": page_obj.get_verify_values(p2_name)},
                 )
+                _append_list_check(report4, page_obj, p2_name, phase=4, order=9990)
+                _tag_scenario(report4, 4)
+                print_phase_report(report4, 4)
+            except Exception as e:
+                print(f"  [ERR]  [{page_id}] 시나리오 4 실행 중 예외: {e}")
+            finally:
+                with _t("[시나리오 4] 종료 후 정리 (navigate + delete_all)"):
+                    try:
+                        page_obj.navigate_to()
+                        page_obj.delete_all_auto_policies()
+                    except Exception as e:
+                        print(
+                            f"\n  [WARN]  [{page_id}] 정리 실패 — "
+                            f"잔여 [AUTO] 정책이 남아있을 수 있습니다: {e}"
+                        )
 
     # ─────────────────────────────────────────────────────────────
     # 시나리오 5: 케이스 검증 (제품 설정 ON/OFF 프로파일)
     # ─────────────────────────────────────────────────────────────
     report5: PageScanReport | None = None
-    try:
-        report5 = run_phase3_cases(playwright_page, settings, page_id, page_obj)
-        if report5:
-            _tag_scenario(report5, 5)
-            print_phase_report(report5, 5)
-        else:
-            print(f"\n  [SKIP] 시나리오 5: 케이스 검증 — 해당 없음 (test_profiles/{page_id}.yaml 없음)")
-    except Exception as e:
-        print(f"  [ERR]  [{page_id}] 시나리오 5 실행 중 예외: {e}")
-    finally:
+    with _t("[시나리오 5] 케이스 검증"):
         try:
-            page_obj.navigate_to()
-            page_obj.delete_all_auto_policies()
-        except Exception:
-            pass
+            report5 = run_phase3_cases(playwright_page, settings, page_id, page_obj)
+            if report5:
+                _tag_scenario(report5, 5)
+                print_phase_report(report5, 5)
+            else:
+                print(f"\n  [SKIP] 시나리오 5: 케이스 검증 — 해당 없음 (test_profiles/{page_id}.yaml 없음)")
+        except Exception as e:
+            print(f"  [ERR]  [{page_id}] 시나리오 5 실행 중 예외: {e}")
+        finally:
+            with _t("[시나리오 5] 종료 후 정리 (navigate + delete_all)"):
+                try:
+                    page_obj.navigate_to()
+                    page_obj.delete_all_auto_policies()
+                except Exception:
+                    pass
 
     # ─────────────────────────────────────────────────────────────
     # 결합 리포트

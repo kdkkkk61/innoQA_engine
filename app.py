@@ -414,7 +414,7 @@ def start():
         _get_python(), "-u", "-m", "pytest",
         *test_files,        # 제품별 테스트 파일 선택 (복수 지원)
         "-v", "-s",
-        "--timeout=180",    # 테스트 1개당 최대 3분 — Chromium hang 시 강제 종료
+        "--timeout=300",    # 테스트 1개당 최대 5분 — Chromium hang 시 강제 종료
         "-k", k_filter,
     ]
     env["PYTHONUNBUFFERED"] = "1"

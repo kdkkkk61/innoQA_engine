@@ -94,12 +94,22 @@ def scan_loaded_values(
 
     # ── 토글 상태 확인 ────────────────────────────────────────────────────────
     for sel, expected_checked in verify_toggles.items():
-        # hints에서 label 찾기
+        # hints에서 label 찾기 — toggle_checkboxes / plain_checkboxes / radio_groups 전부 검색
         label = sel
         for tgl in hints.get("toggle_checkboxes", []):
             if tgl["selector"] == sel:
-                label = tgl.get("label", sel)
-                break
+                label = tgl.get("label", sel); break
+        if label == sel:
+            for cb in hints.get("plain_checkboxes", []):
+                if cb["selector"] == sel:
+                    label = cb.get("label", sel); break
+        if label == sel:
+            for rg in hints.get("radio_groups", []):
+                for opt in rg.get("options", []):
+                    if opt.get("selector") == sel:
+                        label = opt.get("label", sel); break
+                if label != sel:
+                    break
         loc = ctx.page.locator(sel)
         try:
             if loc.count() == 0:

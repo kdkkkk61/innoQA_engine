@@ -50,7 +50,11 @@ def scan_tag_inputs(
         tab_id = tag.get("tab")
         if tab_id:
             tab_activated = ctx.activate_tab({"data_tab": tab_id})
-            if not tab_activated and required_toggle:
+            # ADD 모달(phase 2/3)에서는 탭 차단이 정상 — required_toggle 강제 클릭 X
+            # 차단 확인만 하고 "수정 모달에서 검증" 카드 기록.
+            # EDIT 모달(phase 4)에서만 required_toggle ON 후 탭 진입 재시도.
+            phase_allows_toggle = ctx.phase in (4,)
+            if not tab_activated and required_toggle and phase_allows_toggle:
                 req_loc = ctx.page.locator(required_toggle)
                 if req_loc.count() > 0:
                     prev_checked = req_loc.is_checked()
@@ -63,7 +67,7 @@ def scan_tag_inputs(
                         req_loc.evaluate("el => el.click()")
                         ctx.page.wait_for_timeout(300)
                     tab_activated = ctx.activate_tab({"data_tab": tab_id})
-        ctx.log.debug(f"[tag_input] {label!r} → tab_activated={tab_activated}")
+        ctx.log.debug(f"[tag_input] {label!r} → tab_activated={tab_activated} (phase={ctx.phase})")
 
         try:
             # ① 세 요소 존재 확인

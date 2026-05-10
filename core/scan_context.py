@@ -59,10 +59,13 @@ class ScanContext:
             True  = 탭 정상 활성화
             False = 경고 다이얼로그 출현으로 탭 전환 차단됨
         """
+        import time as _time
+        t0 = _time.time()
         data_tab = tab.get("data_tab", "")
         tab_text = tab.get("tab_text", "")
         hint     = data_tab or tab_text or "(unknown)"
         self.log.debug(f"[tab] 활성화 시도: {hint!r}")
+        result = True
         try:
             tab_link = None
             # ① data_tab 속성 기준 (기존 방식)
@@ -86,12 +89,18 @@ class ScanContext:
                 self.page.wait_for_timeout(self.TAB_SETTLE_MS)
                 if self.dismiss_warning_dialog():
                     self.log.debug(f"[tab] 경고 다이얼로그로 차단됨: {hint!r}")
+                    print(f"[TIMING]   activate_tab {hint!r} BLOCKED {(_time.time()-t0)*1000:.0f}ms")
                     return False
             else:
                 self.log.debug(f"[tab] 탭 링크 미발견 — data_tab={data_tab!r} / tab_text={tab_text!r}")
+                print(f"[TIMING]   activate_tab {hint!r} NO-LINK {(_time.time()-t0)*1000:.0f}ms")
+                return True
         except Exception:
             self.log.debug(f"[tab] 예외 발생:\n{traceback.format_exc()}")
+            print(f"[TIMING]   activate_tab {hint!r} EXC {(_time.time()-t0)*1000:.0f}ms")
+            return True
         self.log.debug(f"[tab] 활성화 완료: {hint!r}")
+        print(f"[TIMING]   activate_tab {hint!r} OK {(_time.time()-t0)*1000:.0f}ms")
         return True
 
     # ── 경고 다이얼로그 ────────────────────────────────────────────────────────
@@ -112,11 +121,14 @@ class ScanContext:
             True  = 다이얼로그가 있었고 닫음
             False = 다이얼로그 없음
         """
+        import time as _time
+        t0 = _time.time()
         self.last_warning_text       = ""
         self.last_warning_screenshot = None
         try:
             warn_modal = self.page.locator(self.SEL_WARN_MODAL)
             if warn_modal.count() == 0:
+                print(f"[TIMING]     dismiss_warning_dialog: no-modal {(_time.time()-t0)*1000:.0f}ms")
                 return False
             self.log.debug(f"[warn_dialog] 경고 모달 감지됨 ({self.SEL_WARN_MODAL})")
             # 텍스트 캡처 (dismiss 전)
@@ -129,22 +141,30 @@ class ScanContext:
                 pass
             # 스크린샷 캡처 (dismiss 전 — cause + effect 한 프레임)
             # validator가 status 판정 후 fail/warn일 때만 ScanResult.extra에 첨부.
+            t_ss = _time.time()
             try:
                 self.last_warning_screenshot = self.take_screenshot("warning_dialog")
             except Exception:
                 self.log.debug(
                     f"[warn_dialog] 스크린샷 실패:\n{traceback.format_exc()}"
                 )
+            ss_ms = (_time.time()-t_ss)*1000
             confirm = warn_modal.locator("button")
             if confirm.count() > 0:
                 self.log.debug("[warn_dialog] 확인 버튼 클릭")
                 confirm.first.evaluate("el => el.click()")
                 self.page.wait_for_timeout(300)
+                total_ms = (_time.time()-t0)*1000
+                print(
+                    f"[TIMING]     dismiss_warning_dialog: dismissed total={total_ms:.0f}ms "
+                    f"ss={ss_ms:.0f}ms text={self.last_warning_text!r:.60}"
+                )
                 return True
             else:
                 self.log.debug("[warn_dialog] 버튼 없음 — 닫기 불가")
         except Exception:
             self.log.debug(f"[warn_dialog] 예외 발생:\n{traceback.format_exc()}")
+        print(f"[TIMING]     dismiss_warning_dialog: fallthrough {(_time.time()-t0)*1000:.0f}ms")
         return False
 
     # ── 결과 헬퍼 ────────────────────────────────────────────────────────────
@@ -182,13 +202,16 @@ class ScanContext:
         return False
 
     def take_screenshot(self, label: str, element_sel: str | None = None) -> str | None:
-        """결함 발견 시점 스크린샷 저장. 오버레이 숨김 → 캡처 → 복원.
+        """결함 발견 시점 스크린샷 저장.
 
         element_sel:
           None      : viewport 캡처 (기본 — 보이는 영역만)
           CSS sel   : 해당 element 전체 캡처 (스크롤 영역 포함)
                       모달처럼 viewport보다 큰 영역 통째 보고 싶을 때 사용.
         """
+        import time as _time
+        t0 = _time.time()
+        mode = "element" if element_sel else "viewport"
         try:
             from pathlib import Path
             from datetime import datetime
@@ -197,23 +220,22 @@ class ScanContext:
             ts   = datetime.now().strftime("%H%M%S_%f")[:9]
             safe = "".join(c if c.isalnum() or c in "_-" else "_" for c in label)[:35]
             path = ss_dir / f"BUG_{safe}_{ts}.png"
-            _hide  = "['qa-block-overlay','qa-test-banner'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='none';})"
-            _show  = "['qa-block-overlay','qa-test-banner'].forEach(id=>{const e=document.getElementById(id);if(e)e.style.display='';})"
-            self.page.evaluate(_hide)
-            try:
-                if element_sel:
-                    # element 전체 캡처 (스크롤 영역 포함). 못 찾으면 viewport 폴백.
-                    loc = self.page.locator(element_sel).first
-                    if loc.count() > 0:
-                        loc.screenshot(path=str(path))
-                    else:
-                        self.page.screenshot(path=str(path))
-                else:
-                    self.page.screenshot(path=str(path))
-            finally:
-                self.page.evaluate(_show)
+            # overlay 항상 ON 유지 — hide/show evaluate 제거.
+            # 스크린샷에 overlay (0.15 검정 + 배너) 살짝 비침 → "테스트 진행 중" 표식 활용.
+            # Playwright loc.screenshot(timeout=N) 파라미터가 무시되어 30초 hang 발생 (실측).
+            # 원인: actionability/stability 내부 대기가 timeout 무시.
+            # 해결: element 캡처 시도 자체 안 함 → 항상 viewport 캡처.
+            # 손실: 모달 스크롤 아래 영역 캡처 X. 그러나 원래도 30초 hang 후 fail로 캡처 안 됐음.
+            # element_sel 인자는 mode 라벨용으로만 사용.
+            self.page.screenshot(path=str(path))
+            if element_sel:
+                mode = f"viewport(skip-element:{element_sel})"
+            ms = (_time.time()-t0)*1000
+            print(f"[TIMING]       take_screenshot {label!r} {mode} {ms:.0f}ms → {path.name}")
             return str(path)
-        except Exception:
+        except Exception as e:
+            ms = (_time.time()-t0)*1000
+            print(f"[TIMING]       take_screenshot {label!r} FAILED {ms:.0f}ms: {e}")
             return None
 
     @staticmethod

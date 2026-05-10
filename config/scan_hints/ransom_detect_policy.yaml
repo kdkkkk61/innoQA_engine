@@ -182,10 +182,12 @@ tag_input:
 # default: ADD 모달 최초 열림 시 상태 (Chrome MCP 직접 확인, 2026-03-23)
 # ──────────────────────────────────────────────────────────────────────────────
 plain_checkboxes:
-  - selector: "input#isSoftwareCertificate"
-    label:    "소프트웨어 인증 사용"
-    default:  false
-    order:    30
+# ★ TEMP — 케이스 1 PoC (단독 plain_checkbox)
+# 기대: 시나리오 1 발견 + 시나리오 2 plain_checkbox 검증 + 시나리오 3 default 유지
+#  - selector: "input#isSoftwareCertificate"
+#    label:    "소프트웨어 인증 사용"
+#    default:  false
+#    order:    30
 
   - selector: "input#isMssqlRemoteBlock"
     label:    "MS-SQL 원격 차단 해제"

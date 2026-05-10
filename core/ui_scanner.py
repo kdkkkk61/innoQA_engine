@@ -169,8 +169,9 @@ class UIScanner:
         if hints:
             self._scan_from_hints(ctx, hints, report, phase=phase)
             # 시나리오 1 — DOM 스캔 + yaml 비교 (회귀 본질, scenario_1_ui.md 참조)
-            # 모달이 열린 상태에서만 의미 있음. ADD 모달 phase(2)에서 1회 수행.
-            if modal_opened and phase in (0, 2):
+            # phase 2: ADD 모달 — 시나리오 1 카드 + 시나리오 2 자동 검증
+            # phase 4: EDIT 모달 — 시나리오 4-1 자동 검증 (저장값 로드)
+            if modal_opened and phase in (0, 2, 4):
                 self._scan_diff_yaml_dom(ctx, hints, report)
         else:
             print(f"[UIScanner] scan_hints 없음 — 자동 탐지 폴백: {hints_path}")
@@ -239,22 +240,33 @@ class UIScanner:
         run_ui            = phase in (0, 3, 4)     # UI 요소 동작 검증 (ADD + EDIT)
         run_submit        = phase in (0, 2, 3, 4)  # 필수입력 검증 — 전 시나리오 실행
 
+        # validator별 timing 측정 (어느 검증이 hot spot인지 식별)
+        import time as _time
+        def _run(name, fn):
+            t0 = _time.time()
+            pre_count = len(report.results)
+            try:
+                fn(ctx, hints, report)
+            finally:
+                added = len(report.results) - pre_count
+                print(f"[TIMING]   {name} took {_time.time()-t0:.2f}s (cards={added})")
+
         if run_initial:
-            scan_initial_state(ctx, hints, report)
+            _run("scan_initial_state", scan_initial_state)
 
         if run_verify_loaded:
-            scan_loaded_values(ctx, hints, report)
+            _run("scan_loaded_values", scan_loaded_values)
 
         if run_ui:
-            scan_toggle_checkboxes(ctx, hints, report)
-            scan_plain_checkboxes(ctx, hints, report)
-            scan_radio_groups(ctx, hints, report)
-            scan_text_inputs(ctx, hints, report)
-            scan_tag_inputs(ctx, hints, report)
-            scan_button_actions(ctx, hints, report)
+            _run("scan_toggle_checkboxes", scan_toggle_checkboxes)
+            _run("scan_plain_checkboxes",  scan_plain_checkboxes)
+            _run("scan_radio_groups",      scan_radio_groups)
+            _run("scan_text_inputs",       scan_text_inputs)
+            _run("scan_tag_inputs",        scan_tag_inputs)
+            _run("scan_button_actions",    scan_button_actions)
 
         if run_submit:
-            scan_required_submit(ctx, hints, report)
+            _run("scan_required_submit", scan_required_submit)
 
         # 원래 탭으로 복원 (readonly 원칙)
         if original_tab:
@@ -320,10 +332,16 @@ class UIScanner:
             except Exception:
                 pass
 
+        # 시나리오 1 카드 (신규/제거 발견) — phase 0/2 만 등록.
+        # phase 4 (EDIT 모달) 에서는 같은 신규 요소가 또 발견되니 중복 방지.
+        register_discovery_cards = ctx.phase in (0, 2)
+
         # 신규 기능 (DOM에만 존재) — DOM에서 한국어 라벨 + 속성 추출
         for sel in sorted(diff["new"]):
             ko    = (new_labels.get(sel) or "").strip()
             attrs = new_attrs.get(sel) or {}
+            if not register_discovery_cards:
+                continue  # phase 4: 시나리오 1 카드 등록 X (시나리오 4 카드만)
             label_text = (
                 f'신규 기능 감지 — "{ko}" ({sel})' if ko
                 else f"신규 기능 감지 — {sel}"
@@ -354,8 +372,10 @@ class UIScanner:
                 extra=extra_data,
             ))
 
-        # 제거된 기능 (yaml에만 존재) — yaml에 있던 한국어 라벨 사용
+        # 제거된 기능 (yaml에만 존재) — phase 0/2 만 등록 (phase 4 중복 방지)
         for sel in sorted(diff["missing"]):
+            if not register_discovery_cards:
+                continue
             ko = (yaml_label_map.get(sel) or "").strip()
             label_text = (
                 f'제거된 기능 감지 — "{ko}" ({sel})' if ko
@@ -398,20 +418,61 @@ class UIScanner:
                 if has_auto:
                     # 호출 전 결과 카운트 (자동 분류분만 식별 위해)
                     pre_count = len(report.results)
-                    # 시나리오 2 영역 검증만 — 입력 필드 동작
-                    if temp_hints.get("text_inputs"):
-                        scan_text_inputs(ctx, temp_hints, report)
-                    if temp_hints.get("toggle_checkboxes"):
-                        scan_toggle_checkboxes(ctx, temp_hints, report)
-                    if temp_hints.get("plain_checkboxes"):
-                        scan_plain_checkboxes(ctx, temp_hints, report)
+
+                    if ctx.phase in (0, 2):
+                        # 시나리오 2 영역 검증 — 입력 필드 동작
+                        if temp_hints.get("text_inputs"):
+                            scan_text_inputs(ctx, temp_hints, report)
+                        if temp_hints.get("toggle_checkboxes"):
+                            scan_toggle_checkboxes(ctx, temp_hints, report)
+                        if temp_hints.get("plain_checkboxes"):
+                            scan_plain_checkboxes(ctx, temp_hints, report)
+                        target_scenario = 2
+                    elif ctx.phase == 4:
+                        # 시나리오 4-1 영역 검증 — 저장값 로드 확인
+                        # 신규 필드 expected = 현재 DOM 값 (default 유지 = pass)
+                        # ⚠ ctx.extra 의 기존 verify_values/toggles 는 첫 scan_loaded_values
+                        #   호출에서 이미 검증됨 → 중복 카드 방지 위해 신규 셀렉터만 전달.
+                        extra_verify  = {}
+                        extra_toggles = {}
+                        for sel in diff["new"]:
+                            a = new_attrs.get(sel) or {}
+                            t = a.get("type", "")
+                            try:
+                                loc = self.page.locator(sel).first
+                                if loc.count() == 0:
+                                    continue
+                                if t in ("text", "textarea", "number", "password", "email"):
+                                    extra_verify[sel] = loc.input_value()
+                                elif t in ("checkbox", "radio"):
+                                    extra_toggles[sel] = loc.is_checked()
+                            except Exception:
+                                pass
+                        # ctx.extra 를 신규 항목으로만 임시 교체 — 중복 검증 방지
+                        old_vv = ctx.extra.get("verify_values", {})
+                        old_vt = ctx.extra.get("verify_toggles", {})
+                        ctx.extra["verify_values"]  = extra_verify
+                        ctx.extra["verify_toggles"] = extra_toggles
+                        try:
+                            scan_loaded_values(ctx, temp_hints, report)
+                        finally:
+                            ctx.extra["verify_values"]  = old_vv
+                            ctx.extra["verify_toggles"] = old_vt
+                        target_scenario = 4
+                    else:
+                        target_scenario = 0  # 그 외 phase — 태깅만
+
                     # 자동 분류 결과 표시 — label/detail에 "[신규]" 명시
                     # 검수자가 카드 목록에서 즉시 자동 분류 결과 식별 가능.
                     # CP949 환경 호환 — 이모지/em-dash 대신 한국어 텍스트만.
                     for r in report.results[pre_count:]:
                         r.label  = "[신규] " + r.label
                         r.detail = "[자동 분류 — yaml 미등록] " + r.detail
-                        r.extra = {**r.extra, "scenario": 2, "scenario_tag": "시나리오 2"}
+                        r.extra = {
+                            **r.extra,
+                            "scenario": target_scenario,
+                            "scenario_tag": f"시나리오 {target_scenario}",
+                        }
             except Exception:
                 ctx.append_error(
                     report, "discovered_new", context_sel,
