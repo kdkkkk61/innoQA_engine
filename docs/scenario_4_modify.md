@@ -51,9 +51,13 @@
 |---|---|
 | **list_page** (공통 프로세스, 제어 스위트, nPouch) | `list_modify_required` |
 | **modal_form** (RDP, 랜섬 탐지) | `modify_required` |
+| **자동 분류 — 신규 발견 필드 로드값 확인** | `initial_state` (라벨에 `[신규]` prefix) |
 
 **시나리오 4 영역 출력**: `required_submit` 패턴이 시나리오 2 끝(order 9999)에 위치하는 것과
 달리, 신규 pattern은 **시나리오 4 영역 안** 에 위치 (4-2 다음, 시나리오 5 이전).
+
+자동 분류 카드는 4-1 영역(저장값 로드 확인) 안에 동일 패턴 `initial_state` 으로 등록되어
+시나리오 4 헤더 직하단에 출력 — 검수자가 "신규 기능도 수정 흐름에서 검증됨"을 즉시 확인 가능.
 
 → 출력 정렬 규칙은 `scan-output-format.md` 참조.
 
@@ -174,3 +178,51 @@ def test_scenario4_modify(self):
 - **4-3 주의**: 필수 필드를 비우고 저장 시도 후 모달이 닫혔는지 / 경고가 떴는지는 시나리오 2가
   이미 판정함. 시나리오 4-3는 **그 후 실제 저장된 값**만 본다 (책임 분리).
 - **4-3는 페이지별 필수 필드 모두에 적용** (이름 필드만 보지 말고 yaml `required: true` 전부)
+
+---
+
+## 자동 검증 카드 (신규 발견 요소 — 4-1 자동 분류)
+
+시나리오 1 의 `discovered_new` 로 발견된 yaml 미등록 신규 필드는 시나리오 4 영역에도
+**자동으로 카드 등록**된다. EDIT 모달이 열린 상태에서 신규 필드의 **현재 DOM 값을 추출**해
+`scan_loaded_values`(initial_state pattern) 를 재호출 — "저장된 값이 default 와 일치하는지"
+검증.
+
+### 동작 (DOM type 기반)
+
+| DOM type | 동작 | status |
+|---|---|---|
+| `text` / `number` / `textarea` / `password` / `email` | `loc.input_value()` → expected = 현재값 → expected == actual → pass | pass |
+| `checkbox` / `radio` | `loc.is_checked()` → expected = 현재 상태 → 비교 | pass |
+
+→ "default 유지 = pass" 의미. 시나리오 3 추가 흐름에서 신규 필드를 안 채웠으면(default
+유지) EDIT 모달 재오픈 시 default 그대로 → 정상.
+
+### 카드 라벨 컨벤션
+
+- `label = "[신규] " + 한국어 라벨 + " 로드값 확인"` (예: `[신규] 소프트웨어 인증 사용 로드값 확인`)
+- `detail = "[자동 분류 — yaml 미등록] " + 원본 detail` (예: `... 저장값 정상 로드: OFF`)
+- pattern: `initial_state` (기존 4-1 카드와 동일 패턴, `[신규]` prefix 로만 구분)
+
+### 중복 방지
+
+`scan_loaded_values` 를 두 번 호출하지 않는다:
+- 1차 호출: yaml-known verify_values 검증 (`정책 이름 로드값 확인` 등 — 정식 카드)
+- 자동 분류: 신규 selector만 `extra_verify` 에 추가해 별도 호출 (중복 카드 방지)
+
+### 한국어 라벨 fallback
+
+라벨 검색 순서:
+1. yaml `text_inputs[].selector == sel` → label
+2. yaml `toggle_checkboxes[].selector == sel` → label
+3. yaml `plain_checkboxes[].selector == sel` → label
+4. yaml `radio_groups[].options[].selector == sel` → label
+5. 없으면 selector 그대로
+
+### 회귀 안전
+
+- EDIT 모달 열린 상태(modal_already_open=True) 에서만 실행.
+- 신규 selector 만 검증 — yaml-known selector 는 1차 호출에서 검증됨 (중복 X).
+- 추가 클릭/입력 동작 없음 — DOM 읽기만.
+
+→ 자동 분류 메커니즘 전체 흐름은 `test_scenario_standard.md` "자동 분류 메커니즘 (B-1 시리즈)" 참조.

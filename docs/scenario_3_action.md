@@ -129,3 +129,43 @@ t, s = _r("pass" if gone else "fail", "항목 삭제 — 목록에서 사라짐"
 - 비정상 케이스는 "전부 다" 가 아니라 **페이지에 해당되는 것만** 구현
 - 해당 없는 케이스는 코드에서 생략하지 말고 `[SKIP]`으로 기록
 - CRUD 순서: 추가 → 저장값 확인 → 수정 → 수정값 재확인 → 삭제
+
+---
+
+## 자동 검증 카드 (신규 발견 요소 — `discovered_fill`)
+
+시나리오 1 의 `discovered_new` 로 발견된 yaml 미등록 신규 필드는 시나리오 3 (생성 흐름)
+영역에도 **자동으로 카드 등록**된다. 추가 흐름(`save_policy` 직전) 에 끼어들어
+신규 text/number 필드는 자동 채워보고, 신규 checkbox/toggle/radio 는 default 유지로 통과.
+
+### 동작 분기 (DOM type 기반)
+
+| DOM type | 동작 | status | detail 예시 |
+|---|---|---|---|
+| `text` / `number` / `textarea` / `password` / `email` | `fill()` 로 자동 채우기 (예: `scan_test`) | pass (성공) / skip (disabled) | `타입: text / "scan_test" 자동 입력 (시나리오 3 추가 흐름)` |
+| `checkbox` / `radio` | 동작 안 함 — default 유지 | pass | `타입: checkbox / default 유지 (시나리오 3 추가 흐름 영향 없음)` |
+| 그 외 (select 등) | 미지원 | skip | `타입: ? / 미지원` |
+
+→ **추가 흐름에 영향 없음**: 신규 필드 채우기 실패해도 기존 정책 추가 자체는 정상 진행.
+   신규 필드 검증 결과는 별도 카드로만 등장.
+
+### 카드 라벨 컨벤션
+
+- `label = "[신규] " + 한국어 라벨` (예: `[신규] 소프트웨어 인증 사용`)
+- `detail = "[자동 분류 — yaml 미등록] " + 동작 설명`
+- pattern: `discovered_fill`
+- 시나리오 3 영역 끝 (order: 시나리오 3 범위 최대 — 일반 동작 카드 다음)
+
+### 종속 필드 한계 (B-1-C 단계 미적용)
+
+- 자동 발견된 신규 필드의 **종속 관계는 모름** (DOM 만으로는 매칭 불가).
+- 신규 toggle 의 dependent_fields 는 빈 list 로 시작 → 단독 검증만.
+- yaml 등록 시 정식 종속 매핑 시작 (B-1-C 단계에서 자동 매칭 도구 추가 예정).
+
+### 회귀 안전
+
+- 추가 모달이 열린 상태(`save_policy` 직전 시점) 에서만 실행.
+- 자동 채우기 실패 (disabled / 숨김 등) 는 무시 — 정책 추가 흐름 깨지지 않게.
+- 자동 분류 결과 자체가 검증 목적 — pass/skip 표시.
+
+→ 자동 분류 메커니즘 전체 흐름은 `test_scenario_standard.md` "자동 분류 메커니즘 (B-1 시리즈)" 참조.

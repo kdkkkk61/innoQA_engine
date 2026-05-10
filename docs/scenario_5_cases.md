@@ -151,3 +151,59 @@ fields:
 - `add_item()`에 없는 필드는 수정 모달로 보완 후 저장
 - 케이스A/B는 서로 다른 항목 이름 사용 (`[AUTO]_sc5_full`, `[AUTO]_sc5_req` 등)
 - 프로세스 등 연결 항목이 있는 페이지: 케이스A에서 최소 1개 등록, 케이스B에서 0개 유지 확인
+
+---
+
+## 자동 검증 카드 (신규 발견 요소 — `discovered_case`)
+
+시나리오 1 의 `discovered_new` 로 발견된 yaml 미등록 신규 필드는 시나리오 5 영역에도
+**자동으로 카드 등록**된다. 단, 케이스 검증의 본질이 "시점별 값 유지" 이므로 다른 시나리오와
+달리 **ON/OFF 시점 각각 1장씩 = 신규 필드당 2장의 카드** 등록.
+
+### 동작 (modal_form profile case 흐름에 끼어들기)
+
+1. `verify_created` 직후 (전체 ON 상태 EDIT 모달) — `[전체 ON]` 카드 생성
+2. `verify_modified` 직후 (전체 OFF 상태 EDIT 모달) — `[전체 OFF]` 카드 생성
+
+각 시점에 DOM 읽기로 현재 값 캡처. 추가 클릭/입력 동작 없음.
+
+### 카드 라벨 컨벤션
+
+- `label = "[신규] [{case_label}] " + 한국어 라벨`
+  - 예: `[신규] [전체 ON] 소프트웨어 인증 사용`
+  - 예: `[신규] [전체 OFF] 소프트웨어 인증 사용`
+- `detail = "[자동 분류 — yaml 미등록] 타입: {dom_type} / 현재 값: {state}` /
+  케이스 검증(전체 ON·전체 OFF) 대상 외 — yaml 등록 시 test_profiles 의 verify_* 에 추가 필요"`
+- pattern: `discovered_case`
+
+`현재 값` 표시:
+- checkbox/radio: `ON` / `OFF`
+- text/number: `'값'` 또는 `(빈값)`
+
+### 검수자 후속 처리 안내
+
+자동 분류 카드 detail 에 명시: **"yaml 등록 시 test_profiles 의 verify_* 에 추가 필요"**.
+즉 검수자가 이 카드를 보면:
+1. 신규 요소를 정식 케이스 검증 대상으로 편입할지 결정
+2. 결정 시 `config/test_profiles/{page_id}.yaml` 의 `verify_created` / `verify_modified` 에
+   selector + expected value 추가
+3. 다음 실행부터 정식 `profile_verify` 카드로 검증 시작
+
+### case_label 확장 (정식 케이스 추가 시)
+
+현재 modal_form profile 의 케이스는 `전체 ON` / `전체 OFF` 2개. 다른 케이스 (예: `부분 ON` /
+`경계값`) 추가 시 `_scenario5_discovered_cards(case_label=...)` 호출 추가로 카드 시점 늘림.
+
+### 회귀 안전
+
+- EDIT 모달 열린 상태(modal_already_open=True) 에서만 실행.
+- DOM 읽기만 — 추가 클릭/입력 동작 없음.
+- 자동 분류 결과는 모두 pass (검증 목적 = 표시).
+
+### list_page 계열 (미지원)
+
+현재 `discovered_case` 는 modal_form profile case 흐름에서만 동작 (test_profiles yaml 기반).
+list_page 계열은 케이스A/B 가 다른 흐름으로 구현되므로 자동 분류 미지원.
+→ list_page 적용은 추후 단계 (B-1-C 또는 별도 작업).
+
+→ 자동 분류 메커니즘 전체 흐름은 `test_scenario_standard.md` "자동 분류 메커니즘 (B-1 시리즈)" 참조.

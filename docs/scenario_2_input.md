@@ -159,3 +159,47 @@ fields:
 | 정상 입력 조합별 저장 정합성 | 시나리오 5 |
 | CRUD 1사이클 흐름 | 시나리오 3 |
 | CRUD 중 비정상 케이스 (오버플로 등) | 시나리오 3 |
+
+---
+
+## 자동 검증 카드 (신규 발견 요소)
+
+시나리오 1 의 `discovered_new` 패턴으로 발견된 yaml 미등록 신규 요소도 시나리오 2 영역에
+**자동으로 카드 등록**된다. 기존 validator 를 재활용하므로 별도 작성 코드 없음.
+
+### 매핑 (DOM type → validator → 카드 패턴)
+
+| DOM type | 호출되는 validator | 카드 패턴 | 검증 내용 |
+|---|---|---|---|
+| `text` / `textarea` / `number` / `password` / `email` | `scan_text_inputs` | `text_input` | 존재 / maxlength / 기본 입력 |
+| `checkbox` (toggle 속성 없음) | `scan_plain_checkboxes` | `plain_checkbox` | 존재 + 라벨 클릭 동작 |
+| `checkbox` (toggle 속성 있음) | `scan_toggle_checkboxes` | `toggle_checkbox` | 기본값 / 종속 필드 (자동 발견 시 빈 list, 단독 검증만) |
+| `radio` | (미지원 — B-1-C 단계) | — | 그룹 식별 필요 |
+
+### 카드 라벨 컨벤션
+
+- **`[신규]` prefix**: `label = "[신규] " + 한국어 라벨` (예: `[신규] 소프트웨어 인증 사용`)
+- **detail prefix**: `detail = "[자동 분류 — yaml 미등록] " + 원본 detail`
+- 검수자가 카드 목록에서 자동 분류 결과를 즉시 식별 가능. CP949 호환 — 이모지 X.
+
+### 한국어 라벨 fallback
+
+신규 요소의 한국어 라벨 확보 순서:
+1. yaml 의 같은 selector 항목 라벨
+2. DOM 의 `<label for>` / 인접 `<dt>` / 행 텍스트
+3. 위 둘 다 없으면 selector 그대로 (`input#xxx`)
+
+### 안전 default (자동 발견 시)
+
+- `required = false` (DOM 미확인, 보수적)
+- `dependent_fields = []` (자동 매칭 X — 단독 검증만)
+- `test_value = "scan_test"` 또는 패턴별 안전값
+
+### 회귀 안전
+
+- 추가 모달 열린 상태(modal_already_open=True) 에서만 실행
+- DOM 읽기 + 기존 validator 호출만 사용 — 새 클릭 액션 없음
+- 자동 분류 실패 시 silent skip (회귀 위험 차단)
+- 결과 카드는 항상 시나리오 2 영역에 추가 (시나리오 1 카드와 별개)
+
+→ 자동 분류 메커니즘 전체 흐름은 `test_scenario_standard.md` "자동 분류 메커니즘 (B-1 시리즈)" 참조.

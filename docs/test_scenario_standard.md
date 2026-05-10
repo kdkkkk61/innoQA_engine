@@ -10,6 +10,12 @@
 >
 > **2026-05-06 변경**: 시나리오 1 책임 확장
 > - 시나리오 1 = UI 구조 + **DOM 스캔 ↔ yaml 비교** (회귀 본질 — 신규/제거 감지)
+>
+> **2026-05-08 변경**: 자동 분류 메커니즘 (B-1 시리즈) 도입
+> - 시나리오 1 신규 발견 → DOM type 기반 분류 → 시나리오 2~5 영역에 자동 카드 등록
+> - 검수자가 신규 기능에 대해서도 시나리오 1~5 각 영역에서 결과 확인 가능
+> - 기존 validator 재활용 (text_inputs / plain_checkboxes / toggle_checkboxes)
+> - 라벨 컨벤션: `[신규]` prefix + 케이스명 prefix (`[전체 ON]` / `[전체 OFF]`)
 
 ---
 
@@ -56,6 +62,10 @@ config/scan_hints/
 | 신규 요소 (DOM 추가) | 시나리오 1 | `discovered_new` | warn |
 | 제거된 요소 (DOM 누락) | 시나리오 1 | `discovered_missing` | warn |
 | 정의된 요소 동작 검증 | 시나리오 2~5 | 패턴별 | pass/fail/warn |
+| 신규 요소의 자동 동작 검증 | 시나리오 2 | `text_input` / `plain_checkbox` / `toggle_checkbox` (`[신규]` 라벨) | pass/fail/warn |
+| 신규 요소의 자동 채우기 (CRUD 추가 흐름) | 시나리오 3 | `discovered_fill` | pass/skip |
+| 신규 요소의 자동 로드값 확인 (수정 흐름) | 시나리오 4 | `initial_state` (`[신규]` 라벨) | pass/fail |
+| 신규 요소의 자동 케이스 분류 (ON/OFF 시점) | 시나리오 5 | `discovered_case` | pass |
 
 **추정 금지**: 시나리오 2에서 "경고 안 뜸 → 저장됐겠지" 같은 추정으로 결론내지 말 것.
 실제 결과는 시나리오 4-3가 직접 재오픈 후 확인한다.
@@ -64,6 +74,75 @@ config/scan_hints/
 "제품의 예상 못한 동작"은 fail. 4-3의 "다른값" 케이스도 fail.
 
 > 해당 시나리오가 없으면: `[SKIP] 시나리오 N — 해당 없음 (이유)` 출력
+
+---
+
+## 자동 분류 메커니즘 (B-1 시리즈)
+
+신규 발견 요소(시나리오 1의 `discovered_new`)는 그 시점에 멈추지 않고
+**시나리오 2~5 영역에도 자동으로 검증 카드를 등록**한다. 검수자가 신규 기능에 대해
+"이 기능이 시나리오별로 어떻게 동작하는가"를 한눈에 확인할 수 있게 하는 핵심 회귀 본질.
+
+### 원칙: 기존 시나리오 재활용 (참조 테스트)
+
+신규 요소를 위한 별도 검증 로직을 새로 작성하지 않는다. 대신:
+1. DOM 속성으로 신규 요소를 **공통 타입에 매핑**한다 (text_input / plain_checkbox / toggle_checkbox).
+2. 매핑된 타입에 따라 **기존 validator를 재호출**한다.
+3. 검증 결과 카드에 `[신규]` prefix 부착해 검수자가 자동 분류 카드를 즉시 식별 가능하게 한다.
+
+→ "참조 테스트" — 같은 UI 패턴의 신규 요소는 기존 validator 그대로 사용.
+→ "공통 시나리오 부분 참조" — 신규 요소가 시나리오 3·4·5 흐름의 일부 (예: 추가 모달 채우기,
+   수정 모달 로드값 확인) 에 자연스럽게 끼어든다.
+
+### DOM type → validator 매핑
+
+| DOM type 속성 | 매핑된 validator | 시나리오 2 카드 패턴 |
+|---|---|---|
+| `text` / `textarea` / `number` / `password` / `email` | `scan_text_inputs` | `text_input` |
+| `checkbox` (toggle 속성 없음) | `scan_plain_checkboxes` | `plain_checkbox` |
+| `checkbox` (toggle 속성 있음) | `scan_toggle_checkboxes` | `toggle_checkbox` |
+| `radio` | (미지원 — B-1-C 단계) | — |
+
+`toggle 속성`은 ON/OFF 종속 필드를 가지는 토글 식별용. DOM 자동 감지로는 종속 관계를
+모르므로 `dependent_fields = []`로 단독 검증만 진행.
+
+### 카드 등록 위치 (시나리오별)
+
+| 시나리오 | 자동 등록 카드 | 라벨 형식 | 동작 |
+|---|---|---|---|
+| 2 | `[신규] {라벨}` (text/plain/toggle 패턴) | `[신규] 소프트웨어 인증 사용` | 기본 동작 검증 (존재/초기값/클릭) |
+| 3 | `[신규] {라벨}` (`discovered_fill`) | `[신규] 소프트웨어 인증 사용` | text/number 신규 필드 자동 채우기, checkbox는 default 유지 |
+| 4 | `[신규] {라벨} 로드값 확인` (`initial_state`) | `[신규] 소프트웨어 인증 사용 로드값 확인` | EDIT 모달 재오픈 시 default 값 유지 확인 |
+| 5 | `[신규] [{케이스명}] {라벨}` (`discovered_case`) | `[신규] [전체 ON] 소프트웨어 인증 사용` | ON/OFF 케이스 시점 각각 DOM 값 캡처 |
+
+### 라벨 컨벤션
+
+- **`[신규]` prefix**: yaml 미등록 신규 요소를 검수자가 즉시 식별 (CP949 호환 — 이모지 X).
+- **케이스 prefix**: 시나리오 5에서 같은 신규 요소가 ON/OFF 시점 각각 1장 = 총 2장 카드.
+  케이스 prefix(`[전체 ON]` / `[전체 OFF]`)로 시점 구분.
+- **detail에 `[자동 분류 — yaml 미등록]` prefix**: 검수자에게 yaml 등록 시 정식 검증 시작
+  필요함을 안내.
+
+### 라벨 fallback 우선순위 (한국어 라벨 확보)
+
+신규 요소의 한국어 라벨은 다음 순서로 검색:
+1. yaml의 동일 selector 항목 (`text_inputs` / `plain_checkboxes` / `toggle_checkboxes` /
+   `radio_groups[].options[]`) 의 `label`
+2. DOM에서 `<label for="..">` 또는 인접 `<dt>` / 표 텍스트
+3. 위 둘 다 없으면 selector 그대로 (`input#xxx`) — 검수자가 yaml 추가 작업 시 식별 가능
+
+### 안전 default
+
+- `required = false` (DOM에서 알 수 없으므로 보수적)
+- `maxlength` = DOM 속성 그대로 (없으면 null)
+- `dependent_fields = []` (자동 매칭 불가, B-1-C 단계에서 yaml 매칭 추가)
+- 모든 자동 분류 카드는 `pass` 기본, 동작 실패 시 `fail`/`warn` (검증 누락 없음 보장).
+
+### 회귀 안전 보장
+
+- 모든 자동 분류는 **DOM 읽기 + 기존 validator 호출**만 사용. 새 클릭/입력 동작 없음.
+- 추가 모달이 열린 상태(modal_already_open=True)에서만 실행 (사이드 이펙트 0).
+- 자동 분류 실패 시 silent skip (회귀 위험 차단).
 
 ---
 
