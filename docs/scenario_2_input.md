@@ -174,7 +174,7 @@ fields:
 | `text` / `textarea` / `number` / `password` / `email` | `scan_text_inputs` | `text_input` | 존재 / maxlength / 기본 입력 |
 | `checkbox` (toggle 속성 없음) | `scan_plain_checkboxes` | `plain_checkbox` | 존재 + 라벨 클릭 동작 |
 | `checkbox` (toggle 속성 있음) | `scan_toggle_checkboxes` | `toggle_checkbox` | 기본값 / 종속 필드 (자동 발견 시 빈 list, 단독 검증만) |
-| `radio` | (현재 미지원) | — | 그룹 name 식별 필요 |
+| `radio` | `scan_radio_groups` | `radio_group` | `name` 속성으로 자동 그룹화 |
 
 ### 카드 라벨 컨벤션
 

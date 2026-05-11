@@ -293,7 +293,7 @@ def expand_hints_with_discovered(
         "text_inputs":       [{selector, label, maxlength, required, test_value, order}, ...],
         "toggle_checkboxes": [{selector, label, default, dependent_fields, order}, ...],
         "plain_checkboxes":  [{selector, label, default, order}, ...],
-        # radio_groups 는 그룹 식별 정보(name)가 필요해 자동 분류 어려움 — B-1-C에서.
+        "radio_groups":      [{name, label, default, dependent_fields, options, order}, ...],
       }
 
     호출자(ui_scanner)는 이 dict를 임시 hints로 사용해 _scan_from_hints 재호출.
@@ -301,11 +301,19 @@ def expand_hints_with_discovered(
 
     안전 default:
       required = False (DOM에서 안 보임 — 보수적)
-      dependent_fields = [] (B-1-C에서 매칭하기 전엔 단독 검증만)
+      dependent_fields = [] (자동 매칭 X — 단독 검증만)
+
+    radio_groups 처리:
+      - 신규 radio input 을 `name` 속성 으로 그룹화 (HTML radio 그룹 표준)
+      - 그룹 라벨 = `name` 그대로 (DOM 라벨 추출 결과는 옵션 라벨이므로 그룹 라벨 별도 추출 X)
+      - 각 옵션: {selector, value, label} — value/label 은 DOM 에서 추출
+      - default = None (요구 안 함 — yaml-driven 영역)
     """
     text_inputs:       list[dict] = []
     toggle_checkboxes: list[dict] = []
     plain_checkboxes:  list[dict] = []
+    # radio: name 으로 그룹화 — {name: {options: [...], min_order: int}}
+    radio_buckets:     dict[str, dict] = {}
 
     # 자동 분류 항목의 order 시작 — 시나리오 2 영역 끝 (다른 yaml 항목 뒤)
     base_order = 8000
@@ -334,17 +342,42 @@ def expand_hints_with_discovered(
             }
             # toggle 속성 있으면 toggle_checkboxes, 없으면 plain
             if a.get("has_toggle"):
-                entry["dependent_fields"] = []  # B-1-C 매칭 전엔 빈 리스트 (단독 검증만)
+                entry["dependent_fields"] = []  # 자동 매칭 X — 단독 검증만
                 toggle_checkboxes.append(entry)
             else:
                 plain_checkboxes.append(entry)
-        # radio: 그룹 name 식별 필요 → B-1-C 단계
-        # textarea 외 select 등: 미지원
+        elif t == "radio":
+            grp_name = a.get("name") or ""
+            if not grp_name:
+                continue  # name 없으면 그룹 식별 불가 — 스킵
+            bucket = radio_buckets.setdefault(grp_name, {
+                "options":   [],
+                "min_order": order,  # 그룹 order = 첫 옵션 order
+            })
+            bucket["options"].append({
+                "selector": sel,
+                "value":    a.get("value") or "",
+                "label":    lab,
+            })
+        # select 등: 미지원
+
+    # radio_buckets → radio_groups 항목 변환
+    radio_groups: list[dict] = []
+    for grp_name, bucket in radio_buckets.items():
+        radio_groups.append({
+            "name":             grp_name,
+            "label":            grp_name,  # 그룹 라벨 = name (옵션 라벨이 아니라 그룹 식별자)
+            "options":          bucket["options"],
+            "default":          None,      # yaml-driven 영역, 자동 분류는 default 요구 X
+            "dependent_fields": [],        # 자동 매칭 X — 단독 검증만
+            "order":            bucket["min_order"],
+        })
 
     return {
         "text_inputs":       text_inputs,
         "toggle_checkboxes": toggle_checkboxes,
         "plain_checkboxes":  plain_checkboxes,
+        "radio_groups":      radio_groups,
     }
 
 
@@ -363,9 +396,12 @@ def extract_dom_attributes(page, context_sel: str, selectors: Iterable[str]) -> 
       readonly    : bool
       has_toggle  : bool        (input의 'toggle' 커스텀 속성 여부 — 종속 패턴 힌트용)
       placeholder : str         (없으면 "")
+      name        : str         (radio 그룹 식별용 — 없으면 "")
+      value       : str         (radio 옵션 값용 — 없으면 "")
 
     반환:
-      {selector: {type, maxlength, checked, disabled, readonly, has_toggle, placeholder}}
+      {selector: {type, maxlength, checked, disabled, readonly, has_toggle,
+                  placeholder, name, value}}
       셀렉터를 못 찾으면 빈 dict (없는 게 아니라 모든 키가 None/빈값).
     """
     sel_list = list(selectors)
@@ -397,6 +433,8 @@ def extract_dom_attributes(page, context_sel: str, selectors: Iterable[str]) -> 
                 readonly:    !!el.readOnly,
                 has_toggle:  el.hasAttribute('toggle'),
                 placeholder: el.getAttribute('placeholder') || '',
+                name:        el.getAttribute('name') || '',
+                value:       el.getAttribute('value') || '',
             };
         });
         return result;

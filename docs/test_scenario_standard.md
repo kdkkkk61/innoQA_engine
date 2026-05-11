@@ -101,10 +101,16 @@ config/scan_hints/
 | `text` / `textarea` / `number` / `password` / `email` | `scan_text_inputs` | `text_input` |
 | `checkbox` (toggle 속성 없음) | `scan_plain_checkboxes` | `plain_checkbox` |
 | `checkbox` (toggle 속성 있음) | `scan_toggle_checkboxes` | `toggle_checkbox` |
-| `radio` | (현재 미지원 — 그룹 name 식별 필요) | — |
+| `radio` | `scan_radio_groups` | `radio_group` (라벨에 `[신규]` prefix) |
 
 `toggle 속성`은 ON/OFF 종속 필드를 가지는 토글 식별용. DOM 자동 감지로는 종속 관계를
 모르므로 `dependent_fields = []`로 단독 검증만 진행.
+
+`radio` 자동 분류 (`core/scan_diff.py:expand_hints_with_discovered`):
+- 같은 `name` 속성 가진 radio 들을 하나의 그룹으로 묶음 (HTML radio 그룹 표준).
+- 그룹 라벨 = `name` 그대로 사용 (옵션 라벨이 아닌 그룹 식별자).
+- 각 옵션의 `value`/`label` 은 DOM (`extract_dom_attributes` / `extract_dom_labels`) 에서 추출.
+- `default = None` — 자동 분류는 default 요구 X (yaml-driven 영역).
 
 ### 카드 등록 위치 (시나리오별)
 

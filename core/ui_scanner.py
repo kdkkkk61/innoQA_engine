@@ -413,7 +413,8 @@ class UIScanner:
                 has_auto = (
                     temp_hints.get("text_inputs") or
                     temp_hints.get("toggle_checkboxes") or
-                    temp_hints.get("plain_checkboxes")
+                    temp_hints.get("plain_checkboxes") or
+                    temp_hints.get("radio_groups")
                 )
                 if has_auto:
                     # 호출 전 결과 카운트 (자동 분류분만 식별 위해)
@@ -427,6 +428,8 @@ class UIScanner:
                             scan_toggle_checkboxes(ctx, temp_hints, report)
                         if temp_hints.get("plain_checkboxes"):
                             scan_plain_checkboxes(ctx, temp_hints, report)
+                        if temp_hints.get("radio_groups"):
+                            scan_radio_groups(ctx, temp_hints, report)
                         target_scenario = 2
                     elif ctx.phase == 4:
                         # 시나리오 4-1 영역 검증 — 저장값 로드 확인
