@@ -171,7 +171,8 @@ fields:
 
 | DOM type | 호출되는 validator | 카드 패턴 | 검증 내용 |
 |---|---|---|---|
-| `text` / `textarea` / `number` / `password` / `email` | `scan_text_inputs` | `text_input` | 존재 / maxlength / 기본 입력 |
+| `text` 외 (tag_input 패턴 매칭 시) | `scan_tag_inputs` | `tag_input` | input + add 버튼 + container 자동 탐지 후 추가/제거 동작 검증 |
+| `text` / `textarea` / `number` / `password` / `email` (그 외) | `scan_text_inputs` | `text_input` | 존재 / maxlength / 기본 입력 |
 | `checkbox` (toggle 속성 없음) | `scan_plain_checkboxes` | `plain_checkbox` | 존재 + 라벨 클릭 동작 |
 | `checkbox` (toggle 속성 있음) | `scan_toggle_checkboxes` | `toggle_checkbox` | 기본값 / 종속 필드 (자동 발견 시 빈 list, 단독 검증만) |
 | `radio` | `scan_radio_groups` | `radio_group` | `name` 속성으로 자동 그룹화 |

@@ -98,7 +98,8 @@ config/scan_hints/
 
 | DOM type 속성 | 매핑된 validator | 시나리오 2 카드 패턴 |
 |---|---|---|
-| `text` / `textarea` / `number` / `password` / `email` | `scan_text_inputs` | `text_input` |
+| `text` / `textarea` / `number` / `password` / `email` (tag_input 패턴 매칭 시) | `scan_tag_inputs` | `tag_input` (라벨에 `[신규]` prefix) |
+| `text` / `textarea` / `number` / `password` / `email` (그 외) | `scan_text_inputs` | `text_input` |
 | `checkbox` (toggle 속성 없음) | `scan_plain_checkboxes` | `plain_checkbox` |
 | `checkbox` (toggle 속성 있음) | `scan_toggle_checkboxes` | `toggle_checkbox` |
 | `radio` | `scan_radio_groups` | `radio_group` (라벨에 `[신규]` prefix) |
@@ -111,6 +112,19 @@ config/scan_hints/
 - 그룹 라벨 = `name` 그대로 사용 (옵션 라벨이 아닌 그룹 식별자).
 - 각 옵션의 `value`/`label` 은 DOM (`extract_dom_attributes` / `extract_dom_labels`) 에서 추출.
 - `default = None` — 자동 분류는 default 요구 X (yaml-driven 영역).
+
+`tag_input` 자동 분류 (`core/scan_diff.py:detect_tag_input_patterns`):
+- "입력 > 추가 > 컨테이너 > 제거" 4요소 패턴을 DOM 휴리스틱으로 탐지.
+- container: 신규 input id 뒤에 `List` 붙인 `div` 또는 `ul`.
+- add button: 후보 우선순위
+  1. `button#add{InputIdCapitalized}` (예: `addExceptFilePath`)
+  2. `textContent="추가"` 이면서 input 부모 3-level 안에 있는 `button[id]`
+- remove button: container 내부 후보 — `i.extentionDeleteBtn` / `button.deleteBtn` /
+  `[ng-click*="delete"]` / `[ng-click*="remove"]` (없으면 기본값 `button.deleteBtn`).
+- container 와 add button 모두 매칭되어야 tag_input 으로 분류. 하나라도 미매칭 시 일반
+  `text_inputs` 로 fallback (검증 누락 없음).
+- 휴리스틱 기준: `config/scan_hints/ransom_detect_policy.yaml` 의 기존 4개 tag_input
+  (보호할 확장자, 파일경로·프로세스경로·전자서명 예외처리) selector 패턴 분석.
 
 ### 카드 등록 위치 (시나리오별)
 

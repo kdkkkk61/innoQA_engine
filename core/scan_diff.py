@@ -284,6 +284,7 @@ def expand_hints_with_discovered(
     new_selectors: Iterable[str],
     attrs:         dict[str, dict],
     labels:        dict[str, str],
+    tag_patterns:  dict[str, dict] | None = None,
 ) -> dict:
     """
     신규 발견 셀렉터들을 기존 validators가 처리할 수 있는 yaml 항목 형식으로 변환.
@@ -294,6 +295,8 @@ def expand_hints_with_discovered(
         "toggle_checkboxes": [{selector, label, default, dependent_fields, order}, ...],
         "plain_checkboxes":  [{selector, label, default, order}, ...],
         "radio_groups":      [{name, label, default, dependent_fields, options, order}, ...],
+        "tag_input":         [{id, label, input, add_btn, container, remove_btn,
+                               required, test_value, order}, ...],
       }
 
     호출자(ui_scanner)는 이 dict를 임시 hints로 사용해 _scan_from_hints 재호출.
@@ -308,15 +311,24 @@ def expand_hints_with_discovered(
       - 그룹 라벨 = `name` 그대로 (DOM 라벨 추출 결과는 옵션 라벨이므로 그룹 라벨 별도 추출 X)
       - 각 옵션: {selector, value, label} — value/label 은 DOM 에서 추출
       - default = None (요구 안 함 — yaml-driven 영역)
+
+    tag_input 처리 (`tag_patterns` 인자로 사전 탐지 결과 주입):
+      - text 타입 input 중 `detect_tag_input_patterns` 로 매칭된 항목은 text_inputs 가 아니라
+        tag_input 으로 분류 (추가/제거 동작 검증 가능).
+      - 매칭 안 된 text input 은 일반 text_inputs 로 fallback.
+      - tag_patterns=None 이면 모든 text input 을 text_inputs 로 처리 (이전 동작 호환).
     """
     text_inputs:       list[dict] = []
     toggle_checkboxes: list[dict] = []
     plain_checkboxes:  list[dict] = []
+    tag_inputs_out:    list[dict] = []
     # radio: name 으로 그룹화 — {name: {options: [...], min_order: int}}
     radio_buckets:     dict[str, dict] = {}
 
     # 자동 분류 항목의 order 시작 — 시나리오 2 영역 끝 (다른 yaml 항목 뒤)
     base_order = 8000
+
+    tag_patterns = tag_patterns or {}
 
     for i, sel in enumerate(sorted(new_selectors)):
         a   = attrs.get(sel) or {}
@@ -325,6 +337,21 @@ def expand_hints_with_discovered(
         order = base_order + i
 
         if t in ("text", "textarea", "number", "password", "email"):
+            # tag_input 패턴 매칭됐으면 tag_input 으로, 아니면 text_inputs fallback
+            pat = tag_patterns.get(sel)
+            if pat and pat.get("input") and pat.get("add_btn") and pat.get("container"):
+                tag_inputs_out.append({
+                    "id":         sel.replace("input#", "").replace("input", "") or sel,
+                    "label":      lab,
+                    "input":      pat["input"],
+                    "add_btn":    pat["add_btn"],
+                    "container":  pat["container"],
+                    "remove_btn": pat.get("remove_btn") or "button.deleteBtn",
+                    "required":   False,
+                    "test_value": _AUTO_TEST_VALUE,
+                    "order":      order,
+                })
+                continue
             text_inputs.append({
                 "selector":   sel,
                 "label":      lab,
@@ -378,6 +405,7 @@ def expand_hints_with_discovered(
         "toggle_checkboxes": toggle_checkboxes,
         "plain_checkboxes":  plain_checkboxes,
         "radio_groups":      radio_groups,
+        "tag_input":         tag_inputs_out,
     }
 
 
@@ -519,3 +547,99 @@ def extract_dom_labels(page, context_sel: str, selectors: Iterable[str]) -> dict
     except Exception:
         pass
     return {s: "" for s in sel_list}
+
+
+def detect_tag_input_patterns(
+    page, context_sel: str, candidate_inputs: Iterable[str]
+) -> dict[str, dict]:
+    """
+    텍스트 input 후보 중 "입력 > 추가 > 컨테이너 > 제거" 패턴 자동 탐지.
+
+    기준 (`config/scan_hints/ransom_detect_policy.yaml` 의 기존 tag_input 4개 구조 분석):
+      - container: input id 뒤에 "List" 붙인 div 또는 ul (예: protectExtensionList)
+      - add button: 다음 우선순위
+        1. id="add{InputIdCapitalized}" 형태 (예: addExceptFilePath)
+        2. textContent="추가" 이면서 input 부모 3-level 안에 있는 button
+      - remove button: container 내부 후보 — i.extentionDeleteBtn / button.deleteBtn /
+        [ng-click*="delete"] / [ng-click*="remove"] 등 (기본값 button.deleteBtn)
+
+    container + add button 둘 다 매칭되면 tag_input 후보로 반환.
+    하나라도 매칭 안 되면 None (호출자가 일반 text_input 으로 처리).
+
+    반환:
+      {input_selector: {input, add_btn, container, remove_btn} | None, ...}
+    """
+    sel_list = list(candidate_inputs)
+    if not context_sel or not sel_list:
+        return {s: None for s in sel_list}
+
+    js = """
+    (args) => {
+        const root = document.querySelector(args.root_sel);
+        if (!root) return {};
+        const result = {};
+        args.inputs.forEach(sel => {
+            const el = root.querySelector(sel);
+            if (!el || el.tagName.toLowerCase() !== 'input') {
+                result[sel] = null; return;
+            }
+            const id = el.id || '';
+            if (!id) { result[sel] = null; return; }
+
+            // ─ container: id + "List" (div or ul) ─
+            let container = root.querySelector(`div#${id}List, ul#${id}List`);
+            if (!container) { result[sel] = null; return; }
+
+            // ─ add button ─
+            let addBtn = null;
+            const capId = id.charAt(0).toUpperCase() + id.slice(1);
+            // pattern 1: button#add{Capitalized}
+            let cand = root.querySelector(`button#add${capId}`);
+            if (cand) addBtn = `button#add${capId}`;
+            else {
+                // pattern 2: textContent="추가" + parent 3-level 안 button
+                const buttons = root.querySelectorAll('button');
+                for (const b of buttons) {
+                    if (b.textContent.trim() !== '추가' || !b.id) continue;
+                    let p = el.parentElement;
+                    for (let i = 0; i < 4 && p; i++) {
+                        if (p.contains(b)) { addBtn = `button#${b.id}`; break; }
+                        p = p.parentElement;
+                    }
+                    if (addBtn) break;
+                }
+            }
+            if (!addBtn) { result[sel] = null; return; }
+
+            // ─ remove button (container 내부 후보) ─
+            const removeCandidates = [
+                'i.extentionDeleteBtn',    // 앱 오탈자 보존
+                'i.deleteBtn',
+                'button.deleteBtn',
+                '[ng-click*="delete"]',
+                '[ng-click*="remove"]',
+            ];
+            let removeBtn = 'button.deleteBtn';  // 기본값
+            for (const r of removeCandidates) {
+                if (container.querySelector(r)) { removeBtn = r; break; }
+            }
+
+            const cTag  = container.tagName.toLowerCase();
+            const cId   = container.id;
+            result[sel] = {
+                input:      sel,
+                add_btn:    addBtn,
+                container:  `${cTag}#${cId}`,
+                remove_btn: removeBtn,
+            };
+        });
+        return result;
+    }
+    """
+    try:
+        result = page.evaluate(js, {"root_sel": context_sel, "inputs": sel_list})
+        if isinstance(result, dict):
+            return {s: (result.get(s) or None) for s in sel_list}
+    except Exception:
+        pass
+    return {s: None for s in sel_list}

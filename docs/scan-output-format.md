@@ -55,7 +55,7 @@
 |---|---|---|---|
 | `discovered_new` | 1 | `신규 기능 감지 — "label" (selector)` | DOM 추가 감지 |
 | `discovered_missing` | 1 | `제거된 기능 — "label" (selector)` | DOM 제거 감지 |
-| `text_input` / `plain_checkbox` / `toggle_checkbox` (라벨에 `[신규]` prefix) | 2 | `[신규] {라벨}` | 신규 요소 동작 검증 |
+| `text_input` / `plain_checkbox` / `toggle_checkbox` / `radio_group` / `tag_input` (라벨에 `[신규]` prefix) | 2 | `[신규] {라벨}` | 신규 요소 동작 검증 |
 | `discovered_fill` | 3 | `[신규] {라벨}` | 신규 필드 추가 흐름 자동 채우기 |
 | `initial_state` (라벨에 `[신규]` prefix) | 4 | `[신규] {라벨} 로드값 확인` | 신규 필드 EDIT 모달 default 유지 |
 | `discovered_case` | 5 | `[신규] [{case_label}] {라벨}` | 신규 필드 케이스(ON/OFF) 시점 DOM 값 |

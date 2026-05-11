@@ -401,9 +401,23 @@ class UIScanner:
         # 임시 hints 확장 후 기존 validators 재호출. 결과는 시나리오 2 영역 카드.
         if diff["new"]:
             try:
-                from core.scan_diff import expand_hints_with_discovered
+                from core.scan_diff import (
+                    expand_hints_with_discovered,
+                    detect_tag_input_patterns,
+                )
+                # text 타입 input 후보에 한해 tag_input 패턴 사전 탐지 — text 가 아닌 타입은
+                # tag_input 일 수 없음. attrs 에서 type 으로 필터.
+                text_inputs_candidate = [
+                    s for s in diff["new"]
+                    if (new_attrs.get(s) or {}).get("type") in (
+                        "text", "textarea", "number", "password", "email"
+                    )
+                ]
+                tag_patterns = detect_tag_input_patterns(
+                    self.page, context_sel, text_inputs_candidate
+                ) if text_inputs_candidate else {}
                 temp_hints = expand_hints_with_discovered(
-                    diff["new"], new_attrs, new_labels,
+                    diff["new"], new_attrs, new_labels, tag_patterns,
                 )
                 # 임시 hints에 모달 컨텍스트 정보도 복사 (validator 일부가 사용)
                 temp_hints["modal_id"]      = hints.get("modal_id", "")
@@ -414,7 +428,8 @@ class UIScanner:
                     temp_hints.get("text_inputs") or
                     temp_hints.get("toggle_checkboxes") or
                     temp_hints.get("plain_checkboxes") or
-                    temp_hints.get("radio_groups")
+                    temp_hints.get("radio_groups") or
+                    temp_hints.get("tag_input")
                 )
                 if has_auto:
                     # 호출 전 결과 카운트 (자동 분류분만 식별 위해)
@@ -430,6 +445,8 @@ class UIScanner:
                             scan_plain_checkboxes(ctx, temp_hints, report)
                         if temp_hints.get("radio_groups"):
                             scan_radio_groups(ctx, temp_hints, report)
+                        if temp_hints.get("tag_input"):
+                            scan_tag_inputs(ctx, temp_hints, report)
                         target_scenario = 2
                     elif ctx.phase == 4:
                         # 시나리오 4-1 영역 검증 — 저장값 로드 확인
