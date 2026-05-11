@@ -16,6 +16,14 @@
 > - 검수자가 신규 기능에 대해서도 시나리오 1~5 각 영역에서 결과 확인 가능
 > - 기존 validator 재활용 (text_inputs / plain_checkboxes / toggle_checkboxes)
 > - 라벨 컨벤션: `[신규]` prefix + 케이스명 prefix (`[전체 ON]` / `[전체 OFF]`)
+>
+> **2026-05-11 변경**: 자동 분류 적용 범위 확정
+> - 적용 페이지: modal_form 전체 (RansomCruncher: ransom_detect_policy, rdp_policy)
+>   — `core/ui_scanner.py:_scan_diff_yaml_dom` 가 모든 modal_form 페이지에 공통 적용
+> - 미적용 페이지: list_page 계열 (RansomCruncher: common_process, nPouch 5종)
+>   — `core/list_page_runner.py` 에 자동 분류 인프라 미통합 (별도 작업)
+> - radio: 자동 검증 X (yaml 등록 필수). 시나리오 1 `discovered_new` 신규 표시만.
+> - 화면 단위 분리: visible 가드로 탭 차단/숨김 입력은 자동 분류 대상 외.
 
 ---
 
