@@ -230,8 +230,22 @@ def _fill_discovered_text_fields(page, hints: dict) -> list[ScanResult]:
                     order=order, phase=3,
                 ))
                 continue
+            # 화면 단위 분리: 현재 보이지 않는 입력 (탭 차단·display:none 등) 은 skip.
+            # is_visible() 은 synchronous (timeout 인자 없이) — 즉시 현재 상태 반환.
+            if not loc.is_visible():
+                out.append(ScanResult(
+                    pattern="discovered_fill", selector=sel,
+                    label=f"[신규] {ko}",
+                    status="skip",
+                    detail=(
+                        "[자동 분류 — yaml 미등록] 현재 화면에 안 보임 "
+                        "(탭 차단 등) — 보이는 화면에서만 자동 채우기 시도"
+                    ),
+                    order=order, phase=3,
+                ))
+                continue
             if not loc.is_enabled():
-                # disabled — 종속 필드 가능성. 토글 ON 후 검증은 B-1-C에서.
+                # disabled — 종속 필드 가능성. 단독 검증만.
                 out.append(ScanResult(
                     pattern="discovered_fill", selector=sel,
                     label=f"[신규] {ko}",
@@ -244,7 +258,8 @@ def _fill_discovered_text_fields(page, hints: dict) -> list[ScanResult]:
                 ))
                 continue
             value = "1" if t == "number" else "auto_test"
-            loc.fill(value)
+            # fill timeout 명시 — 화면에 보여도 race condition 으로 잡힐 수 있는 회귀 가드
+            loc.fill(value, timeout=3000)
             out.append(ScanResult(
                 pattern="discovered_fill", selector=sel,
                 label=f"[신규] {ko}",

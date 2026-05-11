@@ -175,7 +175,7 @@ fields:
 | `text` / `textarea` / `number` / `password` / `email` (그 외) | `scan_text_inputs` | `text_input` | 존재 / maxlength / 기본 입력 |
 | `checkbox` (toggle 속성 없음) | `scan_plain_checkboxes` | `plain_checkbox` | 존재 + 라벨 클릭 동작 |
 | `checkbox` (toggle 속성 있음) | `scan_toggle_checkboxes` | `toggle_checkbox` | 기본값 / 종속 필드 (자동 발견 시 빈 list, 단독 검증만) |
-| `radio` | `scan_radio_groups` | `radio_group` | `name` 속성으로 자동 그룹화 |
+| `radio` | (자동 검증 X) | — | 시나리오 1 `discovered_new` 카드로 신규 표시만. 정식 검증은 yaml 등록 필수 |
 
 ### 카드 라벨 컨벤션
 

@@ -102,16 +102,19 @@ config/scan_hints/
 | `text` / `textarea` / `number` / `password` / `email` (그 외) | `scan_text_inputs` | `text_input` |
 | `checkbox` (toggle 속성 없음) | `scan_plain_checkboxes` | `plain_checkbox` |
 | `checkbox` (toggle 속성 있음) | `scan_toggle_checkboxes` | `toggle_checkbox` |
-| `radio` | `scan_radio_groups` | `radio_group` (라벨에 `[신규]` prefix) |
+| `radio` | (자동 검증 X — yaml 등록 필수) | 시나리오 1 `discovered_new` 카드만 |
 
 `toggle 속성`은 ON/OFF 종속 필드를 가지는 토글 식별용. DOM 자동 감지로는 종속 관계를
 모르므로 `dependent_fields = []`로 단독 검증만 진행.
 
-`radio` 자동 분류 (`core/scan_diff.py:expand_hints_with_discovered`):
-- 같은 `name` 속성 가진 radio 들을 하나의 그룹으로 묶음 (HTML radio 그룹 표준).
-- 그룹 라벨 = `name` 그대로 사용 (옵션 라벨이 아닌 그룹 식별자).
-- 각 옵션의 `value`/`label` 은 DOM (`extract_dom_attributes` / `extract_dom_labels`) 에서 추출.
-- `default = None` — 자동 분류는 default 요구 X (yaml-driven 영역).
+`radio` 정책 (2026-05-11 결정):
+- 라디오는 그룹·종속 구조가 복잡해 자동 검증 신뢰성 한계.
+  (AngularJS `ng-model` 기반 그룹은 `name` 속성 자체가 없을 수 있음 — 자동 그룹화 실패)
+- 시나리오 1 `discovered_new` 카드로 **신규 표시만** 수행.
+- 시나리오 2 의 동작 검증 (옵션 클릭, 기본값 확인) 은 호출하지 않음.
+- 정식 검증은 yaml `radio_groups` 등록 필수 (`config/scan_hints/{page}.yaml`).
+- `core/scan_diff.py:expand_hints_with_discovered` 는 radio_groups dict 형식을 만들 수
+  있는 헬퍼 코드 자체는 유지 (향후 자동 매칭 도구 추가 시 재사용 여지).
 
 `tag_input` 자동 분류 (`core/scan_diff.py:detect_tag_input_patterns`):
 - "입력 > 추가 > 컨테이너 > 제거" 4요소 패턴을 DOM 휴리스틱으로 탐지.

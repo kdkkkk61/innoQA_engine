@@ -336,6 +336,13 @@ def expand_hints_with_discovered(
         t   = a.get("type", "")
         order = base_order + i
 
+        # 화면에 안 보이는 입력 (탭 차단·display:none 등) 은 자동 분류 대상 외.
+        # discovered_new 시나리오 1 카드는 별도 흐름이라 그대로 등록됨.
+        # 자동 분류 (시나리오 2~5 검증 카드) 만 visible 기준으로 분리.
+        # visible 키가 attrs 에 없으면 (구버전 호출) 기본 True 로 처리해 호환 유지.
+        if not a.get("visible", True):
+            continue
+
         if t in ("text", "textarea", "number", "password", "email"):
             # tag_input 패턴 매칭됐으면 tag_input 으로, 아니면 text_inputs fallback
             pat = tag_patterns.get(sel)
@@ -424,12 +431,15 @@ def extract_dom_attributes(page, context_sel: str, selectors: Iterable[str]) -> 
       readonly    : bool
       has_toggle  : bool        (input의 'toggle' 커스텀 속성 여부 — 종속 패턴 힌트용)
       placeholder : str         (없으면 "")
-      name        : str         (radio 그룹 식별용 — 없으면 "")
+      name        : str         (radio 그룹 식별용 — el.name property 사용. AngularJS
+                                  동적 속성 대응. 없으면 "")
       value       : str         (radio 옵션 값용 — 없으면 "")
+      visible     : bool        (현재 화면에 보이는지 — offsetParent + computed display.
+                                  탭 차단 / display:none 등 안 보이는 입력 식별용)
 
     반환:
       {selector: {type, maxlength, checked, disabled, readonly, has_toggle,
-                  placeholder, name, value}}
+                  placeholder, name, value, visible}}
       셀렉터를 못 찾으면 빈 dict (없는 게 아니라 모든 키가 None/빈값).
     """
     sel_list = list(selectors)
@@ -453,6 +463,11 @@ def extract_dom_attributes(page, context_sel: str, selectors: Iterable[str]) -> 
                 type = tag;  // textarea, select
             }
             const ml = el.getAttribute('maxlength');
+            // visible: offsetParent null 이면 display:none 또는 비활성 탭 등으로 안 보임
+            const cs = window.getComputedStyle(el);
+            const visible = el.offsetParent !== null
+                          && cs.display !== 'none'
+                          && cs.visibility !== 'hidden';
             result[sel] = {
                 type:        type,
                 maxlength:   ml ? parseInt(ml, 10) : null,
@@ -461,8 +476,10 @@ def extract_dom_attributes(page, context_sel: str, selectors: Iterable[str]) -> 
                 readonly:    !!el.readOnly,
                 has_toggle:  el.hasAttribute('toggle'),
                 placeholder: el.getAttribute('placeholder') || '',
-                name:        el.getAttribute('name') || '',
-                value:       el.getAttribute('value') || '',
+                // el.name property — AngularJS 동적 속성 대응. getAttribute 보다 견고.
+                name:        el.name || el.getAttribute('name') || '',
+                value:       el.value || el.getAttribute('value') || '',
+                visible:     visible,
             };
         });
         return result;
@@ -583,6 +600,8 @@ def detect_tag_input_patterns(
             if (!el || el.tagName.toLowerCase() !== 'input') {
                 result[sel] = null; return;
             }
+            // input 안 보이면 (탭 차단 등) tag_input 매칭 안 함 — 회귀 가드.
+            if (el.offsetParent === null) { result[sel] = null; return; }
             const id = el.id || '';
             if (!id) { result[sel] = null; return; }
 

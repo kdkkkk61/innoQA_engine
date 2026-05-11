@@ -424,11 +424,12 @@ class UIScanner:
                 temp_hints["modal_actions"] = hints.get("modal_actions", {})
 
                 # 자동 분류된 항목이 있을 때만 validator 재호출
+                # 라디오는 자동 분류 X — 그룹·종속 구조 복잡해 yaml 등록 의무.
+                # 시나리오 1 의 discovered_new 카드로 신규 표시만 (사용자 결정 2026-05-11).
                 has_auto = (
                     temp_hints.get("text_inputs") or
                     temp_hints.get("toggle_checkboxes") or
                     temp_hints.get("plain_checkboxes") or
-                    temp_hints.get("radio_groups") or
                     temp_hints.get("tag_input")
                 )
                 if has_auto:
@@ -443,8 +444,6 @@ class UIScanner:
                             scan_toggle_checkboxes(ctx, temp_hints, report)
                         if temp_hints.get("plain_checkboxes"):
                             scan_plain_checkboxes(ctx, temp_hints, report)
-                        if temp_hints.get("radio_groups"):
-                            scan_radio_groups(ctx, temp_hints, report)
                         if temp_hints.get("tag_input"):
                             scan_tag_inputs(ctx, temp_hints, report)
                         target_scenario = 2
