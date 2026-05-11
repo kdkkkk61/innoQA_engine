@@ -101,7 +101,7 @@ config/scan_hints/
 | `text` / `textarea` / `number` / `password` / `email` | `scan_text_inputs` | `text_input` |
 | `checkbox` (toggle 속성 없음) | `scan_plain_checkboxes` | `plain_checkbox` |
 | `checkbox` (toggle 속성 있음) | `scan_toggle_checkboxes` | `toggle_checkbox` |
-| `radio` | (미지원 — B-1-C 단계) | — |
+| `radio` | (현재 미지원 — 그룹 name 식별 필요) | — |
 
 `toggle 속성`은 ON/OFF 종속 필드를 가지는 토글 식별용. DOM 자동 감지로는 종속 관계를
 모르므로 `dependent_fields = []`로 단독 검증만 진행.
@@ -123,19 +123,24 @@ config/scan_hints/
 - **detail에 `[자동 분류 — yaml 미등록]` prefix**: 검수자에게 yaml 등록 시 정식 검증 시작
   필요함을 안내.
 
-### 라벨 fallback 우선순위 (한국어 라벨 확보)
+### 라벨 fallback (한국어 라벨 확보)
 
-신규 요소의 한국어 라벨은 다음 순서로 검색:
-1. yaml의 동일 selector 항목 (`text_inputs` / `plain_checkboxes` / `toggle_checkboxes` /
-   `radio_groups[].options[]`) 의 `label`
-2. DOM에서 `<label for="..">` 또는 인접 `<dt>` / 표 텍스트
-3. 위 둘 다 없으면 selector 그대로 (`input#xxx`) — 검수자가 yaml 추가 작업 시 식별 가능
+라벨 검색은 두 경로로 분리되어 있다.
+
+**1) 신규 발견 시점 (`extract_dom_labels` in `core/scan_diff.py`)**
+- DOM 에서 `<label for>` / 인접 `<dt>` / 행 텍스트 추출
+- 추출 결과는 `expand_hints_with_discovered` 로 신규 항목의 yaml-like dict 에 `label` 로 주입
+- 못 찾으면 selector 사용
+
+**2) 시나리오 4 로드값 확인 (`scan_loaded_values` in `validators/initial_state.py`)**
+- text 필드: yaml `text_inputs[].selector == sel` 만 검색 (1단). B-1-B-1 흐름이 신규 text 필드를 temp_hints 의 text_inputs 에 라벨 포함해 주입하므로 1단으로 충분.
+- 토글 필드: `toggle_checkboxes` → `plain_checkboxes` → `radio_groups[].options[]` 순 검색 (3단). 못 찾으면 selector 사용.
 
 ### 안전 default
 
 - `required = false` (DOM에서 알 수 없으므로 보수적)
 - `maxlength` = DOM 속성 그대로 (없으면 null)
-- `dependent_fields = []` (자동 매칭 불가, B-1-C 단계에서 yaml 매칭 추가)
+- `dependent_fields = []` (자동 매칭 불가 — 자동 분류는 단독 검증만)
 - 모든 자동 분류 카드는 `pass` 기본, 동작 실패 시 `fail`/`warn` (검증 누락 없음 보장).
 
 ### 회귀 안전 보장

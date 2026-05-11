@@ -210,14 +210,21 @@ def test_scenario4_modify(self):
 - 1차 호출: yaml-known verify_values 검증 (`정책 이름 로드값 확인` 등 — 정식 카드)
 - 자동 분류: 신규 selector만 `extra_verify` 에 추가해 별도 호출 (중복 카드 방지)
 
-### 한국어 라벨 fallback
+### 한국어 라벨 fallback (`validators/initial_state.py:scan_loaded_values`)
 
-라벨 검색 순서:
-1. yaml `text_inputs[].selector == sel` → label
-2. yaml `toggle_checkboxes[].selector == sel` → label
-3. yaml `plain_checkboxes[].selector == sel` → label
-4. yaml `radio_groups[].options[].selector == sel` → label
-5. 없으면 selector 그대로
+라벨 검색은 텍스트와 토글 두 경로로 분리:
+
+**text 필드 (`verify_values`)**
+- yaml `text_inputs[].selector == sel` → `label` (1단)
+- 못 찾으면 selector 그대로
+- B-1-B-1 흐름에서 신규 text 필드는 `expand_hints_with_discovered` 가 temp_hints 의
+  `text_inputs` 에 라벨 포함해 주입하므로 1단 검색으로 충분.
+
+**toggle 필드 (`verify_toggles`)**
+- yaml `toggle_checkboxes[].selector == sel` → `label`
+- 못 찾으면 yaml `plain_checkboxes[].selector == sel` → `label`
+- 못 찾으면 yaml `radio_groups[].options[].selector == sel` → `label`
+- 위 모두 없으면 selector 그대로
 
 ### 회귀 안전
 

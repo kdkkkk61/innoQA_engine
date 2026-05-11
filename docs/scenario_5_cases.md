@@ -189,10 +189,10 @@ fields:
    selector + expected value 추가
 3. 다음 실행부터 정식 `profile_verify` 카드로 검증 시작
 
-### case_label 확장 (정식 케이스 추가 시)
+### case_label
 
-현재 modal_form profile 의 케이스는 `전체 ON` / `전체 OFF` 2개. 다른 케이스 (예: `부분 ON` /
-`경계값`) 추가 시 `_scenario5_discovered_cards(case_label=...)` 호출 추가로 카드 시점 늘림.
+현재 modal_form profile 의 케이스는 `전체 ON` / `전체 OFF` 2개로 고정.
+`_scenario5_discovered_cards(case_label=...)` 가 그 라벨을 `[{case_label}]` 형식으로 prefix 부착.
 
 ### 회귀 안전
 
@@ -204,6 +204,5 @@ fields:
 
 현재 `discovered_case` 는 modal_form profile case 흐름에서만 동작 (test_profiles yaml 기반).
 list_page 계열은 케이스A/B 가 다른 흐름으로 구현되므로 자동 분류 미지원.
-→ list_page 적용은 추후 단계 (B-1-C 또는 별도 작업).
 
 → 자동 분류 메커니즘 전체 흐름은 `test_scenario_standard.md` "자동 분류 메커니즘 (B-1 시리즈)" 참조.

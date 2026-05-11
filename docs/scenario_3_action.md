@@ -142,7 +142,7 @@ t, s = _r("pass" if gone else "fail", "항목 삭제 — 목록에서 사라짐"
 
 | DOM type | 동작 | status | detail 예시 |
 |---|---|---|---|
-| `text` / `number` / `textarea` / `password` / `email` | `fill()` 로 자동 채우기 (예: `scan_test`) | pass (성공) / skip (disabled) | `타입: text / "scan_test" 자동 입력 (시나리오 3 추가 흐름)` |
+| `text` / `number` / `textarea` / `password` / `email` | `fill()` 로 자동 채우기 (값: `core/qa_runner.py:_fill_discovered_text_fields` 참조 — number 는 `"1"`, 그 외 `"auto_test"`) | pass (성공) / skip (disabled) | `타입: text / "auto_test" 자동 입력 (시나리오 3 추가 흐름)` |
 | `checkbox` / `radio` | 동작 안 함 — default 유지 | pass | `타입: checkbox / default 유지 (시나리오 3 추가 흐름 영향 없음)` |
 | 그 외 (select 등) | 미지원 | skip | `타입: ? / 미지원` |
 
@@ -156,11 +156,11 @@ t, s = _r("pass" if gone else "fail", "항목 삭제 — 목록에서 사라짐"
 - pattern: `discovered_fill`
 - 시나리오 3 영역 끝 (order: 시나리오 3 범위 최대 — 일반 동작 카드 다음)
 
-### 종속 필드 한계 (B-1-C 단계 미적용)
+### 종속 필드 한계 (현재 미지원)
 
 - 자동 발견된 신규 필드의 **종속 관계는 모름** (DOM 만으로는 매칭 불가).
 - 신규 toggle 의 dependent_fields 는 빈 list 로 시작 → 단독 검증만.
-- yaml 등록 시 정식 종속 매핑 시작 (B-1-C 단계에서 자동 매칭 도구 추가 예정).
+- yaml 등록 시 정식 종속 매핑 시작 (자동 종속 매칭은 현재 미지원).
 
 ### 회귀 안전
 

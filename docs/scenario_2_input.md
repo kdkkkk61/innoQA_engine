@@ -174,7 +174,7 @@ fields:
 | `text` / `textarea` / `number` / `password` / `email` | `scan_text_inputs` | `text_input` | 존재 / maxlength / 기본 입력 |
 | `checkbox` (toggle 속성 없음) | `scan_plain_checkboxes` | `plain_checkbox` | 존재 + 라벨 클릭 동작 |
 | `checkbox` (toggle 속성 있음) | `scan_toggle_checkboxes` | `toggle_checkbox` | 기본값 / 종속 필드 (자동 발견 시 빈 list, 단독 검증만) |
-| `radio` | (미지원 — B-1-C 단계) | — | 그룹 식별 필요 |
+| `radio` | (현재 미지원) | — | 그룹 name 식별 필요 |
 
 ### 카드 라벨 컨벤션
 
@@ -184,16 +184,18 @@ fields:
 
 ### 한국어 라벨 fallback
 
-신규 요소의 한국어 라벨 확보 순서:
-1. yaml 의 같은 selector 항목 라벨
-2. DOM 의 `<label for>` / 인접 `<dt>` / 행 텍스트
-3. 위 둘 다 없으면 selector 그대로 (`input#xxx`)
+신규 발견 시점 (`extract_dom_labels` in `core/scan_diff.py`):
+- DOM 의 `<label for>` / 인접 `<dt>` / 행 텍스트 추출
+- 추출 라벨은 `expand_hints_with_discovered` 가 신규 항목 yaml-like dict 의 `label` 로 주입
+- DOM 에서 못 찾으면 selector 사용 (검수자가 yaml 추가 작업 시 식별 가능)
 
 ### 안전 default (자동 발견 시)
 
-- `required = false` (DOM 미확인, 보수적)
-- `dependent_fields = []` (자동 매칭 X — 단독 검증만)
-- `test_value = "scan_test"` 또는 패턴별 안전값
+- `required = false` — DOM 으로 알 수 없으므로 보수적
+- `dependent_fields = []` — 자동 매칭 X, 단독 검증만
+- `test_value`: `scan_diff.py:280` `_AUTO_TEST_VALUE` 상수 사용 (현재 `"[AUTO]_seq"`).
+  generic 예시 ("scan_test" 등) 가 아니라 **`[AUTO]_` 접두사 + 시나리오 약어** 컨벤션 준수
+  (`docs/test_scenario_standard.md` 공통 설계 원칙 1번 — `[AUTO]` 접두사 필수)
 
 ### 회귀 안전
 
