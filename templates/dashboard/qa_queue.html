@@ -1,0 +1,516 @@
+{% extends "dashboard/layout.html" %}
+{% block title %}QA Dashboard — QA 요청 큐{% endblock %}
+
+{% block head %}
+<style>
+  /* ── QA Queue 전용 스타일 ─────────────────────────── */
+  .queue-section {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+  .queue-section-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid #e8edf3;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .queue-section-header .sec-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1e3a5f;
+    flex: 1;
+  }
+  /* 상태 배지 */
+  .qbadge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    border: 1px solid rgba(0,0,0,.08);
+  }
+  .qbadge-testing   { background: #fff3cd; color: #856404; }
+  .qbadge-approved  { background: #d1e7dd; color: #0f5132; }
+  .qbadge-rejected  { background: #f8d7da; color: #842029; }
+  .qbadge-idle      { background: #e2e3e5; color: #41464b; }
+  /* 제품 선택 셀렉트 */
+  .product-select {
+    padding: 4px 8px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #333;
+    min-width: 130px;
+    cursor: pointer;
+  }
+  /* 액션 버튼 */
+  .q-btn {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: opacity .15s;
+    white-space: nowrap;
+  }
+  .q-btn:hover { opacity: .82; }
+  .q-btn-start    { background: #1e3a5f; color: white; }
+  .q-btn-approve  { background: #198754; color: white; }
+  .q-btn-reject   { background: #dc3545; color: white; }
+  .q-btn-sync     { background: #0d6efd; color: white; padding: 6px 16px; font-size: 13px; }
+  .q-btn-disabled { opacity: .45; cursor: not-allowed; }
+  /* 빈 상태 */
+  .empty-row td { text-align: center; padding: 40px; color: #aaa; font-size: 14px; }
+  /* 연결 상태 dot */
+  .dot-connected    { display:inline-block; width:8px; height:8px; border-radius:50%; background:#28a745; margin-right:6px; }
+  .dot-disconnected { display:inline-block; width:8px; height:8px; border-radius:50%; background:#dc3545; margin-right:6px; }
+  /* 완료 패널 토글 */
+  .complete-panel {
+    display: none;
+    padding: 10px 16px;
+    background: #f0f4f8;
+    border-top: 1px solid #dee2e6;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .complete-panel.open { display: flex; }
+  /* toast */
+  #toastBox {
+    position: fixed; bottom: 24px; right: 24px;
+    display: flex; flex-direction: column; gap: 8px; z-index: 9999;
+    pointer-events: none;
+  }
+  .toast-msg {
+    background: #1e3a5f; color: white;
+    padding: 10px 18px; border-radius: 8px;
+    font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    opacity: 0; transition: opacity .3s;
+    pointer-events: none;
+  }
+  .toast-msg.show { opacity: 1; }
+  .toast-msg.ok   { background: #198754; }
+  .toast-msg.fail { background: #dc3545; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <i class="bi bi-inbox me-2"></i>QA 요청 큐
+  {% if connected %}
+    <span style="font-size:12px; font-weight:400; color:#555;">
+      <span class="dot-connected"></span>innoRelease 연결됨
+      {% if irel_url %}<span class="text-muted">({{ irel_url }})</span>{% endif %}
+    </span>
+  {% else %}
+    <span style="font-size:12px; font-weight:400; color:#dc3545;">
+      <span class="dot-disconnected"></span>innoRelease 미연결
+    </span>
+  {% endif %}
+</div>
+
+<!-- ── 도움말 ── -->
+<div class="alert alert-info d-flex align-items-start gap-3 mb-4 py-3" style="border-radius:10px; font-size:13px;">
+  <i class="bi bi-info-circle-fill fs-5 flex-shrink-0 mt-1"></i>
+  <div>
+    <strong>사용 방법</strong><br>
+    <ol class="mb-0 mt-1 ps-3">
+      <li>인노릴리즈에서 <strong>통합 QA시작</strong>을 눌러 파이프라인을 <code>TESTING</code> 상태로 전환합니다.</li>
+      <li><strong>동기화</strong> 버튼을 눌러 TESTING 파이프라인을 수신합니다.</li>
+      <li>제품 코드를 선택한 뒤 <strong>테스트 실행</strong>을 눌러 테스트를 진행합니다.</li>
+      <li>테스트 완료 후 실행 ID를 입력하고 <strong>승인 / 반려</strong>를 선택합니다.</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ── QA 요청 목록 ── -->
+<div class="queue-section">
+  <div class="queue-section-header">
+    <span class="sec-title">
+      <i class="bi bi-list-check me-1"></i>수신된 QA 요청
+      <span class="badge bg-secondary ms-1" id="queueCount">{{ qa_requests | length }}</span>
+    </span>
+    <button class="q-btn q-btn-sync" id="syncBtn" onclick="syncQueue()"
+            {% if not connected %}disabled title="innoRelease 미연결"{% endif %}>
+      <i class="bi bi-arrow-repeat me-1"></i>동기화
+    </button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover mb-0" id="queueTable">
+      <thead>
+        <tr>
+          <th style="width:60px;">파이프라인</th>
+          <th>저장소</th>
+          <th>브랜치</th>
+          <th>버전</th>
+          <th>대상</th>
+          <th style="width:150px;">제품 코드</th>
+          <th style="width:90px;">상태</th>
+          <th>수신일시</th>
+          <th style="width:280px;">액션</th>
+        </tr>
+      </thead>
+      <tbody id="queueBody">
+        {% if not qa_requests %}
+        <tr class="empty-row">
+          <td colspan="9">
+            <i class="bi bi-inbox fs-4 d-block mb-2 text-muted"></i>
+            수신된 QA 요청이 없습니다.<br>
+            <span class="text-muted" style="font-size:12px;">
+              innoRelease에서 QA 시작 후 동기화 버튼을 누르세요.
+            </span>
+          </td>
+        </tr>
+        {% else %}
+        {% for qr in qa_requests %}
+        <tr id="row-{{ qr.pipeline_id }}" data-pipeline="{{ qr.pipeline_id }}"
+            data-repo="{{ qr.repo_id }}" data-status="{{ qr.status }}"
+            data-product="{{ qr.inno_product or '' }}" data-runid="{{ qr.run_id or '' }}">
+          <td><code style="font-size:11px;">#{{ qr.pipeline_id }}</code></td>
+          <td>
+            <span style="font-weight:600; font-size:13px;">{{ qr.repo_name or '-' }}</span>
+          </td>
+          <td><code style="font-size:11px; color:#1e3a5f;">{{ qr.branch or '-' }}</code></td>
+          <td style="font-size:12px;">{{ qr.version_hint or '-' }}</td>
+          <td>
+            {% if qr.release_target %}
+              <span class="badge bg-secondary" style="font-size:11px;">
+                {{ '매니저' if qr.release_target == 'SERVER' else ('에이전트' if qr.release_target == 'AGENT' else qr.release_target) }}
+              </span>
+            {% else %}-{% endif %}
+          </td>
+          <td>
+            {% if qr.status in ('APPROVED', 'REJECTED') %}
+              <span style="font-size:12px; color:#888;">
+                {% if qr.inno_product %}{{ product_map.get(qr.inno_product, qr.inno_product) }}{% else %}-{% endif %}
+              </span>
+            {% else %}
+            <select class="product-select" id="prod-{{ qr.pipeline_id }}"
+                    onchange="setProduct({{ qr.pipeline_id }}, this.value)">
+              <option value="">-- 선택 --</option>
+              {% for code, name in product_map.items() %}
+              <option value="{{ code }}"
+                      {% if qr.inno_product == code %}selected{% endif %}>
+                {{ code }}. {{ name }}
+              </option>
+              {% endfor %}
+            </select>
+            {% endif %}
+          </td>
+          <td>
+            {% set st = qr.status or 'TESTING' %}
+            {% if st == 'TESTING' %}
+              <span class="qbadge qbadge-testing">TESTING</span>
+            {% elif st == 'APPROVED' %}
+              <span class="qbadge qbadge-approved">승인</span>
+            {% elif st == 'REJECTED' %}
+              <span class="qbadge qbadge-rejected">반려</span>
+            {% else %}
+              <span class="qbadge qbadge-idle">{{ st }}</span>
+            {% endif %}
+          </td>
+          <td style="font-size:11px; color:#888;">{{ qr.received_at or '-' }}</td>
+          <td>
+            {% if qr.status in ('APPROVED', 'REJECTED') %}
+              <!-- 완료된 항목 -->
+              <span style="font-size:12px; color:#888;">
+                <i class="bi bi-check-circle-fill text-success me-1"></i>처리 완료
+                {% if qr.run_id %}
+                  &nbsp;<a href="{{ url_for('dashboard.run_detail', run_id=qr.run_id) }}"
+                            target="_blank" style="font-size:11px;">
+                    리포트 보기
+                  </a>
+                {% endif %}
+              </span>
+            {% else %}
+              <!-- 대기 / 진행 중 -->
+              <div class="d-flex gap-1 flex-wrap align-items-center">
+                <a href="/" class="q-btn q-btn-start" target="_blank"
+                   onclick="storePipelineCtx({{ qr.pipeline_id }}, {{ qr.repo_id or 'null' }}, '{{ qr.inno_product or '' }}'); startPollingRunId({{ qr.pipeline_id }});"
+                   title="테스트 도구 실행 — 완료 시 run_id 자동 채움">
+                  <i class="bi bi-play-fill me-1"></i>테스트 실행
+                </a>
+                <button class="q-btn q-btn-approve"
+                        onclick="openCompletePanel({{ qr.pipeline_id }}, 'approve')"
+                        title="QA 승인 + innoRelease 전송">
+                  <i class="bi bi-check-lg me-1"></i>승인
+                </button>
+                <button class="q-btn q-btn-reject"
+                        onclick="openCompletePanel({{ qr.pipeline_id }}, 'reject')"
+                        title="QA 반려 + innoRelease 전송">
+                  <i class="bi bi-x-lg me-1"></i>반려
+                </button>
+              </div>
+              <!-- 승인/반려 입력 패널 -->
+              <div class="complete-panel" id="panel-{{ qr.pipeline_id }}">
+                <div style="font-size:12px; font-weight:600; color:#1e3a5f; flex-basis:100%;">
+                  <span id="panel-action-{{ qr.pipeline_id }}"></span> 처리
+                </div>
+                <div>
+                  <label style="font-size:11px; color:#555; display:block; margin-bottom:2px;">실행 ID (run_id)</label>
+                  <input type="number" class="form-control form-control-sm" style="width:100px; font-size:12px;"
+                         id="runid-{{ qr.pipeline_id }}"
+                         placeholder="숫자"
+                         value="{{ qr.run_id or '' }}">
+                </div>
+                <div>
+                  <label style="font-size:11px; color:#555; display:block; margin-bottom:2px;">플랫폼</label>
+                  <select class="product-select" id="platform-{{ qr.pipeline_id }}" style="min-width:100px;">
+                    <option value="MANAGER"
+                            {% if qr.release_target == 'SERVER' %}selected{% endif %}>매니저</option>
+                    <option value="AGENT"
+                            {% if qr.release_target == 'AGENT' %}selected{% endif %}>에이전트</option>
+                    <option value="기타">기타</option>
+                  </select>
+                </div>
+                <div style="flex:1;">
+                  <label style="font-size:11px; color:#555; display:block; margin-bottom:2px;">코멘트 (선택)</label>
+                  <input type="text" class="form-control form-control-sm" style="font-size:12px;"
+                         id="comment-{{ qr.pipeline_id }}"
+                         placeholder="승인 코멘트 또는 반려 사유">
+                </div>
+                <div class="d-flex gap-1 align-items-end" style="padding-bottom:1px;">
+                  <button class="q-btn q-btn-approve" id="confirm-{{ qr.pipeline_id }}"
+                          onclick="doComplete({{ qr.pipeline_id }}, {{ qr.repo_id or 'null' }})">
+                    확인
+                  </button>
+                  <button class="q-btn" style="background:#6c757d; color:white;"
+                          onclick="closeCompletePanel({{ qr.pipeline_id }})">취소</button>
+                </div>
+              </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── 안내: 테스트 실행 연계 ── -->
+<div class="queue-section">
+  <div class="queue-section-header">
+    <span class="sec-title"><i class="bi bi-info-circle me-1"></i>테스트 실행 연계 안내</span>
+  </div>
+  <div style="padding: 16px 20px; font-size: 13px; color: #444; line-height: 1.8;">
+    <p class="mb-2">
+      <strong>테스트 실행</strong> 버튼을 누르면 QA 도구 메인 화면이 열립니다.<br>
+      테스트 완료 후 생성된 HTML 리포트의 <strong>실행 ID(run_id)</strong>를
+      <em>실행 이력</em> 탭에서 확인하고 위 승인/반려 패널에 입력하세요.
+    </p>
+    <p class="mb-0 text-muted" style="font-size:12px;">
+      <i class="bi bi-arrow-right-circle me-1"></i>
+      실행 이력 확인:
+      <a href="{{ url_for('dashboard.runs') }}" target="_blank">실행 이력 보기</a>
+    </p>
+  </div>
+</div>
+
+<!-- toast -->
+<div id="toastBox"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ── 상수 ── */
+const PRODUCT_MAP = {{ product_map | tojson }};
+
+/* ── 인노릴리즈 파이프라인 컨텍스트 서버 등록 + localStorage 저장 ── */
+async function storePipelineCtx(pipelineId, repoId, innoProduct) {
+  // ① 서버에 pipeline context 등록 → _run() 완료 시 자동 innoRelease 전송
+  const prodEl = document.getElementById(`prod-${pipelineId}`);
+  const product = prodEl ? (prodEl.value || innoProduct) : innoProduct;
+  try {
+    await fetch("/set-pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pipeline_id:      pipelineId,
+        pipeline_repo_id: repoId,
+        pipeline_product: product ? parseInt(product) : null,
+      }),
+    });
+  } catch(e) {
+    console.warn("[set-pipeline] 서버 등록 실패:", e);
+  }
+  // ② localStorage 백업 (브라우저 재시작 시 참조용)
+  try {
+    localStorage.setItem("qa_pipeline_ctx", JSON.stringify({
+      pipeline_id: pipelineId,
+      repo_id: repoId,
+      inno_product: product,
+    }));
+  } catch(e) {}
+}
+
+/* ── 동기화 ── */
+async function syncQueue() {
+  const btn = document.getElementById("syncBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>동기화 중...';
+  try {
+    const res = await fetch("{{ url_for('dashboard.qa_queue_sync') }}", { method: "POST" });
+    const data = await res.json();
+    if (data.ok) {
+      toast(`동기화 완료 — TESTING ${data.total}건 (신규 ${data.new}건)`, "ok");
+      if (data.new > 0) {
+        setTimeout(() => location.reload(), 800);
+      }
+    } else {
+      toast("동기화 실패: " + (data.error || "알 수 없는 오류"), "fail");
+    }
+  } catch(e) {
+    toast("동기화 오류: " + e.message, "fail");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>동기화';
+  }
+}
+
+/* ── 제품 코드 저장 ── */
+async function setProduct(pipelineId, productCode) {
+  if (!productCode) return;
+  try {
+    const res = await fetch(`/dashboard/qa-queue/${pipelineId}/set-product`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inno_product: parseInt(productCode) }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast(`제품 코드 저장됨 (${PRODUCT_MAP[productCode] || productCode})`, "ok");
+    }
+  } catch(e) {
+    toast("저장 실패: " + e.message, "fail");
+  }
+}
+
+/* ── 승인/반려 패널 열기 ── */
+let _panelAction = {};   // pipeline_id → "approve" | "reject"
+
+function openCompletePanel(pipelineId, action) {
+  // 다른 패널 닫기
+  document.querySelectorAll(".complete-panel.open").forEach(p => p.classList.remove("open"));
+
+  _panelAction[pipelineId] = action;
+  const panel = document.getElementById(`panel-${pipelineId}`);
+  const label = document.getElementById(`panel-action-${pipelineId}`);
+  const confirmBtn = document.getElementById(`confirm-${pipelineId}`);
+  if (!panel) return;
+
+  label.textContent = action === "approve" ? "승인" : "반려";
+  confirmBtn.className = "q-btn " + (action === "approve" ? "q-btn-approve" : "q-btn-reject");
+  panel.classList.add("open");
+}
+
+function closeCompletePanel(pipelineId) {
+  const panel = document.getElementById(`panel-${pipelineId}`);
+  if (panel) panel.classList.remove("open");
+}
+
+/* ── 최종 처리 (QA 레코드 전송 + 승인/반려) ── */
+async function doComplete(pipelineId, repoId) {
+  const action   = _panelAction[pipelineId];
+  const runIdEl  = document.getElementById(`runid-${pipelineId}`);
+  const commentEl= document.getElementById(`comment-${pipelineId}`);
+  const platformEl= document.getElementById(`platform-${pipelineId}`);
+  const prodEl   = document.getElementById(`prod-${pipelineId}`);
+
+  const runId      = runIdEl  ? parseInt(runIdEl.value)  || null : null;
+  const comment    = commentEl ? commentEl.value.trim() : "";
+  const platform   = platformEl ? platformEl.value : "MANAGER";
+  const innoProduct= prodEl ? parseInt(prodEl.value) || null : null;
+
+  if (!action) { toast("액션이 지정되지 않았습니다.", "fail"); return; }
+
+  const confirmBtn = document.getElementById(`confirm-${pipelineId}`);
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = "처리 중..."; }
+
+  try {
+    const res = await fetch(`/dashboard/qa-queue/${pipelineId}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        comment,
+        run_id: runId,
+        inno_product: innoProduct,
+        repo_id: repoId,
+        platform,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast(data.message + (data.qa_ok ? " (QA 레코드 등록 완료)" : ""), "ok");
+      setTimeout(() => location.reload(), 1200);
+    } else {
+      toast("처리 실패: " + (data.message || "오류"), "fail");
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = "확인";
+      }
+    }
+  } catch(e) {
+    toast("오류: " + e.message, "fail");
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "확인";
+    }
+  }
+}
+
+/* ── 테스트 완료 폴링 (run_id 자동 채우기) ── */
+let _pollTimer = null;
+let _pollingPipelineId = null;
+
+function startPollingRunId(pipelineId) {
+  if (_pollTimer) clearInterval(_pollTimer);
+  _pollingPipelineId = pipelineId;
+  _pollTimer = setInterval(async () => {
+    try {
+      const res  = await fetch("/pipeline-status");
+      const data = await res.json();
+      if (data.pipeline_id !== pipelineId) {
+        // 다른 파이프라인 컨텍스트 — 폴링 중단
+        clearInterval(_pollTimer);
+        return;
+      }
+      if ((data.status === "done" || data.status === "error") && data.run_id) {
+        clearInterval(_pollTimer);
+        const el = document.getElementById(`runid-${pipelineId}`);
+        if (el && !el.value) {
+          el.value = data.run_id;
+          toast(`테스트 완료 — run_id ${data.run_id} 자동 입력됨`, "ok");
+          // 완료 패널 자동 열기 (승인 대기)
+          openCompletePanel(pipelineId, "approve");
+        }
+      }
+    } catch(e) {}
+  }, 5000);   // 5초마다 폴링
+}
+
+/* ── Toast 알림 ── */
+function toast(msg, type="") {
+  const box = document.getElementById("toastBox");
+  const el  = document.createElement("div");
+  el.className = "toast-msg " + type;
+  el.textContent = msg;
+  box.appendChild(el);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => el.classList.add("show"));
+  });
+  setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => el.remove(), 350);
+  }, 3500);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "dashboard/layout.html" %}
+{% block title %}QA Dashboard — 실행 이력{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="page-title mb-0">실행 이력</h1>
+</div>
+
+<!-- 제품 탭 (multi-select) -->
+<div class="product-tabs mb-4">
+  {% for tab in tabs %}
+  <a href="{{ tab.href }}"
+     class="product-tab {{ 'active' if tab.active }} {{ 'no-data' if tab.count == 0 and tab.id != 'all' }}"
+     style="--p-color:{{ tab.color }};--p-bg:{{ tab.color }}18;">
+    <span class="dot"></span>
+    {{ tab.label }}
+    <span class="badge-cnt">{{ tab.count }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="qa-table">
+  <table class="table table-hover mb-0">
+    <thead>
+      <tr>
+        <th style="width:40px;">#</th>
+        <th>날짜/시간</th>
+        <th>제품</th>
+        <th>전체</th>
+        <th>PASS</th>
+        <th>FAIL</th>
+        <th>BUG</th>
+        <th>ERROR</th>
+        <th>PASS율</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in runs %}
+      {% set rate = (run.pass_cnt / run.total * 100)|round(1) if run.total > 0 else 0 %}
+      <tr>
+        <td class="text-muted" style="font-size:12px;">{{ run.id }}</td>
+        <td>{{ run.timestamp[:16].replace('T',' ') }}</td>
+        <td>
+          {% set p = tabs | selectattr('id', 'equalto', run.product) | first | default(None) %}
+          <span class="badge" style="background:{{ p.color if p else '#888' }}18;color:{{ p.color if p else '#888' }};border:1px solid {{ p.color if p else '#888' }}40;">
+            {{ p.label if p else run.product }}
+          </span>
+        </td>
+        <td>{{ run.total }}</td>
+        <td class="text-success fw-bold">{{ run.pass_cnt }}</td>
+        <td class="{{ 'text-danger fw-bold' if run.fail_cnt > 0 else 'text-muted' }}">{{ run.fail_cnt }}</td>
+        <td class="{{ 'text-warning fw-bold' if run.bug_cnt > 0 else 'text-muted' }}">{{ run.bug_cnt }}</td>
+        <td class="{{ 'text-danger fw-bold' if run.error_cnt > 0 else 'text-muted' }}">{{ run.error_cnt }}</td>
+        <td>
+          <div class="d-flex align-items-center gap-2">
+            <div class="progress flex-grow-1" style="height:5px;min-width:60px;">
+              <div class="progress-bar {{ 'bg-success' if rate >= 90 else ('bg-warning' if rate >= 70 else 'bg-danger') }}"
+                   style="width:{{ rate }}%"></div>
+            </div>
+            <span style="font-size:12px;width:40px;text-align:right;">{{ rate }}%</span>
+          </div>
+        </td>
+        <td>
+          <div class="d-flex gap-1">
+            <a href="{{ url_for('dashboard.run_detail', run_id=run.id) }}"
+               class="btn btn-outline-primary btn-sm">상세</a>
+            {% if run.html_path %}
+            <a href="{{ url_for('dashboard.serve_report', run_id=run.id) }}"
+               class="btn btn-outline-secondary btn-sm" target="_blank">HTML</a>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="10" class="text-center text-muted py-5">
+          <i class="bi bi-inbox" style="font-size:32px;display:block;margin-bottom:8px;opacity:.3;"></i>
+          데이터가 없습니다.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

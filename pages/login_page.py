@@ -43,6 +43,10 @@ class LoginPage(BasePage):
             에러 모달이 뜨면 모달을 닫고 LoginError 예외를 발생시킨다.
             logged_in_page fixture에서 비밀번호 재입력 루프에 사용.
         """
+        # 이전 비정상 종료로 남은 stale modal (세션 만료/충돌) 정리.
+        # modal-backdrop 가 loginBtn 클릭을 가로채는 케이스 방어.
+        self._dismiss_stale_modal()
+
         self.fill(self.SEL_USERNAME, username)
         self.fill(self.SEL_PASSWORD, password)
         self.click(self.SEL_SUBMIT)
@@ -50,6 +54,30 @@ class LoginPage(BasePage):
             msg = self._get_modal_message()
             self.close_error_modal()
             raise LoginError(msg)
+
+    def _dismiss_stale_modal(self) -> None:
+        """페이지 진입 직후 떠 있는 stale modal (세션 만료 등) 정리.
+        modal-backdrop.in 가 loginBtn 클릭 가로채는 케이스 대응."""
+        try:
+            # __globalMessageModal.in (Bootstrap 3 에러 modal)
+            if self.page.locator(self.SEL_ERROR_MODAL_OPENED).count() > 0:
+                try:
+                    self.click_attached(self.SEL_MODAL_CONFIRM)
+                except Exception:
+                    self.page.keyboard.press("Escape")
+                # backdrop 사라질 때까지 대기
+                try:
+                    self.page.locator("div.modal-backdrop.in").wait_for(
+                        state="detached", timeout=3000
+                    )
+                except Exception:
+                    pass
+            # backdrop 만 남고 modal 닫혀있는 경우 (orphan)
+            elif self.page.locator("div.modal-backdrop.in").count() > 0:
+                self.page.keyboard.press("Escape")
+                self.page.wait_for_timeout(300)
+        except Exception:
+            pass
 
     def _get_modal_message(self) -> str:
         """에러 모달의 본문 텍스트를 반환한다."""

@@ -3,6 +3,8 @@ from datetime import datetime
 from urllib.parse import urlparse
 from playwright.sync_api import Page
 
+from pages.shared._overlay import overlay_off
+
 
 class BasePage:
     def __init__(self, page: Page, settings: dict):
@@ -36,29 +38,45 @@ class BasePage:
     # 기본 액션
     # ------------------------------------------------------------------
     def click(self, selector: str) -> None:
+        """
+        설계: overlay 잠깐 OFF → native click → overlay ON.
+        AngularJS mousedown/click 핸들러 모두 정상 동작.
+        """
         try:
             locator = self.page.locator(selector).first
             locator.wait_for(state="visible", timeout=self.timeout)
-            # locator.evaluate로 JS element.click() 직접 호출:
-            # 좌표 기반 hit-testing을 거치지 않으므로 클릭 차단 오버레이에 영향받지 않는다.
-            locator.evaluate("el => el.click()")
+            with overlay_off(self.page):
+                locator.click()
         except Exception as e:
             self._on_error(f"click:{selector}", e)
             raise
 
     def click_attached(self, selector: str) -> None:
         """
-        Playwright visible 체크를 통과하지 못하지만 DOM에는 존재하는 요소를 클릭한다.
-        Bootstrap 3 모달 내부 버튼처럼 hidden 판정이 나는 요소에 사용.
-        attached 상태 확인 후 JS el.click() 직접 호출 → hit-testing 완전 우회.
+        Bootstrap 3 모달 내부 버튼처럼 visible 판정 안 나는 요소 클릭.
+        attached 확인 후 overlay OFF + force=True 좌표 클릭.
         """
         try:
             locator = self.page.locator(selector).first
             locator.wait_for(state="attached", timeout=self.timeout)
-            locator.evaluate("el => el.click()")
+            with overlay_off(self.page):
+                locator.click(force=True)
         except Exception as e:
             self._on_error(f"click_attached:{selector}", e)
             raise
+
+    def _click(self, locator) -> None:
+        """이미 만든 locator 를 overlay OFF 컨텍스트로 클릭."""
+        with overlay_off(self.page):
+            locator.click()
+
+    def _click_hidden(self, locator) -> None:
+        """
+        화면에 안 보이는 input (Bootstrap toggle 의 hidden checkbox 등) 클릭.
+        좌표 hit-testing 불가능 → JS evaluate 직접 호출.
+        AngularJS ng-click/ng-change 정상 트리거.
+        """
+        locator.evaluate("el => el.click()")
 
     def fill(self, selector: str, text: str) -> None:
         try:

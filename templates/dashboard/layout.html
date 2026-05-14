@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}QA Dashboard{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root { --sidebar-width: 220px; --primary: #1e3a5f; }
+    body { background: #f0f4f8; }
+    .sidebar {
+      position: fixed; top: 0; left: 0; width: var(--sidebar-width);
+      height: 100vh; background: var(--primary); color: white;
+      display: flex; flex-direction: column; z-index: 100;
+    }
+    .sidebar-brand { padding: 20px 16px; font-size: 16px; font-weight: 700; border-bottom: 1px solid rgba(255,255,255,.15); }
+    .sidebar-nav { flex: 1; padding: 12px 0; }
+    .sidebar-nav a {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px; color: rgba(255,255,255,.75);
+      text-decoration: none; font-size: 14px; transition: all .15s;
+    }
+    .sidebar-nav a:hover, .sidebar-nav a.active { background: rgba(255,255,255,.12); color: white; }
+    .main-content { margin-left: var(--sidebar-width); padding: 28px; min-height: 100vh; }
+    .page-title { font-size: 20px; font-weight: 700; color: #1e3a5f; margin-bottom: 20px; }
+    /* KPI 카드 */
+    .kpi-card { background: white; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); display: flex; align-items: center; gap: 16px; }
+    .kpi-icon { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+    .kpi-value { font-size: 28px; font-weight: 700; line-height: 1; }
+    .kpi-label { font-size: 12px; color: #888; margin-top: 4px; }
+    /* 상태 배지 */
+    .badge-pass  { background: #e8f8ef; color: #27ae60; }
+    .badge-fail  { background: #fde8e8; color: #e74c3c; }
+    .badge-bug   { background: #fef9e7; color: #f39c12; }
+    .badge-error { background: #fde8e8; color: #c0392b; }
+    .badge-skip  { background: #f0f0f0; color: #888; }
+    /* 테이블 */
+    .qa-table { background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow: hidden; }
+    .qa-table table { margin: 0; }
+    .qa-table thead th { background: #f0f4f8; font-size: 13px; font-weight: 600; color: #555; border-bottom: 2px solid #e0e7ef; }
+    .qa-table tbody td { font-size: 13px; vertical-align: middle; }
+    .qa-table tbody tr:hover td { background: #f8fbff; }
+    /* 제품 탭 공통 */
+    .product-tabs { display:flex; gap:8px; flex-wrap:wrap; background:white; padding:14px 16px; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+    .product-tab { display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:500; text-decoration:none; color:#555; background:#f0f4f8; border:2px solid transparent; transition:all .15s; white-space:nowrap; cursor:pointer; }
+    .product-tab:hover { background:#e4eaf2; color:#333; }
+    .product-tab.active { background:var(--p-bg,#e8f0fe); border-color:var(--p-color,#1e3a5f); color:var(--p-color,#1e3a5f); font-weight:600; }
+    .product-tab .dot { width:8px; height:8px; border-radius:50%; background:var(--p-color,#888); flex-shrink:0; }
+    .product-tab .badge-cnt { font-size:11px; background:rgba(0,0,0,.08); padding:1px 6px; border-radius:10px; }
+    .product-tab.active .badge-cnt { background:var(--p-color); color:white; }
+    .product-tab.no-data { opacity:.4; }
+    /* 차트 패널 */
+    .chart-panel { background:white; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,.08); padding:20px; display:flex; flex-direction:column; }
+    .chart-panel .chart-title { font-size:14px; font-weight:600; color:#1e3a5f; margin-bottom:14px; flex-shrink:0; }
+    .chart-wrap { position:relative; flex:1; min-height:0; }
+    .charts-row { display:grid; grid-template-columns:1fr 320px; gap:16px; align-items:stretch; }
+    .charts-row .chart-panel { height:280px; }
+    @media(max-width:991px){ .charts-row{grid-template-columns:1fr;} }
+    /* 수정됨/회귀 배지 */
+    .badge-fixed { background:#e8f8ef; color:#27ae60; border:1px solid #b7e4c7; font-size:11px; }
+    .badge-regressed { background:#fde8e8; color:#c0392b; border:1px solid #f5c6cb; font-size:11px; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <i class="bi bi-shield-check me-2"></i>QA Dashboard
+  </div>
+  <nav class="sidebar-nav">
+    <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.endpoint == 'dashboard.index' }}">
+      <i class="bi bi-grid-1x2"></i> 대시보드
+    </a>
+    <a href="{{ url_for('dashboard.runs') }}" class="{{ 'active' if request.endpoint in ['dashboard.runs', 'dashboard.run_detail'] }}">
+      <i class="bi bi-clock-history"></i> 실행 이력
+    </a>
+    <a href="{{ url_for('dashboard.innorelease') }}" class="{{ 'active' if request.endpoint == 'dashboard.innorelease' }}">
+      <i class="bi bi-link-45deg"></i> innoRelease 연동
+    </a>
+    <a href="{{ url_for('dashboard.qa_queue') }}" class="{{ 'active' if request.endpoint == 'dashboard.qa_queue' }}">
+      <i class="bi bi-inbox"></i> QA 요청 큐
+    </a>
+    <a href="/" class="">
+      <i class="bi bi-play-circle"></i> 테스트 실행
+    </a>
+  </nav>
+  <div style="padding: 16px; font-size: 11px; color: rgba(255,255,255,.4);">inno_test_tool v1.0</div>
+</div>
+<div class="main-content">
+  {% block content %}{% endblock %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

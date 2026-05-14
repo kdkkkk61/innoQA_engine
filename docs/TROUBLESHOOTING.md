@@ -5,6 +5,88 @@
 
 ---
 
+## [RESOLVED] Step 5b 이름 중복 — [AUTO_KEEP]_ 정책이 이전 실행 잔존
+- **날짜**: 2026-05-14
+- **증상**: Step 5b 두 번째 실행부터 `modify 저장 메시지: '이미 등록된 이름 입니다.'` 로 fail. 사용자: "마지막 이슈 확인 아마 이름 겹치는 뭐가 있나"
+- **원인**: 5b 가 의도적으로 `[AUTO_KEEP]_step5b_mod` 보존 (시나리오 4 가 사용할 데이터). 다음 실행 시 같은 이름으로 modify 시도 → 중복 차단. `delete_all_auto_policies()` 는 KEEP 를 제외 (CLAUDE.md 규칙) 하므로 자동 정리 안 됨
+- **수정**: 5b 시작 시 `[AUTO_KEEP]_step5b_mod` + `[AUTO]_step5b_add` 명시 삭제. 멱등 보장:
+  ```python
+  page.delete_all_auto_policies()
+  for nm in (ADD_NAME, MOD_NAME):
+      if page.is_policy_exists(nm):
+          page.delete_policy(nm)
+  ```
+- **교훈**: KEEP 정책 보존 + 멱등 동시 만족 = 자기가 쓸 KEEP 이름을 시작 시 명시 정리. delete_all_auto 가 KEEP 자동 제외하는 규칙과 별개의 대응 필요
+- **파일**: `tests/test_npouch_control_suite.py`
+
+---
+
+## [RESOLVED] 이전 비정상 종료 후 loginBtn 클릭이 modal-backdrop 에 막힘 → 모든 테스트 fixture ERROR
+- **날짜**: 2026-05-14
+- **증상**: pytest 실행 시 14 테스트 모두 `Locator.click: Timeout 30000ms exceeded` (input#loginBtn). 로그에 `<div class="modal-backdrop in"></div> intercepts pointer events`. fixture (`logged_in_page`) 단계에서 실패 → 테스트 한 개도 못 돈 상태로 14개 모두 ERROR. 사용자 보고: "버그가 크게 났어"
+- **원인**:
+  1. 이전 pytest 실행이 비정상 종료 (ctrl-C / 에러 종료)
+  2. logged_in_page fixture teardown 의 `login.logout()` 실행 안 됨 → 서버 측 세션 잔존
+  3. 새 pytest 실행 → 로그인 페이지 진입 → 서버가 "세션 만료/충돌" globalMessageModal 자동 출현
+  4. `modal-backdrop.in` 가 loginBtn 클릭 가로챔 → 60+ 재시도 후 30초 timeout
+- **수정**: `pages/login_page.py` 에 `_dismiss_stale_modal()` 헬퍼 추가. `login()` 시작 시 호출:
+  - `div#__globalMessageModal.in` 있으면 확인 버튼 클릭 (실패 시 ESC fallback)
+  - backdrop 만 orphan 으로 남으면 ESC 로 정리
+  - `div.modal-backdrop.in` detached 까지 대기
+- **MEMORY.md 인용**: "로그아웃을 해야 서버 세션이 정리되며, 다음 실행에서 세션 충돌로 인한 모달이 발생하지 않는다" — 이 케이스 그대로 발현
+- **파일**: `pages/login_page.py`
+
+---
+
+## [RESOLVED] csuWebRestrictListTb 는 div 가 아니라 TBODY — selector tag 가정 오류
+- **날짜**: 2026-05-14
+- **증상**: Step 4d E2E — selector `div#csuWebRestrictListTb tbody tr` 도 0행. 사용자 보고: "웹제한쪽에서 막히는거같다, mcp로 다시 확인". 2차 진단 (DOM 구조 검사) 결과 `csuWebRestrictListTb.tag === 'TBODY'`, `direct_tr_count: 1`, `inner_html: '<tr contents-list-item ...>'`
+- **원인**: yaml 의 description `table_container: "div#itemWebRestrictList"` 는 2중 오류:
+  1. ID 가 `itemWebRestrictList` 가 아니라 `csuWebRestrictListTb` (1차 발견, DOM enum)
+  2. 그 ID 의 element 가 `<div>` 가 아니라 `<tbody>` 직접 (2차 발견, structure 검사)
+  → `div#csuWebRestrictListTb` 매칭 안 됨 + `tbody tr` 에서 tbody 안 tbody 찾기 됨
+- **수정**: `SEL_ITEM_WEB_LIST_ROW = "#csuWebRestrictListTb tr"` (tag prefix 제거, tbody 중첩 제거)
+- **교훈**:
+  - yaml description 의 selector tag (div/table/tbody) 가정도 위험. selector 는 `tag#id` 보다 `#id` 가 안전
+  - DOM enumeration 진단 시 `tag` 정보까지 확인 필요. 단순 id 매칭만으로 부족
+- **파일**: `pages/npouch_control_suite_page.py`, `config/scan_hints/control_suite.yaml`
+
+---
+
+## [RESOLVED] Bootstrap toggle 의 hidden checkbox 좌표 클릭 30초 timeout
+- **날짜**: 2026-05-14
+- **증상**: Step 2 test `set_clipboard_restrict_toggle(True)` → `Locator.click: Timeout 30000ms exceeded. element is not visible` (input#isClipboardRestrict). 60회 재시도 모두 element is not visible
+- **원인**: `input#isClipboardRestrict` 는 Bootstrap 스타일 toggle 의 실제 checkbox — display:none. 보이는 건 라벨/스위치. native click 은 좌표 hit-testing 필요 → 좌표 없음 → 영구 not visible. overlay 토글과 무관 (overlay 가 아니라 element 자체가 hidden)
+- **수정**: `pages/base_page.py` 에 `_click_hidden(loc)` 헬퍼 추가 (JS evaluate `el => el.click()` 사용 — visibility 무관). `_set_toggle` + `click_radio_allow/block` 에서 사용. AngularJS ng-click/ng-change 정상 트리거 확인
+- **설계 원칙 추가**: visible button/link → `_click()` (overlay toggle + native), hidden input (toggle/radio) → `_click_hidden()` (JS evaluate)
+- **파일**: `pages/base_page.py`, `pages/npouch_control_suite_page.py`
+
+---
+
+## [RESOLVED] npouch_control_suite — `navigate_to()` 단순화로 좌측 메뉴 진입 실패
+- **날짜**: 2026-05-13
+- **증상**: modal_form 전환 후 새 `NpouchControlSuitePage.navigate_to()` 가 4줄로 단순화됨. 테스트 실행 시 제어 스위트 페이지로 이동하지 못함 (사용자 보고: "위치를 모르는거 같다, 이동을 안 한다"). 실제로는 URL 까지는 가지만 후속 click 이 깨졌고, 본 navigate 자체도 stale modal·main.html 진입·hash 보정 누락
+- **원인**: 레거시 `pages/_legacy/npouch_control_suite_page.py` 의 navigate_to 패턴 (stale 모달 dismiss → main.html 보장 → SYS_MGMT 펼침 → UNIFIED_HEADER expand → MENU 클릭 → hash pageSize=100 → 첫 row attached) 을 그대로 복사하지 않고 4줄로 축약 — `is_visible` 대신 `count()==0` 체크, hash 보정 누락, main.html 진입 보장 누락
+- **수정**: `pages/npouch_control_suite_page.py` `navigate_to()` 를 레거시 7단 패턴 그대로 복원. `_close_modal_if_open()`, `_dismiss_stale_confirm_modal()` 헬퍼 추가
+- **파일**: `pages/npouch_control_suite_page.py`
+
+---
+
+## [RESOLVED] qa-block-overlay 가 `locator.click()` 가로채기 → 모든 후속 클릭 30초 timeout
+- **날짜**: 2026-05-13
+- **증상**: navigate_to 성공 (URL `managerControlSuite` 도달) 직후 `open_add_modal()` 의 `addBtn` 클릭에서 30초 timeout. 로그: `<div id="qa-block-overlay"></div> intercepts pointer events` — 60회 재시도 후 실패. 사용자 보고: "화면이 위아래로만 움직이는데" — scrolling into view 재시도 루프
+- **원인**: conftest 의 사람 클릭 차단용 오버레이 (`qa-block-overlay`, pointer-events:all, z-index:99998) 가 Playwright 좌표 클릭도 가로챔. 메인 페이지뿐 아니라 shared/ 컴포넌트 4개 (process_picker, special_folder_picker, process_sub_modal, web_restrict_sub_modal) 도 동일 문제
+- **설계 결정**: 사용자 원래 의도 재확인 — overlay 는 **자동화 클릭 동안 잠깐 OFF → 클릭 후 즉시 ON 복원**. 사람의 추가 입력 차단이 본질 (자동화 클릭 도중에만 잠깐 풀려도 OK). JS `evaluate("el=>el.click())")` 대신 native click + overlay toggle 패턴으로 통일 (AngularJS mousedown 핸들러 정상 동작 + 디자인 일관성).
+- **수정**:
+  1. `pages/shared/_overlay.py` 신설 — `overlay_off(page)` context manager (with 진입 시 pointer-events='none', 종료 시 'all')
+  2. `pages/base_page.py` `click()`, `click_attached()` 를 toggle 패턴으로 변경 + `_click(locator)` 헬퍼 추가
+  3. shared 4파일 각각 `_click(locator)` 헬퍼 추가 + import overlay_off
+  4. 메인 + shared 총 **56곳** click 사이트를 `self._click(locator)` 로 통일
+  5. 테이블 행 (mousedown 필요) 만 명시 예외: `_toggle_overlay(False)` + `click(force=True)` (좌표 클릭 → tActive 부착)
+- **파일**: `pages/shared/_overlay.py` (신설), `pages/base_page.py`, `pages/npouch_control_suite_page.py`, `pages/shared/pickers/process_picker.py`, `pages/shared/pickers/special_folder_picker.py`, `pages/shared/modals/process_sub_modal.py`, `pages/shared/modals/web_restrict_sub_modal.py`
+
+---
+
 ## [RESOLVED] scan_diff_modal element 캡처 30초 hang (시나리오 2/4 누적 60초 낭비)
 - **날짜**: 2026-05-08
 - **증상**: 시나리오 2 끝(save_policy 직전)과 시나리오 4 끝(close_edit_modal 직전)에서
@@ -534,6 +616,52 @@
      - 오류 발견 → `[OK]` + "N자 이상 입력 시 서버 오류"
      - 전부 허용 → `[WARN]` + "1001자까지 제한 없음 (known issue)" + 스크린샷
 - **파일**: `config/scan_hints/npouch_operation_process.yaml`, `tests/test_npouch.py`
+
+---
+
+## [RESOLVED] tag_input × 클릭 (remove) — Playwright click 으로 AngularJS ng-click 미발화 → list 변화 없음
+- **날짜**: 2026-05-18
+- **증상**: 시나리오 3d 의 메인 확장자 단건 삭제 검증 fail. `× 클릭` 후에도 list 변화 없음 (전=3 → 후=3).
+- **원인**: tag_input 의 × 동작은 AngularJS `ng-click` 으로 구현. Playwright `locator.click()` 은 native pointer event 라 ng-click handler 가 trusted event 로 인식 안 함 → 핸들러 미실행. yaml inspection_notes 의 `add_edit_diff_*` 와 동일 부류 이슈.
+- **수정**: 5 개 remove 메서드 모두 JS `evaluate("el => el.click()")` 으로 전환:
+  - `npouch_control_suite_page.remove_main_extension`
+  - `process_sub_modal.remove_ip_port`
+  - `process_sub_modal.remove_extension`
+  - `web_restrict_sub_modal.remove_url`
+  - `web_restrict_sub_modal.remove_file_extension`
+- **파일**: `pages/npouch_control_suite_page.py`, `pages/shared/modals/process_sub_modal.py`, `pages/shared/modals/web_restrict_sub_modal.py`
+
+---
+
+## [RESOLVED] sub-modal 내부 알림은 __globalMessageModal 이 아닌 #registeredFolderWarning — selector 불일치로 항상 미감지
+- **날짜**: 2026-05-18
+- **증상**: 시나리오 3f IP/Port 중복 검증 — Chrome MCP 로 직접 확인 시 "이미 등록된 IP와 Port 입니다" 알림 정상 노출, 자동화에서는 `is_confirm_modal_visible()` False 로 "메시지 미노출" (warn).
+- **원인**: 메인 모달의 confirm 알림과 sub-modal (process_modal 등) 내부 검증 알림이 **서로 다른 DOM ID** 사용.
+  - 메인 모달 confirm: `div#__globalMessageModal` (`.modal-body` 텍스트)
+  - sub-modal warning: `div#registeredFolderWarning` (`.modal-body-text` 텍스트, 닫기 버튼 `.btn-default`, `data-dismiss='modal'` 없음)
+  - 기존 selector 는 `__globalMessageModal` 만 검사 → sub-modal 알림 100% 미감지.
+- **수정**: `pages/npouch_control_suite_page.py` 의 `SEL_CONFIRM_MODAL` / `SEL_CONFIRM_MODAL_OPEN` / `SEL_CONFIRM_BTN` 을 두 ID OR 로 확장. `SEL_CONFIRM_BODY` 추가. `is_confirm_modal_visible()` 에 1.5s attached 대기 추가 (race condition 방어). `get_confirm_message()` 가 두 selector 모두에서 텍스트 추출.
+- **파일**: `pages/npouch_control_suite_page.py`
+- **검증**: Chrome MCP 2026-05-18 직접 확인 — process_modal 안에서 IP `10.10.10.10` + Port `1234` 두 번 추가 시 `#registeredFolderWarning.in` 노출 + `.modal-body-text` = "이미 등록된 IP와 Port 입니다" 정상 동작.
+
+---
+
+## [RESOLVED] 3-stack 모달 (main → sub-modal → alert) 환경에서 dismiss_confirm_modal 의 click 이 backdrop 에 가로채여 30s timeout
+- **날짜**: 2026-05-18
+- **증상**: 시나리오 3f IP/Port 중복 검증 — `add_ip_port` 두 번째 호출 (중복) 후 '이미 등록된 IP와 Port 입니다' 알림 모달이 떴는데 `dismiss_confirm_modal()` 의 `self._click()` 이 hang.
+- **원인**: 3 modal stack (controlSuite → controlSuiteProcessList → __globalMessageModal) 에서 topmost backdrop 이 alert 의 '확인' 버튼 click 을 intercept. Playwright auto-retry 30s timeout. 이전 (2-stack: main → alert) 케이스에서는 backdrop 단순해서 발생 안 함.
+- **수정**: `pages/npouch_control_suite_page.py` 의 `dismiss_confirm_modal()` 에 try-except fallback 추가 — Playwright click 3s 시도 후 실패 시 JS evaluate click 으로 우회 (좌표 무관).
+- **파일**: `pages/npouch_control_suite_page.py`
+
+---
+
+## [RESOLVED] 4f 에서 picker 중복 프로세스 선택 → 경고 confirm 모달 미처리 → 다음 클릭 차단
+- **날짜**: 2026-05-15
+- **증상**: 시나리오 4f 의 `page.web_restrict.confirm()` 이 `Locator.click: Timeout 30000ms exceeded`. Playwright 에러 로그: `<div class="modal-backdrop in"></div> intercepts pointer events`. 후속 4g/5a cascade FAIL.
+- **원인 (실제)**: 4d 에서 이미 첫 행 프로세스 (예: `111bug_process.exe`) 를 기존 웹제한에 등록했음. 4f 에서 2번째 웹제한 추가 시 같은 picker 첫 행을 multi 선택하면 `'<프로세스명>은 이미 등록되어 있어 생략되었습니다.(타 웹제한 포함)'` 경고 confirm 모달이 노출. 이 모달의 backdrop 이 다음 `web_restrict.confirm()` 클릭을 가로챔. Playwright 에러의 backdrop 정체는 picker 잔여가 아니라 경고 모달의 backdrop.
+- **5a 와의 차이**: 5a (ADD) 는 사전 등록된 웹제한이 없어 picker multi 선택 시 중복 충돌 없음 → 경고 모달 안 뜸 → 통과. 즉 동일 흐름이지만 데이터 상태 차이로 EDIT 에서만 발현.
+- **수정 (yaml `web_restrict_cross_instance_duplicate` must_test 검증으로 격상)**: `tests/test_npouch_control_suite.py` 4f 를 재설계 — picker 첫 행 (4d 사용 프로세스) 선택 → 중복 알림 메시지 yaml 패턴 검증 + "행 추가 안 됨 (생략 동작)" 검증 → picker 재오픈 → 미사용 2번째 행 선택 → 정상 등록 흐름. 즉 yaml 사양 그대로 테스트 항목으로 추가. 추가로 `pages/shared/pickers/process_picker.py` 의 `wait_closed()` 에 backdrop 수 감소 폴링 추가 (defense-in-depth).
+- **파일**: `tests/test_npouch_control_suite.py`, `pages/shared/pickers/process_picker.py`, `config/scan_hints/control_suite.yaml` (rule 1200-1217 참조)
 
 ---
 

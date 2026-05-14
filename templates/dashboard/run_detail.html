@@ -1,0 +1,108 @@
+{% extends "dashboard/layout.html" %}
+{% block title %}QA Dashboard — 실행 상세{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-3 mb-4">
+  <a href="{{ url_for('dashboard.runs') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left"></i> 목록
+  </a>
+  <h1 class="page-title mb-0">{{ run.product }} — {{ run.timestamp[:16] }}</h1>
+</div>
+
+<!-- 요약 카드 -->
+<div class="row g-3 mb-4">
+  {% for label, val, cls in [('PASS', run.pass_cnt, 'success'), ('FAIL', run.fail_cnt, 'danger'), ('BUG', run.bug_cnt, 'warning'), ('ERROR', run.error_cnt, 'danger'), ('전체', run.total, 'secondary')] %}
+  <div class="col">
+    <div class="kpi-card">
+      <div>
+        <div class="kpi-value text-{{ cls }}">{{ val }}</div>
+        <div class="kpi-label">{{ label }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- 결과 테이블 -->
+<div class="qa-table">
+  <div class="p-3 border-bottom d-flex gap-2 align-items-center">
+    <span class="fw-bold" style="font-size:15px;">검증 결과 상세</span>
+    <div class="ms-auto d-flex gap-1 flex-wrap">
+      <button class="btn btn-outline-secondary btn-sm filter-btn" data-filter="" onclick="filterStatus('')">전체</button>
+      <button class="btn btn-outline-success btn-sm filter-btn" data-filter="pass" onclick="filterStatus('pass')">PASS</button>
+      <button class="btn btn-outline-danger btn-sm filter-btn" data-filter="fail" onclick="filterStatus('fail')">FAIL</button>
+      <button class="btn btn-outline-warning btn-sm filter-btn" data-filter="bug" onclick="filterStatus('bug')">BUG</button>
+      <button class="btn btn-outline-danger btn-sm filter-btn" data-filter="error" onclick="filterStatus('error')">ERROR</button>
+      {% if run_diff %}
+      <button class="btn btn-sm filter-btn" data-filter="fixed" onclick="filterStatus('fixed')"
+              style="background:#e8f8ef;color:#27ae60;border:1px solid #b7e4c7;">수정됨</button>
+      <button class="btn btn-sm filter-btn" data-filter="regressed" onclick="filterStatus('regressed')"
+              style="background:#fde8e8;color:#c0392b;border:1px solid #f5c6cb;">회귀</button>
+      {% endif %}
+    </div>
+  </div>
+  <table class="table table-hover mb-0" id="resultTable">
+    <thead>
+      <tr>
+        <th>페이지</th>
+        <th>시나리오</th>
+        <th>검증 항목</th>
+        <th>결과</th>
+        <th>기댓값</th>
+        <th>실제값</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      {% set diff_key = (r.page_label or '') + '|' + (r.label or '') %}
+      {% set diff = run_diff.get(diff_key, '') %}
+      <tr data-status="{{ r.status }}" data-diff="{{ diff }}">
+        <td><span class="badge bg-light text-dark">{{ r.page_label }}</span></td>
+        <td class="text-muted" style="font-size:12px;">{{ r.scenario }}</td>
+        <td>{{ r.label }}</td>
+        <td>
+          <span class="badge badge-{{ r.status }}">
+            {% if r.status == 'pass' %}✅ PASS
+            {% elif r.status == 'fail' %}❌ FAIL
+            {% elif r.status == 'bug' %}⚠️ BUG
+            {% elif r.status == 'error' %}💥 ERROR
+            {% else %}⏭ SKIP{% endif %}
+          </span>
+          {% if diff == 'fixed' %}
+          <span class="badge badge-fixed ms-1">수정됨</span>
+          {% elif diff == 'regressed' %}
+          <span class="badge badge-regressed ms-1">회귀</span>
+          {% endif %}
+        </td>
+        <td style="font-size:12px;color:#555;">{{ r.expected }}</td>
+        <td style="font-size:12px;color:#555;">{{ r.actual }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-center text-muted py-4">결과 없음</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterStatus(status) {
+  document.querySelectorAll('#resultTable tbody tr').forEach(tr => {
+    if (!status) {
+      tr.style.display = '';
+      return;
+    }
+    if (status === 'fixed' || status === 'regressed') {
+      tr.style.display = tr.dataset.diff === status ? '' : 'none';
+    } else {
+      tr.style.display = tr.dataset.status === status ? '' : 'none';
+    }
+  });
+  // 활성 버튼 표시
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === status);
+  });
+}
+</script>
+{% endblock %}

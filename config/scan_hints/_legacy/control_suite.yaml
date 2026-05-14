@@ -1,0 +1,447 @@
+scan_mode: list_page
+page_id: control_suite
+
+# ── 탐색일 ──────────────────────────────────────────────────────────
+# 탐색일: 2026-04-28 / Chrome MCP 직접 탐색
+
+# ── 네비게이션 ──────────────────────────────────────────────────────
+nav:
+  menu_id: managerControlSuite
+  hash: "#!/managerControlSuite?pageNo=1&pageSize=100&searchText="
+
+# ── 목록 페이지 버튼 ────────────────────────────────────────────────
+buttons:
+  add:    "button#addItemBtn"       # 스위트 추가
+  modify: "button#modifyItemBtn"    # 수정 (행 선택 후 활성)
+  copy:   "button#copyItemBtn"      # 복사 (행 선택 후 활성)
+  delete: "button#removeItemBtn"    # 삭제 (체크박스 선택 후 활성)
+  detail_toggle: "button#__layoutMainItemDetailOpenCloseBtn"  # 상세정보 열기/닫기
+
+# ── 목록 검색 ───────────────────────────────────────────────────────
+search:
+  input:  "input#searchText"        # maxlength=20
+  button: "button#searchBtn"
+
+# ── 목록 테이블 ─────────────────────────────────────────────────────
+table:
+  row:      "table tbody tr"
+  checkbox: "input[type='checkbox']"
+  columns:
+    - label: "스위트 이름"
+      index: 0
+    - label: "등록된 프로세스/태그"
+      index: 1
+      note: "X/Y 형식 — X=개별프로세스, Y=태그"
+    - label: "등록된 웹제한"
+      index: 2
+      note: "숫자 단독"
+    - label: "등록자"
+      index: 3
+    - label: "수정자"
+      index: 4
+    - label: "등록일"
+      index: 5
+    - label: "수정일"
+      index: 6
+
+# ── 상세 패널 (우측) ─────────────────────────────────────────────────
+detail_panel:
+  container: "#__layoutMainItemContentsDetail"
+  tabs:
+    - label: "상세정보"
+    - label: "로그"
+  fields:
+    - 스위트 이름
+    - 등록자
+    - 수정자
+    - 등록일
+    - 수정일
+
+# ══════════════════════════════════════════════════════════════════════
+# 주 모달 (추가/수정 공용): div#controlSuite.modal-wrap
+# 추가 제목: "제어 스위트 추가" / 수정 제목: "제어 스위트 수정"
+# ══════════════════════════════════════════════════════════════════════
+main_modal:
+  id: "controlSuite"
+  sel: "div#controlSuite"
+  sel_open: "div#controlSuite.in"
+  submit_btn: "#controlSuite .btn.btn-primary"
+  cancel_btn: "#controlSuite .btn.btn-default"
+
+  # ── Phase 1: 기본 필드 ────────────────────────────────────────────
+  fields:
+    - id: csuName
+      selector: "input#csuName"
+      label: "스위트 이름"
+      required: true
+      note: "추가/수정 공용 모달 필드"
+
+    - id: isClipboardRestrict
+      selector: "input#isClipboardRestrict"
+      label: "클립보드 공유제한"
+      type: toggle          # checkbox → UI는 ON/OFF 토글
+      required: false
+      sub_field:
+        selector: "textarea#clipboardAllowUrl"
+        label: "클립보드 예외 URL 목록"
+        note: "URL1:URL2: 형식, Chrome/MsEdge/Whale 지원"
+
+    - id: isNetwork
+      selector: "input#isNetwork"
+      label: "네트워크 허용"
+      type: toggle
+      required: false
+
+    - id: isAllowExtension
+      selector_allow: "input#ALLOW"
+      selector_block: "input#BLOCK"
+      label: "제어할 확장자"
+      type: radio           # 확장자 대상지정 / 확장자 전체차단
+      required: false
+      sub_fields:
+        extension_text_label: "span#allowExtensionText"   # 차단할 확장자 / 허용할 확장자
+        extension_input: "input#allowExtensionInput"
+        extension_add_btn: "button#allowExtensionInputBtn"
+        extension_tag_list: "div#allowExtensionUl"
+        header_check: "input#isHeaderCheck"               # 헤더 체크 기능 사용
+
+    - id: isSignExcept
+      selector: "input#isSignExcept"
+      label: "전자서명 예외처리"
+      type: toggle
+      required: false
+      sub_fields:
+        sign_add_btn: "button#signExceptBtn"
+        sign_list: "div#signExceptUl"
+
+    - id: customOptionText
+      selector: "input#customOptionText"
+      label: "커스텀 옵션값"
+      required: false
+      note: "커스텀 기능 추가 적용시에만 사용"
+
+  # ── Phase 2: 프로세스별 제어 ─────────────────────────────────────
+  process_control:
+    section_label: "프로세스별 제어"
+    add_btn: "button#addCsuProcessBtn"       # + 버튼
+    remove_btn: "button#removeCsuProcessBtn" # - 버튼
+    tabs:
+      individual:
+        label: "개별 프로세스"
+        tab_sel: "a.userItemTitle"           # text = '개별 프로세스'
+        list_container: "div#itemList"
+        table_cols: [프로세스 명, 클립보드 제어, 네트워크 허용, 제어할 확장자, 접근 드라이브]
+      tag:
+        label: "태그"
+        tab_sel: "a.userItemTitle"           # text = '태그'
+        list_container: "div#itemTagList"
+        table_cols: [순위, 태그명, 클립보드 제어, 네트워크 허용, 제어할 확장자, 접근 드라이브]
+
+  # ── Phase 3: 웹 제한기능 ─────────────────────────────────────────
+  web_restrict:
+    section_label: "웹 제한기능"
+    add_btn: "button#addCsuWebRestrictBtn"
+    remove_btn: "button#removeCsuWebRestrictBtn"
+    table_cols: [웹 제한 명, 등록된 프로세스, 등록된 URL, 암호화 여부, 등록된 확장자, 업로드 제한용량]
+
+# ══════════════════════════════════════════════════════════════════════
+# 프로세스 등록 서브모달: div#controlSuiteProcessList.modal-wrap
+# (프로세스별 제어 > + 버튼 클릭 시 오픈)
+# ══════════════════════════════════════════════════════════════════════
+process_modal:
+  id: "controlSuiteProcessList"
+  sel: "div#controlSuiteProcessList"
+  sel_open: "div#controlSuiteProcessList.in"
+  confirm_btn: "#controlSuiteProcessList .btn.btn-primary"   # 확인
+  cancel_btn:  "#controlSuiteProcessList .close"
+
+  fields:
+    - id: csuProcessName
+      selector: "span#csuProcessName"
+      label: "프로세스 명(표시)"
+      note: "선택 전 '프로세스 미선택' 표시"
+    - id: csuProcessBtn
+      selector: "button#csuProcessBtn"
+      label: "프로세스 선택 버튼"
+    - id: isProcessExcept
+      selector: "input#isProcessExcept"
+      label: "프로세스 예외처리"
+      type: toggle
+    - id: isPClipboardRestrict
+      selector: "input#isPClipboardRestrict"
+      label: "클립보드 공유제한"
+      type: toggle
+    - id: isPNetwork
+      selector: "input#isPNetwork"
+      label: "네트워크 허용"
+      type: toggle
+      sub_fields:
+        ip_input:   "input#accessAllowIp"
+        port_input: "input#accessAllowPort"
+        add_btn:    "button#allowIpAddressBtn"
+        ip_list:    "ul#allowIpAddressList"
+    - id: isPControlExtension
+      selector: "input#isPControlExtension"
+      label: "제어할 확장자"
+      type: toggle
+      sub_fields:
+        radio_allow: "input#ALLOWP"
+        radio_block: "input#BLOCKP"
+        text_label:  "span#allowExtensionTextP"
+        ext_input:   "input#allowExtensionInputP"
+        ext_add_btn: "button#allowExtensionInputBtnP"
+        ext_list:    "div#allowExtensionUlP"
+    - id: cacheFolderInput
+      selector: "div#cacheFolderInput"
+      label: "캐시폴더 지정"
+      sub_fields:
+        special_btn: "button#attachCacheFolderBtn"
+        folder_list: "div#cacheFolderList"
+      note: "OS 기본 경로(Program Files, Appdata 등)는 기본 등록됨"
+    - id: isSandbox
+      selector: "input#isSandbox"
+      label: "SandBox 기능 사용"
+      type: toggle
+    - id: isAccessDrive
+      selector: "input#isAccessDrive"
+      label: "접근 드라이브 지정"
+      type: toggle
+      sub_fields:
+        drive_letter: "input#accessDriveLetter"
+    - id: isDenyExceptDrive
+      selector: "input#isDenyExceptDrive"
+      label: "예외 드라이브 접근 차단"
+      type: toggle
+    - id: description
+      selector: "#controlSuiteProcessList textarea#description"
+      label: "설명"
+      required: false
+
+# ══════════════════════════════════════════════════════════════════════
+# 웹 제한 서브모달: div#controlSuiteWebRestricList.modal-wrap
+# (웹 제한기능 > + 버튼 클릭 시 오픈)
+# ══════════════════════════════════════════════════════════════════════
+web_restrict_modal:
+  id: "controlSuiteWebRestricList"
+  sel: "div#controlSuiteWebRestricList"
+  sel_open: "div#controlSuiteWebRestricList.in"
+  confirm_btn: "#controlSuiteWebRestricList .btn.btn-primary"
+  cancel_btn:  "#controlSuiteWebRestricList .close"
+
+  fields:
+    - id: webRestrictName
+      selector: "input#webRestrictName"
+      label: "웹 제한 명"
+      required: true
+    - id: addWebRestrictProcess
+      selector: "button#addWebRestrictProcess"
+      label: "프로세스 추가 버튼"
+    - id: webRestrictProcessTb
+      selector: "table#webRestrictProcessTb"
+      label: "프로세스 테이블"
+      tbody: "tbody#webRestrictProcessTbBd"
+      cols: [프로세스 이름, 서명 유무, SHA2 유무, 삭제]
+    - id: basePath
+      selector: "input#basePath"
+      label: "기본폴더 지정"
+    - id: isProcessOption
+      selector: "input#isProcessOption"
+      label: "기타 프로세스 권한"
+      type: toggle
+      sub_fields:
+        process_auth:          "button#processAuthText"           # 읽기
+        other_folder_auth:     "button#otherFolderAccessAuthText" # 타폴더 접근권
+        process_auth_div:      "div#processAuthDiv"
+        other_folder_auth_div: "div#otherFolderAccessAuthDiv"
+    - id: isUrl
+      selector: "input#isUrl"
+      label: "URL 제한"
+      type: toggle
+      sub_fields:
+        url_input:   "input#attachAllowUrl"
+        url_add_btn: "button#attachAllowUrlBtn"
+        url_list:    "div#webRestrictUrlList"
+    - id: isFileUploadEncrypt
+      selector: "input#isFileUploadEncrypt"
+      label: "업로드 파일 암호화"
+      type: toggle
+    - id: allowFileExtention
+      selector: "input#allowFileExtention"
+      label: "허용 확장자"
+      sub_fields:
+        add_btn: "button#addAllowFileExtention"
+        list:    "div#allowFileExtentionList"
+    - id: isAllowFileHeaderCheck
+      selector: "input#isAllowFileHeaderCheck"
+      label: "헤더 체크"
+      type: toggle
+    - id: uploadLimitSize
+      selector: "input#uploadLimitSize"
+      label: "업로드 제한 용량"
+    - id: description
+      selector: "#controlSuiteWebRestricList textarea#description"
+      label: "설명"
+      required: false
+
+# ══════════════════════════════════════════════════════════════════════
+# 입력 필드 검증 규칙 (Chrome MCP 탐색 결과 — 2026-04-28)
+# ══════════════════════════════════════════════════════════════════════
+validation_rules:
+
+  # ── 메인 모달: 확장자 필드 (isAllowExtension) ──────────────────────
+  main_modal_extension:
+    selector: "input#allowExtensionInput"
+    dom_maxlength: none                 # maxlength 속성 없음
+    allow:
+      - 알파벳/숫자 (exe, 123)
+      - 도트 포함 (.exe, exe.exe)
+      - 특수문자 허용 목록 (*, ;, ?, +)
+      - 대소문자 구분 — EXE와 exe는 각각 독립 태그
+    block:
+      - 빈값 silent block
+      - 중복 silent block (동일 문자열 완전 일치)
+      - 한글 silent block
+      - 공백 포함 silent block
+    note: 프로세스 서브모달(allowExtensionInputP)도 동일 규칙
+
+  # ── 프로세스 서브모달: IP 입력 (accessAllowIp) ─────────────────────
+  process_modal_ip:
+    selector: "input#accessAllowIp"
+    dom_maxlength: none
+    allow:
+      - 유효한 IPv4 형식 (192.168.1.1)
+      - 마지막 옥텟 와일드카드 (192.168.1.*)
+    block:
+      - 잘못된 형식 (abc, 999.999.999.999) — silent block
+      - 빈값 — alert 이름을 입력해 주세요
+    validation_type: client_side_silent  # 에러 없이 추가 안 됨
+    known_issues: []
+
+  # ── 프로세스 서브모달: Port 입력 (accessAllowPort) ─────────────────
+  process_modal_port:
+    selector: "input#accessAllowPort"
+    dom_maxlength: none
+    allow:
+      - 정수 0~65535
+      - 빈값 — any 로 표시됨
+    block:
+      - 65536 이상 — alert (Port의 최대값은 65535입니다)
+    known_issues:
+      - value: "-1"
+        behavior: 추가됨 (음수 허용 — 버그)
+      - value: "1.5"
+        behavior: 추가됨 (소수 허용 — 버그)
+
+  # ── 웹 제한 서브모달: URL 입력 (attachAllowUrl) ────────────────────
+  web_restrict_url:
+    selector: "input#attachAllowUrl"
+    dom_maxlength: none
+    toggle_selector: "input#isUrl"
+    allow:
+      - 모든 문자열 (형식 검증 없음)
+      - not-a-url, ftp://, *.example.com 모두 추가됨
+      - javascript scheme 포함 문자열도 추가됨 (XSS 위험)
+    block:
+      - 빈값 — silent block
+    known_issues:
+      - label: URL 형식 검증 없음 — 임의 문자열 저장 가능
+      - label: javascript scheme 차단 없음
+
+  # ── 웹 제한 서브모달: 업로드 허용 확장자 (allowFileExtention) ───────
+  web_restrict_extension:
+    selector: "input#allowFileExtention"
+    add_btn: "button#addAllowFileExtention"
+    list_container: "div#allowFileExtentionList"
+    dom_maxlength: none
+    allow:
+      - 알파벳/숫자, 도트 포함 (.exe, ex.exe)
+      - 와일드카드 * 허용
+      - 대소문자 구분 — EXE와 exe는 별개 태그
+    block:
+      - 빈값 — silent block
+      - 중복 (완전 일치) — silent block
+      - 한글 — silent block
+      - 공백 포함 — silent block
+    note: 메인 모달 확장자 필드와 동일 규칙
+
+  # ── 웹 제한 서브모달: 업로드 제한 용량 (uploadLimitSize) ────────────
+  web_restrict_upload_size:
+    selector: "input#uploadLimitSize"
+    unit: "MB"
+    input_type: text                    # type=text (숫자 type 아님)
+    dom_maxlength: none
+    server_validation: unknown          # 프로세스 필수라 단독 제출 불가
+    note: "숫자 외 문자 입력 가능 여부 — 서버 측 검증 필요. 빈값=무제한 추정"
+
+  # ── 공통 제약 ───────────────────────────────────────────────────────
+  common:
+    submit_order:
+      web_restrict_modal:
+        - "적용 프로세스 필수 (빈 상태 제출 → '선택된 프로세스가 없습니다.')"
+        - "이름 필수 체크는 프로세스 이후 추정 (프로세스 없으면 그 전에 차단됨)"
+
+# ── 테스트 구현 단계 계획 ─────────────────────────────────────────────
+test_phases:
+  phase1:
+    label: "기본 요소"
+    scope:
+      - 목록 UI (버튼 존재, 테이블 헤더, 검색창)
+      - 미선택 경고 (수정/삭제)
+      - 스위트 추가/삭제 (이름만)
+      - 복사 동작 확인
+      - 상세 패널 (행 클릭 → 필드 표시)
+      - 수정 모달 기본 필드 (csuName, toggle ON/OFF, 커스텀 옵션값)
+
+  phase2:
+    label: "프로세스별 제어 (개별 프로세스 + 태그)"
+    scope:
+      - 개별 프로세스 탭 + 버튼 → 프로세스 등록 서브모달
+      - 프로세스 선택 (csuProcessBtn → 프로세스 선택 서브서브모달)
+      - 프로세스 옵션 설정 (toggle 각 항목)
+      - 태그 탭 + 버튼 → 태그 선택/등록
+      - 프로세스/태그 카운트 (목록 컬럼 X/Y 확인)
+      - - 버튼으로 제거
+
+  phase3:
+    label: "웹 제한기능"
+    scope:
+      - 웹 제한 + 버튼 → 웹 제한 서브모달
+      - 웹 제한 명 입력, 프로세스 추가
+      - URL 제한, 암호화, 확장자, 업로드 용량
+      - 웹제한 카운트 (목록 컬럼 확인)
+      - - 버튼으로 제거
+
+# ── 추가 테스트 항목 (Phase 1 잔여 / 예외 처리) ──────────────────────────
+deferred_tests:
+
+  # Phase 1에서 누락된 동작 검증
+  phase1_remaining:
+    - id: extension_radio_label_change
+      label: "제어할 확장자 — 라디오 버튼 전환 시 레이블 변경"
+      description: >
+        ALLOW(input#ALLOW) 선택 → span#allowExtensionText = '허용할 확장자',
+        BLOCK(input#BLOCK) 선택 → span#allowExtensionText = '차단할 확장자' 로
+        텍스트가 바뀌는지 확인
+      selectors:
+        radio_allow:    "input#ALLOW"
+        radio_block:    "input#BLOCK"
+        text_label:     "span#allowExtensionText"
+      expected:
+        when_allow: "허용할 확장자"
+        when_block: "차단할 확장자"
+      test_location: test_scenario2_modal_fields (추가) 또는 별도 scenario
+
+  # 자동화가 어렵거나 다른 테스트에 의존하는 항목
+  manual_or_conditional:
+    - id: delete_blocked_when_applied
+      label: "삭제 기능 — 원본보호 정책에 적용된 스위트 삭제 차단 확인"
+      description: >
+        원본보호 정책에서 제어 스위트를 연결한 상태에서
+        해당 스위트 삭제 시도 → 삭제 불가 메시지가 뜨는지 확인
+      dependency: "원본보호 정책 테스트(test_origin_protect_policy.py) 실행 후 검증 가능"
+      automation_difficulty: high
+      reason: >
+        다른 페이지(원본보호 정책)에서 스위트를 연결한 상태를 먼저 만들어야 함.
+        현재는 test_scenario3_crud 에서 [AUTO] 삭제만 검증.
+        원본보호 정책 테스트 작성 후 시나리오 6 확장 또는 별도 파일로 처리.
+      status: deferred

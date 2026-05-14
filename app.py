@@ -197,7 +197,7 @@ _LIST_SCENARIOS = [
 _NPOUCH_PAGE_TO_CLASS: dict[str, str] = {
     "npouch_operation_process": "TestNpouchOperationProcess",
     "npouch_tag":               "TestNpouchTag",
-    "npouch_control_suite":     "TestControlSuite",
+    "npouch_control_suite":     "TestNpouchControlSuite",
     "npouch_origin_protect":    "TestNpouchOriginProtect",
     "npouch_policy":            "TestNpouchPolicy",
 }
@@ -205,7 +205,7 @@ _NPOUCH_CLASS_TO_PAGE: dict[str, str] = {v: k for k, v in _NPOUCH_PAGE_TO_CLASS.
 _NPOUCH_PAGE_TO_FILE: dict[str, str] = {
     "npouch_operation_process": "test_npouch.py",
     "npouch_tag":               "test_npouch_tag.py",
-    "npouch_control_suite":     "test_control_suite.py",
+    "npouch_control_suite":     "test_npouch_control_suite.py",
     "npouch_origin_protect":    "test_npouch.py",
     "npouch_policy":            "test_npouch.py",
 }
