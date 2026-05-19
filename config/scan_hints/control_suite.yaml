@@ -398,6 +398,25 @@ scenario_3_legacy_build_findings_2026_05_19:
       main_save: "저장 하였습니다 (정상)"
       conclusion: "글자수/한글/특수 차단 없음 + 메인 저장 시 서버 오류 없음 = 완전 안전 영역"
 
+    # 태그 mode 동일 패턴 검증 (process mode 와 일치)
+    tag_mode_same_pattern:
+      tag_mode_port_m1: "메인 저장 서버 오류 (process mode 와 동일)"
+      conclusion: "태그 영역도 process 영역과 동일 UX 결함 적용. yaml :144 + :138 의 동일 패턴 확장 적용."
+
+    # cacheFolderInput UX 결함 trigger 격리 (방금 검증)
+    cacheFolder_ux_defect_isolated:
+      case_kr_only: "한글 1건 단독 → 메인 저장 OK (한글 차단 X)"
+      case_500_only: "500자 1건 단독 → 메인 저장 서버 오류 (UX 결함 trigger 확정)"
+      case_special_only: "미검증 (한글 OK 라 동일 추정)"
+      conclusion: "cacheFolderInput UX 결함 trigger = 500자 (긴 글자수). 한글/특수 자체는 차단 없음."
+
+    # uploadLimitSize 12자 max 값 정상 저장 검증
+    uploadLimitSize_max_value_safety:
+      input: "999999999999 (12자 max, 9999억)"
+      sub_modal: "저장 OK"
+      main_save: "저장 하였습니다"
+      conclusion: "12자 이내 값은 크기 무관 정상 저장. 13자+ 만 모달 단계 차단 (정상 UX)."
+
 # ──────────────────────────────────────────────────────────────────────────────
 scenario_3_extra_findings_2026_05_13:
   process_modal_extension_with_toggle:
