@@ -258,13 +258,59 @@ scenario_3_legacy_build_findings_2026_05_19:
         verified_2026_05_19: true
       severity: "Port -1 + 빈값 = UX 결함 (sub-modal OK → 메인 저장 시 서버 차단). 제품 권고: sub-modal 단계에서 차단"
 
-  # 본 서버 mcp 재검증 잔여 항목 (2026-05-19)
-  pending_main_server_verification:
-    - "IP/Port 삭제 잔류 버그 (display:none 잔류 → 중복 알림) 신 빌드 재현 여부"
-    - "uploadLimitSize 변환 정확 alert 텍스트 (구 빌드: 'abc'/'-1' → '0' 변환 확정 — 신 빌드는?)"
-    - "cross-instance ADD 흐름 (한 정책 안 web_restrict 2건 + 같은 프로세스) — yaml :1275 must_test 의 ADD 변형 (sc4 4f EDIT 검증 있음)"
-    - "allow_url 라디오 종속 (ra0/ra1 + 암호화 disabled) 신 빌드 정상 동작 검증"
-    - "Port -1/0/빈값 등록 가능 → 메인 저장 시점 서버 오류 여부 (드라이브 letter 동일 UX 결함 패턴 검증)"
+  # 본 서버 mcp 재검증 완료 항목 (2026-05-19 — 모두 verified)
+  main_server_verified_additional:
+    ip_port_delete_residual_bug:
+      reproduced_on_main_server: true
+      symptom: "IP/Port × 삭제 → display:none 잔류 → 동일 IP+Port 재입력 시 알림"
+      alert_message: "이미 등록된 IP와 Port 입니다"
+      modal_id: "registeredFolderWarning"   # yaml :411 의 동일 알림 재사용
+      severity: "ux_bug — 신/구 빌드 모두 재현"
+      auto_detection_potential: "sc3c 의 IP/Port 추가→삭제→재추가 cycle 추가 시 회귀 검출 가능"
+
+    uploadLimitSize_conversion:
+      verified_on_main_server: true
+      conversion_rules:
+        - {input: "abc", after: "0"}    # yaml :393 일치
+        - {input: "-1",  after: "1"}    # yaml :393 일치
+        - {input: "1.5", after: "0"}    # 소수점 무시 → 0 변환
+        - {input: "",    after: "0"}    # 빈값 → 0 변환
+      build_difference:
+        old_build_192_168_11_97: "DOM maxlength=12 (12자 한도 알림: '업로드 제한용량의 입력 가능 글자수는 최대 12자 까지 가능합니다.')"
+        new_build_innotium_iptime_org: "DOM maxlength=null (13자리도 그대로 등록 — 한도 알림 없음)"
+      severity: "신/구 빌드 동작 차이 — 신 빌드는 12자 한도 기능 부재 (DOM 제한 X)"
+      note: "메인 저장 시점 서버 오류 여부 추가 검증 가치 (드라이브 letter 동일 패턴 추정)"
+
+    cross_instance_ADD_flow:
+      verified_on_main_server: true
+      trigger: "한 정책 안 web_restrict 2번째 추가 + 1번째에 등록된 프로세스 multi 재선택"
+      message_pattern: "{process_name 또는 다중 list}은 이미 등록되어 있어 생략되었습니다.(타 웹제한 포함)"
+      modal_id: "__globalMessageModal"  # yaml :1282 일치
+      observation: "다중 프로세스 선택 시 모든 프로세스 이름이 list 로 message body 에 포함 + '은 이미 등록...' 접미"
+      yaml_ref: ":1275 must_test 의 ADD 변형 확정 — sc4 4f EDIT 와 동일 메시지 패턴"
+
+    allow_url_mode_combinations:
+      verified_on_main_server: true
+      transitions:
+        - {from: "initial", ra0_checked: true, ra1_checked: false, enc_checked: false, enc_disabled: false}
+        - {from: "ra0_click", ra0_checked: true, ra1_checked: false, enc_checked: false, enc_disabled: false, note: "자유 체크 가능"}
+        - {from: "ra1_click", ra0_checked: false, ra1_checked: true, enc_checked: true,  enc_disabled: true,  note: "자동 체크 + 해제 불가 (강제 활성)"}
+        - {from: "ra0_again", ra0_checked: true, ra1_checked: false, enc_checked: true,  enc_disabled: false, note: "직전 값 유지 + disabled 풀림"}
+      yaml_ref: ":179-184 정확 일치 — 신 빌드 정상 동작 (구 빌드 미지원)"
+
+    port_save_cycle_isolated_verification:
+      verified_on_main_server: true
+      method: "Port 별 별도 정책 (격리) cycle: A=8080(정상) / B=-1 / C=0 / D=빈값"
+      results:
+        - {port: "8080", main_save: "저장 하였습니다", category: "정상"}
+        - {port: "-1",   main_save: "서버에서 오류가 발생 하였습니다.", category: "ux_defect"}
+        - {port: "0",    main_save: "저장 하였습니다", category: "정상 (예상과 달리 valid)"}
+        - {port: "",     main_save: "서버에서 오류가 발생 하였습니다.", category: "ux_defect"}
+      severity: "Port -1 + 빈값 = sub-modal OK + 메인 저장 시 차단 (UX 결함)"
+      sc3j_automation_added: true
+
+  # 모든 pending 완료 (2026-05-19)
+  pending_main_server_verification: []
 
 # ──────────────────────────────────────────────────────────────────────────────
 scenario_3_extra_findings_2026_05_13:
