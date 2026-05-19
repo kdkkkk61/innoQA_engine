@@ -1114,17 +1114,14 @@ class TestScenario3Action(ControlSuiteBase):
             self._add("warn", "[차단 메시지] process picker 중복 — 메시지 미노출",
                       f"입력: 동일 프로세스 재선택 / 결과: 알림 없음", sc=3)
 
-        # picker / process_modal 정리 — 두 번째 행 시도 없이 강제 DOM 제거.
-        # _close_leftover_submodals: ESC 5회 + JS DOM 강제 제거 + backdrop 정리.
-        # 주의: 메인 모달 #controlSuite 도 같이 강제 제거됨 + inline style="display:none" 잔류.
-        page._close_leftover_submodals()
-        # Case B 위해 inline style 잔류 제거 (reload 회피 — page session 안전).
-        page.page.evaluate("""
-            () => document.querySelectorAll('div.modal-wrap, div.modal').forEach(m => {
-                m.style.display = '';
-            })
-        """)
-        page.page.wait_for_timeout(500)
+        # picker / 모달 정리 — ESC 키만 (JS evaluate 가 page closed cascade 야기, 회피).
+        # _close_leftover_submodals + inline style evaluate 가 sc3i Case C 진입 시 page close 트리거 확인됨.
+        for _ in range(5):
+            try:
+                page.page.keyboard.press("Escape")
+                page.page.wait_for_timeout(200)
+            except Exception:
+                break
 
         # ── Case B: web_restrict picker — 동일 인스턴스 안 중복 프로세스 재선택 ──
         page.navigate_to()
@@ -1151,9 +1148,13 @@ class TestScenario3Action(ControlSuiteBase):
             self._add("warn", "[차단 메시지] web_restrict picker 중복 — 메시지 미노출",
                       f"입력: 같은 프로세스 재선택 / 결과: 알림 없음", sc=3)
 
-        # picker / web_restrict / 메인 모달 일괄 강제 정리 — Case A 와 동일 단순 패턴.
-        page._close_leftover_submodals()
-        page.page.wait_for_timeout(500)
+        # ESC 키만 정리 (JS evaluate 회피 — page close cascade 방지)
+        for _ in range(5):
+            try:
+                page.page.keyboard.press("Escape")
+                page.page.wait_for_timeout(200)
+            except Exception:
+                break
 
         # ── Case C: tag mode picker — 동일 태그 재선택 중복 알림 (사용자 보고 누락) ──
         # 사용자 검증 요청: process 와 동일하게 태그 영역도 picker 중복 알림 있어야 함.
@@ -1187,12 +1188,25 @@ class TestScenario3Action(ControlSuiteBase):
             self._add("warn", "[차단 메시지] tag picker 중복 — 메시지 미노출",
                       f"입력: 동일 태그 재선택 / 결과: 알림 없음", sc=3)
 
-        # 정리
-        page._close_leftover_submodals()
-        page.page.wait_for_timeout(500)
+        # 정리 — ESC 만 (JS evaluate 회피)
+        for _ in range(5):
+            try:
+                page.page.keyboard.press("Escape")
+                page.page.wait_for_timeout(200)
+            except Exception:
+                break
 
     # ==================================================================
-    # 시나리오 3j — save cycle errors (메인 저장 시점 서버 오류 — Phase C 복합)
+    # 시나리오 3j — 모달 단계 OK + 메인 저장 차단 (3 영역 그룹 검증)
+    # ==================================================================
+    # 검증 방향성 (사용자 결정 2026-05-20):
+    #   - 프로세스별 제어 / 태그 제어 / 웹 제한기능 모달의 input 이 모달 단계에선 통과
+    #   - 메인 저장 ("추가") 시점에 서버에서 차단 → '서버에서 오류가 발생 하였습니다.' 알림
+    #   - 본서버 Chrome MCP 검증 2026-05-19~20 기반
+    # 영역 별 sub-case 그룹:
+    #   Case A1~A3: 프로세스 모달 (drive 100자 / Port -1 / Port 빈값)
+    #   Case B1:   태그 모달 (drive 100자 — process mode 동일성 verified)
+    #   Case C1~C4: 웹제한 모달 (basePath 400자 / webRestrictName 500자 / cacheFolder 500자는 process / URL 1000자)
     # ==================================================================
 
     def test_scenario3j_save_cycle_errors(self, logged_in_page, settings):
@@ -1203,7 +1217,7 @@ class TestScenario3Action(ControlSuiteBase):
 
         Case A: 드라이브 letter 50자 (정상) — 메인 저장 OK 검증
         Case B: 드라이브 letter 100자 (구 빌드 검증) — 메인 저장 시 '서버에서 오류 발생' 알림
-        Case C: basePath 100자 (web_restrict 기본폴더) — 동일 패턴 검증
+        Case C: basePath 400자 (web_restrict 기본폴더) — 동일 패턴 검증
 
         주의:
           - DOM maxlength 추가가 제품 권고 사항. 자동화는 회귀 검출용.
@@ -1269,7 +1283,7 @@ class TestScenario3Action(ControlSuiteBase):
             self._add("skip", "[차단 메시지] 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
 
-        # ── Case C: basePath 100자 (web_restrict 기본폴더 — 메인 저장 시 서버 오류) ─
+        # ── Case C: basePath 400자 (web_restrict 기본폴더 — 메인 저장 시 서버 오류) ─
         page.navigate_to()
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step9_bp100")
@@ -1287,10 +1301,10 @@ class TestScenario3Action(ControlSuiteBase):
         page.picker.wait_open()
         page.picker.select_first_and_confirm(mode="multi")
         page.web_restrict.set_name("[AUTO]_web_sc3_step9_bp")
-        # basePath 영역 (isProcessOption 토글 ON + basePath 100자)
+        # basePath 영역 (isProcessOption 토글 ON + basePath 400자)
         if page.feature_exists(page.web_restrict.SEL_BASE_PATH, timeout=1000):
             page.web_restrict.set_process_option(True)
-            page.web_restrict.set_base_path("a" * 100)
+            page.web_restrict.set_base_path("a" * 400)
             # web_restrict_modal 저장 — 사용자 검증: 여기선 알림 없음
             page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
             page.web_restrict.wait_closed(timeout=3000)
@@ -1303,10 +1317,10 @@ class TestScenario3Action(ControlSuiteBase):
             page.dismiss_confirm_modal()
             ok_blocked = ("서버" in msg and "오류" in msg) or "발생" in msg
             self._add("pass" if ok_blocked else "fail",
-                      "[차단 메시지] basePath 100자 → 메인 저장 시 서버 오류 (UX 결함, 드라이브 letter 동일 패턴)",
-                      f"입력: basePath 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                      "[차단 메시지] basePath 400자 → 메인 저장 시 서버 오류 (UX 결함, 드라이브 letter 동일 패턴)",
+                      f"입력: basePath 400자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         else:
-            self._add("skip", "[차단 메시지] basePath 100자 — 기능 부재", "(skip)", sc=3)
+            self._add("skip", "[차단 메시지] basePath 400자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
 
         # ── Case D~G: Port invalid 격리 검증 (yaml main_server_verified 기반) ─
@@ -1356,3 +1370,30 @@ class TestScenario3Action(ControlSuiteBase):
                           f"[저장 확인] Port={port_val!r} {label} → 메인 저장 OK",
                           f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
             page.close_modal()
+
+        # ── Case H: webRestrictName 500자 → 메인 저장 시 서버 오류 (UX 결함) ─
+        # 본서버 Chrome MCP 2026-05-19 검증: 100자 OK / 500자 차단
+        page.navigate_to()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step10_webname500")
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")
+        page.web_restrict.set_name("a" * 500)
+        # web_restrict_modal 저장 (sub-modal 단계는 통과)
+        page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+        page.web_restrict.wait_closed(timeout=3000)
+        # 메인 저장 → '서버에서 오류 발생'
+        page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
+        page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+            state="attached", timeout=page._TIMEOUT_MODAL
+        )
+        msg = page.get_confirm_message()
+        page.dismiss_confirm_modal()
+        ok_blocked = ("서버" in msg and "오류" in msg) or "발생" in msg
+        self._add("pass" if ok_blocked else "fail",
+                  "[차단 메시지] webRestrictName 500자 → 메인 저장 시 서버 오류 (UX 결함)",
+                  f"입력: webRestrictName 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        page.close_modal()

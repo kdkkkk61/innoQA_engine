@@ -401,6 +401,7 @@ scenario_3_legacy_build_findings_2026_05_19:
     # 태그 mode 동일 패턴 검증 (process mode 와 일치)
     tag_mode_same_pattern:
       tag_mode_port_m1: "메인 저장 서버 오류 (process mode 와 동일)"
+      tag_mode_drive_letter_100: "메인 저장 서버 오류 (process mode 100자 차단과 동일, 2026-05-20 verified)"
       conclusion: "태그 영역도 process 영역과 동일 UX 결함 적용. yaml :144 + :138 의 동일 패턴 확장 적용."
 
     # cacheFolderInput UX 결함 trigger 격리 (방금 검증)
@@ -430,9 +431,10 @@ scenario_3_legacy_build_findings_2026_05_19:
         boundary_range: "100자~500자 사이"
         severity: "ux_defect"
       basePath:
-        verified_lengths: [100]
-        result: "100자 차단"
-        boundary_range: "100자 미만 추가 검증 필요"
+        verified_lengths: [100, 200, 300, 400, 500]
+        result: "100/200/300자 OK / 400/500자 차단"
+        boundary_range: "300자~400자 사이 (서버 한도 추정 300자)"
+        verified_2026_05_20: true
         severity: "ux_defect"
       attachAllowUrl:
         verified_lengths: [1000]

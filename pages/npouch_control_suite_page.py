@@ -201,11 +201,18 @@ class NpouchControlSuitePage(BasePage):
         return self.page.locator(self.SEL_MODAL_TITLE).first.inner_text().strip()
 
     def close_modal(self) -> None:
-        """취소 버튼 클릭 → 메인 모달 detached 대기."""
-        self._click(self.page.locator(self.SEL_CANCEL_BTN).first)
-        self.page.locator(self.SEL_MODAL_OPEN).wait_for(
-            state="detached", timeout=self._TIMEOUT_MODAL
-        )
+        """취소 버튼 클릭 → 메인 모달 detached 대기.
+        모달이 이미 닫혀있으면 no-op (정상 저장 후 자동 닫힘 케이스 안전).
+        """
+        if not self.is_visible(self.SEL_MODAL_OPEN):
+            return  # 이미 닫혀있음
+        try:
+            self._click(self.page.locator(self.SEL_CANCEL_BTN).first)
+            self.page.locator(self.SEL_MODAL_OPEN).wait_for(
+                state="detached", timeout=self._TIMEOUT_MODAL
+            )
+        except Exception:
+            pass  # close 실패해도 다음 단계 진행 (무한 timeout 방지)
 
     # ==================================================================
     # 3. 메인 모달 단독 필드 (Step 2)
