@@ -314,7 +314,24 @@ class TestScenario3Action(ControlSuiteBase):
         self._add("pass" if page.process.is_toggle_checked(page.process.SEL_TOGGLE_PCONTROL_EXT) else "fail",
                   "[입력 확인] 확장자 제어 토글", "입력: ON / 결과: is_checked=True", sc=3)
 
+        # ── process_modal 라디오 라벨 변경 검증 (BLOCKP → ALLOWP) ──
+        # 메인 모달 라디오와 동일 패턴 — 회귀 발견 케이스 (yaml :138 process_modal_extension_with_toggle)
+        v_init_p = page.process.get_radio_react_text()
+        self._add("pass", "[입력 확인] 프로세스 제어할 확장자 라디오 초기 라벨",
+                  f"입력: process_modal 진입 직후 / 결과: 라벨={v_init_p!r}", sc=3)
+
+        page.process.click_radio_blockp()
+        v_blockp = page.process.get_radio_react_text()
+        self._add("pass" if v_blockp == "허용할 확장자" else "fail",
+                  "[입력 확인] 프로세스 제어할 확장자 라디오 (BLOCKP 클릭 → 라벨 변경)",
+                  f"입력: BLOCKP 클릭 / 결과: 초기={v_init_p!r} → 변경={v_blockp!r}", sc=3)
+
         page.process.click_radio_allowp()
+        v_allowp = page.process.get_radio_react_text()
+        self._add("pass" if v_allowp == "차단할 확장자" else "fail",
+                  "[입력 확인] 프로세스 제어할 확장자 라디오 (ALLOWP 클릭 → 라벨 변경)",
+                  f"입력: ALLOWP 클릭 / 결과: 이전={v_blockp!r} → 변경={v_allowp!r}", sc=3)
+
         for ext in D["proc_ext"]:
             page.process.add_extension(ext)
         v = page.process.get_extension_list()
@@ -402,7 +419,24 @@ class TestScenario3Action(ControlSuiteBase):
                       "입력: 같은 조합 재추가 / 결과: 알림 없음", sc=3)
 
         page.process.set_pcontrol_extension(True)
+
+        # ── 태그 mode 라디오 라벨 변경 검증 (BLOCKP → ALLOWP) ──
+        v_init_t = page.process.get_radio_react_text()
+        self._add("pass", "[입력 확인] 태그 제어할 확장자 라디오 초기 라벨",
+                  f"입력: 태그 process_modal 진입 직후 / 결과: 라벨={v_init_t!r}", sc=3)
+
+        page.process.click_radio_blockp()
+        v_blockt = page.process.get_radio_react_text()
+        self._add("pass" if v_blockt == "허용할 확장자" else "fail",
+                  "[입력 확인] 태그 제어할 확장자 라디오 (BLOCKP 클릭 → 라벨 변경)",
+                  f"입력: BLOCKP 클릭 / 결과: 초기={v_init_t!r} → 변경={v_blockt!r}", sc=3)
+
         page.process.click_radio_allowp()
+        v_allowt = page.process.get_radio_react_text()
+        self._add("pass" if v_allowt == "차단할 확장자" else "fail",
+                  "[입력 확인] 태그 제어할 확장자 라디오 (ALLOWP 클릭 → 라벨 변경)",
+                  f"입력: ALLOWP 클릭 / 결과: 이전={v_blockt!r} → 변경={v_allowt!r}", sc=3)
+
         for ext in D["tag_ext"]:
             page.process.add_extension(ext)
         self._add("pass" if page.process.get_extension_list() == D["tag_ext"] else "fail",
@@ -844,6 +878,165 @@ class TestScenario3Action(ControlSuiteBase):
         else:
             self._add("warn", "[차단 메시지] 웹제한 모달 — URL 중복 — 메시지 미노출",
                       f"입력: 같은 URL 재추가 / 결과: 알림 없음", sc=3)
+
+        # 정리
+        page.web_restrict.close()
+        page.close_modal()
+
+    # ==================================================================
+    # 시나리오 3g — format / overflow 검증 (yaml must_test + verified)
+    # ==================================================================
+
+    def test_scenario3g_format_overflow(self, logged_in_page, settings):
+        """시나리오 3g — input format / overflow yaml 검증.
+
+        Case A: Port 비숫자 'abc' → 'Port 형식을 다시 확인 해 주세요' (yaml :151 verified)
+        Case B: IP 형식 잘못 'abc.def.ghi.jkl' → '아이피 주소 형식이 잘못되었습니다' (yaml :347)
+        Case C: process_modal 설명 1000자 + 확인 → '설명의 입력 가능 글자수는 최대 300자...' (yaml :169 must_test)
+        Case D: web_restrict_modal 설명 1000자 + 확인 → 동일 메시지 (yaml :173 scopes)
+        Case E: process_modal 프로세스 미선택 + 확인 → '선택된 프로세스가 없습니다.' (yaml :1226 must_test)
+        Case F: 같은 정책 안 중복 프로세스 picker → '이미 등록된 프로세스 입니다' (yaml :1235 must_test)
+        """
+        print("\n━━ [제어 스위트] 시나리오 3g: format / overflow 검증 (yaml must_test) ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+        long_desc = "가" * 1000   # 한글 1000자 (서버 한도 300자 초과)
+
+        page.navigate_to()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step6")
+
+        # ── 사전: process_modal 진입 (case A/B/C/E/F 진입 위해) ───
+        page.click_individual_process_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+
+        # ── Case E: 프로세스 미선택 + 확인 → '선택된 프로세스가 없습니다.' (must_test) ──
+        page._click(page.page.locator(page.process.SEL_CONFIRM_BTN).first)
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "프로세스" in msg and ("없" in msg or "선택" in msg)
+            self._add("pass" if ok else "fail",
+                      "프로세스 등록 모달 — 프로세스 미선택 + 확인 차단 메시지 (yaml must_test)",
+                      f"입력: 프로세스 미선택 + 확인 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] 프로세스 등록 모달 — 미선택 — 메시지 미노출",
+                      f"입력: 미선택 + 확인 / 결과: 알림 없음", sc=3)
+
+        # 프로세스 1건 선택 (Case A/B/C/F 진입 위해)
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        first_proc = page.picker.select_first_and_confirm(mode="single")
+
+        # ── Case A: Port 비숫자 'abc' → 'Port 형식을 다시 확인 해 주세요' (yaml verified) ──
+        page.process.set_pnetwork(True)
+        page.process.add_ip_port("192.168.10.10", "abc")
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            self._add("pass" if "Port" in msg and "형식" in msg else "fail",
+                      "프로세스 등록 모달 — Port 비숫자 입력 차단 (yaml verified)",
+                      f"입력: Port='abc' + 추가 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] Port 비숫자 — 메시지 미노출",
+                      f"입력: 'abc' / 결과: 알림 없음", sc=3)
+
+        # ── Case B: IP 형식 잘못 'abc.def.ghi.jkl' → '아이피 주소 형식...' (yaml :347) ──
+        page.process.add_ip_port("abc.def.ghi.jkl", "8080")
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            self._add("pass" if ("아이피" in msg or "IP" in msg) and "형식" in msg else "fail",
+                      "프로세스 등록 모달 — IP 형식 invalid 차단 (yaml verified)",
+                      f"입력: IP='abc.def.ghi.jkl' + 추가 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] IP 형식 invalid — 메시지 미노출",
+                      f"입력: 'abc.def.ghi.jkl' / 결과: 알림 없음", sc=3)
+
+        # ── Case C: process_modal 설명 1000자 + 확인 → 300자 제한 (must_test) ──
+        page.process.set_description(long_desc)
+        page._click(page.page.locator(page.process.SEL_CONFIRM_BTN).first)
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "설명" in msg and "300자" in msg
+            self._add("pass" if ok else "fail",
+                      "프로세스 등록 모달 — 설명 1000자 (300자 제한) 차단 메시지 (yaml must_test)",
+                      f"입력: 설명 길이=1000 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] 프로세스 설명 300자 — 메시지 미노출",
+                      f"입력: 1000자 + 확인 / 결과: 알림 없음", sc=3)
+        # 설명 비우기 — Case F 위해 모달 확인 통과 시키기
+        page.process.set_description("")
+        page.process.confirm()
+
+        # ── Case F: 같은 정책 안 중복 프로세스 picker 선택 (yaml :1235 must_test) ──
+        # 알림 뜨면 picker 가 안 닫히고 유지 — select_first_and_confirm 의 wait_closed 가 timeout.
+        # 따라서 select + confirm 분해 + wait_closed 생략 + 알림 검출 후 picker close.
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first(mode="single")
+        page.picker.confirm()
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "이미 등록" in msg and "프로세스" in msg
+            self._add("pass" if ok else "fail",
+                      "프로세스 picker — 같은 정책 안 중복 프로세스 차단 (yaml must_test)",
+                      f"입력: 첫 행 ('{first_proc}') 재선택 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] picker 중복 프로세스 — 메시지 미노출",
+                      f"입력: 동일 프로세스 재선택 / 결과: 알림 없음", sc=3)
+
+        # picker 가 열려있으면 취소 / process_modal 정리
+        try:
+            page.picker.cancel()
+        except Exception:
+            pass
+        if page.process.is_open():
+            page.process.close()
+
+        # ── Case D: web_restrict_modal 설명 1000자 + 확인 → 300자 제한 (must_test, 양쪽 모달) ──
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")
+        page.web_restrict.set_name("[AUTO]_web_sc3_step6")
+        page.web_restrict.set_is_url(True)
+        page.web_restrict.add_url("step6-web.com")
+        page.web_restrict.set_description(long_desc)
+        page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "설명" in msg and "300자" in msg
+            self._add("pass" if ok else "fail",
+                      "웹제한 모달 — 설명 1000자 (300자 제한) 차단 메시지 (yaml must_test)",
+                      f"입력: 설명 길이=1000 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] 웹제한 설명 300자 — 메시지 미노출",
+                      f"입력: 1000자 + 확인 / 결과: 알림 없음", sc=3)
+
+        # ── Case G: 같은 웹제한 인스턴스 안에서 등록된 프로세스 재선택 → 알림 (사용자 보고) ──
+        # 사전: Case D 에서 picker multi 첫 행 이미 등록됨.
+        # picker 재호출 + 같은 첫 행 multi 선택 + 확인 → 알림.
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "이미 등록" in msg and "프로세스" in msg
+            self._add("pass" if ok else "fail",
+                      "웹제한 모달 — 같은 인스턴스 프로세스 중복 차단 메시지",
+                      f"입력: 등록된 프로세스 재선택 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] 웹제한 프로세스 중복 — 메시지 미노출",
+                      f"입력: 같은 프로세스 재선택 / 결과: 알림 없음", sc=3)
 
         # 정리
         page.web_restrict.close()
