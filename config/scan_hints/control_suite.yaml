@@ -378,6 +378,26 @@ scenario_3_legacy_build_findings_2026_05_19:
       web_restrict_allowFileExtention_500: "메인 저장 시 서버 오류 (UX 결함)"
       추정_원인: "web_restrict_modal 의 확장자 백엔드 검증이 process_modal 보다 엄격 (예: 50자 한도 등)"
 
+    # 신 발견 중복 알림 메시지 (yaml 미기록)
+    sign_except_duplicate:
+      trigger: "메인 모달 전자서명 예외처리 input 에 동일값 재추가"
+      message: "이미 등록된 전자서명 입니다."
+      modal_id: "__globalMessageModal"
+      yaml_new: "yaml :411 verified_duplicates 에 추가 필요"
+
+    # description 한글/특수 통과 검증
+    description_value_validation:
+      process_modal_description_한글_200자: "모달 저장 OK + 메인 저장 OK (한글 차단 X, 200자 300자 이내)"
+      verified_2026_05_19: true
+      yaml_ref: ":169 must_test 의 300자 초과만 차단. 한글/특수문자 자체 차단 X"
+
+    # signExceptInput 광범위 통과
+    sign_except_input_safety:
+      verified_cases: ["한글전자서명_긴이름테스트...", "a*500"]
+      list_registered: 2
+      main_save: "저장 하였습니다 (정상)"
+      conclusion: "글자수/한글/특수 차단 없음 + 메인 저장 시 서버 오류 없음 = 완전 안전 영역"
+
 # ──────────────────────────────────────────────────────────────────────────────
 scenario_3_extra_findings_2026_05_13:
   process_modal_extension_with_toggle:
