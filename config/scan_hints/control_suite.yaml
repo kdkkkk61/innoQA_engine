@@ -134,6 +134,90 @@ scenario_3_pending_3A:
     - {field: "input#basePath",             area: "web_restrict 기본폴더", pattern: "글자수/특수"}
     - {field: "input#uploadLimitSize",      area: "web_restrict 제한용량", pattern: "매우 큰 값 (1B+)"}
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 구 빌드 검증 결과 (192.168.11.97:40000, 사용자 console 검증 2026-05-19)
+# ──────────────────────────────────────────────────────────────────────────────
+scenario_3_legacy_build_findings_2026_05_19:
+  server: "192.168.11.97:40000 (구 빌드)"
+  verified_by: "사용자 console 검증"
+  note: "신 빌드 (192.168.11.74:40000) 와 큰 틀 동일 + 일부 차이. 정확 메시지 본 서버 mcp 재검증 보류."
+
+  # 글자수 한도 검증 결과
+  length_boundary:
+    accessDriveLetter:
+      dom_maxlength: null               # DOM 제한 없음 (사용자 console: maxlength=-1)
+      verified_lengths: [50, 100, 300, 500, 1000]
+      behavior:
+        - "50자: process_modal 저장 OK + 메인 모달 저장 OK (정상)"
+        - "100/300/500자: process_modal 저장 OK + 메인 모달 저장 시 '서버에서 오류 발생' (UX 결함)"
+      conclusion: "제품 권고: DOM maxlength 추가 또는 서버 차단 메시지 사용자 친화적으로"
+      severity: "ux_defect"
+
+    signExceptInput:
+      dom_maxlength: null
+      verified_cases: ["Claude Sign", "한글전자서명", "$@%", "a*100", "a*500"]
+      behavior: "모든 케이스 등록 OK — 글자수/한글/특수문자 차단 없음"
+      yaml_todo_resolved: ":418 selectReservedWord/signExceptInput TODO → 제한 없음 확정"
+
+    allowExtensionInput / allowExtensionInputP / allowFileExtention:
+      verified_lengths: [50, 100, 500]
+      behavior: "모든 길이 등록 OK — 글자수 제한 없음 (3개 영역 동일)"
+
+    customOptionText:
+      verified_lengths: [100, 300, 500]
+      behavior: "DOM 길이 그대로 (자동 절단 없음). 저장 시 동작 미검증."
+
+    basePath:
+      dom_maxlength: null
+      behavior:
+        - "글자수 제한 없음"
+        - "web_restrict_modal 저장 OK"
+        - "메인 저장 시 '서버에서 오류 발생' (드라이브 letter 동일 패턴)"
+      severity: "ux_defect"
+
+    uploadLimitSize:
+      dom_maxlength: 12   # 알림: "업로드 제한용량의 입력 가능 글자수는 최대 12자 까지 가능합니다."
+      conversion_policy:  # yaml :393 정책 확정
+        invalid_to_zero: ["abc", "-1", "1.5", ""]    # 모두 "0" 으로 변환
+      verified_message: "업로드 제한용량의 입력 가능 글자수는 최대 12자 까지 가능합니다."
+
+  # 기능 부재 영역 (구 빌드 미지원)
+  not_available_in_legacy_build:
+    allow_url_mode_combinations:
+      missing_elements: ["input[name='isDataDecrypt']", "input#isFileUploadEncrypt 종속"]
+      note: "yaml :175-184 의 ra0/ra1 + 암호화 disabled 종속 — 구 빌드 미구현 (신 빌드 한정 기능)"
+      auto_skip_pattern: "feature_exists() helper 로 skip 처리"
+
+    clipboardAllowUrl:
+      missing_elements: ["textarea#clipboardAllowUrl"]
+      note: "yaml :131 영역 — 구 빌드 textarea 부재 (sc3c + sc3h 가 skip 처리 중)"
+
+  # 새 발견 버그 (yaml 미기록)
+  new_bugs_found:
+    ip_port_delete_residual_state:
+      symptom: "IP/Port × 삭제 후 동일 IP+Port 재입력 시 '이미 등록된 IP와 Port 입니다' 알림 (잘못된 중복 판정)"
+      cause: "display:none 잔류 li 가 internal duplicate-check list 에 그대로 남음"
+      auto_detection: "sc3i Case A 의 동일 패턴 (process picker 중복) 와 다른 영역 — 별도 추적"
+      severity: "ux_bug"
+
+  # 구 빌드와 비교 검증 일치 항목 (신/구 빌드 동일 동작 확정)
+  consistent_with_yaml:
+    - {area: "special_folder_multi_select_merge (must_test)", note: "다중 체크 → 1건 병합 등록 동일 (yaml :198)"}
+    - {area: "duplicate_extension_input_reset", note: "확장자 중복 알림 동일 (yaml :155-164)"}
+    - {area: "cacheFolderInput 중복 검증 없음", note: "yaml :415 일치"}
+    - {area: "cacheFolderInput ';' 다중 분리 없음", note: "yaml :243 일치 — 1건 통째 등록"}
+    - {area: "process_modal 한글확장자 차단", note: "yaml :144 일치 — '. * ; ?' 외 차단 메시지"}
+    - {area: "process_modal 확장자 ';' 다중 등록", note: "yaml :146 일치 — 3건 일괄 등록"}
+
+  # 본 서버 mcp 재검증 필요 항목
+  pending_main_server_verification:
+    - "Port invalid (-1, 0, abc, 빈값) 정확한 차단 메시지 (구 빌드는 모두 등록 가능 — Port 검증 약함)"
+    - "IP invalid (abc.def.ghi.jkl, 999.999.999.999, 192.168.1, 192.168.1.1.1, 빈값) 정확 메시지"
+    - "IP/Port 삭제 잔류 버그 정확 메시지 + 신 빌드 재현 여부"
+    - "uploadLimitSize 변환 정확 메시지 (정확한 alert 텍스트 vs 단순 변환)"
+    - "cross-instance ADD 흐름 (한 정책 안 web_restrict 2건 + 같은 프로세스) — yaml :1275 must_test 의 ADD 변형 (sc4 4f EDIT 검증 있음)"
+
+# ──────────────────────────────────────────────────────────────────────────────
 scenario_3_extra_findings_2026_05_13:
   process_modal_extension_with_toggle:
     description: |
