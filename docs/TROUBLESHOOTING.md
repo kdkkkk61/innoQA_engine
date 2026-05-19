@@ -647,6 +647,27 @@
 
 ---
 
+## [RESOLVED] process picker 의 "이미 등록된 프로세스" 알림 dismiss 후 picker × 클릭이 TargetClosedError cascade
+- **날짜**: 2026-05-19
+- **증상**: sc3g Case F (yaml :1235 must_test) — picker 첫 행 single 재선택 + 확인 → 알림 dismiss → picker.cancel() (× 클릭) → 후속 `page.process.close()` 에서 `TargetClosedError: Page.evaluate: Target page, context or browser has been closed`. sc3h cascade fail.
+- **DOM 인용 (사용자 검증 2026-05-19)**:
+  ```html
+  <div class="modal-content">
+    <div class="modal-body"><div class="modal-body-text">이미 등록된 프로세스 입니다</div></div>
+    <div class="modal-footer">
+      <button class="btn btn-default btn-xs" data-dismiss="modal">확인</button>
+    </div>
+  </div>
+  ```
+  - 메시지: `.modal-body-text` 매칭 (yaml :1149 registered_folder_warning 패턴)
+  - 닫기: `button.btn-default[data-dismiss="modal"]` — 기존 SEL_CONFIRM_BTN 매칭 OK
+  - 알림 dismiss 자체는 정상 동작 (사용자 확인: "확인 눌러서 닫아야 한다는 게 검증 가능 의미")
+- **원인**: 알림 dismiss 후 picker 의 상태가 unstable (AngularJS scope 가 alert close 흐름에서 reset). picker × (close) 클릭이 의도치 않은 navigation 트리거 → page closed.
+- **수정**: `tests/control_suite/test_scenario3_action.py` sc3g Case F — picker.cancel() (× 클릭) 대신 ESC 키 다발 (최대 4회) 로 picker + process_modal 일괄 정리. ESC 는 표준 modal 닫기 패턴, page 영향 없음.
+- **파일**: `tests/control_suite/test_scenario3_action.py`
+
+---
+
 ## [RESOLVED] 웹제한 확장자 단건 삭제 검증 — 잘못된 selector 로 count=0 + must_test 누락 (적용 프로세스 0건)
 - **날짜**: 2026-05-19
 - **증상 1**: 시나리오 3d `[FAIL] 웹제한 확장자 단건 삭제 → 잔여 확인: 전=0 → 후=0`. 사용자 화면 관찰 — "삭제 버튼 누르면 실제로는 삭제됨" (selector 동작은 OK 인데 검증만 실패).

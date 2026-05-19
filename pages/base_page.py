@@ -96,6 +96,20 @@ class BasePage:
             self._on_error(f"wait_for:{selector}", e)
             raise
 
+    def feature_exists(self, selector: str, timeout: int = 1500) -> bool:
+        """element 존재 빠른 확인 (1.5s) — 이전 빌드 기능 부재 감지용.
+
+        용도: yaml 검증 케이스가 구 빌드에 기능 없을 때 30s timeout 대신
+        skip/warn 으로 빠르게 우회. fail 무관 — 단순 boolean.
+        """
+        try:
+            self.page.locator(selector).first.wait_for(
+                state="attached", timeout=timeout
+            )
+            return True
+        except Exception:
+            return False
+
     def wait_for_enabled(self, selector: str) -> None:
         """요소가 활성화(enabled) 상태가 될 때까지 대기"""
         from playwright.sync_api import expect

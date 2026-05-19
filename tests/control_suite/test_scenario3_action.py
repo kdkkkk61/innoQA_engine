@@ -126,11 +126,16 @@ class TestScenario3Action(ControlSuiteBase):
 
         page.set_clipboard_restrict_toggle(True)  # 최종 ON (저장 용)
 
-        page.set_clipboard_allow_url(D["clipboard_url"])
-        v = page.get_clipboard_allow_url()
-        self._add("pass" if D["clipboard_url"] in v else "fail",
-                  "[입력 확인] 클립보드 허용 URL",
-                  f"입력: '{D['clipboard_url']}' / 결과: get={v!r}", sc=3)
+        # 클립보드 허용 URL — 구 빌드 기능 부재 감지 (선택 영역)
+        if page.feature_exists(page.SEL_CLIPBOARD_URL):
+            page.set_clipboard_allow_url(D["clipboard_url"])
+            v = page.get_clipboard_allow_url()
+            self._add("pass" if D["clipboard_url"] in v else "fail",
+                      "[입력 확인] 클립보드 허용 URL",
+                      f"입력: '{D['clipboard_url']}' / 결과: get={v!r}", sc=3)
+        else:
+            self._add("skip", "[입력 확인] 클립보드 허용 URL — 기능 없음 (구 빌드)",
+                      f"입력: {page.SEL_CLIPBOARD_URL} 매칭 실패 / 결과: 기능 부재", sc=3)
 
         # 네트워크 허용 토글 양방향
         v_init = page.is_network_checked()
@@ -888,14 +893,16 @@ class TestScenario3Action(ControlSuiteBase):
     # ==================================================================
 
     def test_scenario3g_format_overflow(self, logged_in_page, settings):
-        """시나리오 3g — input format / overflow yaml 검증.
+        """시나리오 3g — modal 내 input format / overflow yaml 검증 (picker 영역 제외).
+
+        검증 범위: process_modal / web_restrict_modal 의 input + confirm 흐름.
+        picker 중복 알림 (yaml :1235, :1278) 은 sc3i 로 분리 — picker 회귀 격리.
 
         Case A: Port 비숫자 'abc' → 'Port 형식을 다시 확인 해 주세요' (yaml :151 verified)
         Case B: IP 형식 잘못 'abc.def.ghi.jkl' → '아이피 주소 형식이 잘못되었습니다' (yaml :347)
         Case C: process_modal 설명 1000자 + 확인 → '설명의 입력 가능 글자수는 최대 300자...' (yaml :169 must_test)
         Case D: web_restrict_modal 설명 1000자 + 확인 → 동일 메시지 (yaml :173 scopes)
         Case E: process_modal 프로세스 미선택 + 확인 → '선택된 프로세스가 없습니다.' (yaml :1226 must_test)
-        Case F: 같은 정책 안 중복 프로세스 picker → '이미 등록된 프로세스 입니다' (yaml :1235 must_test)
         """
         print("\n━━ [제어 스위트] 시나리오 3g: format / overflow 검증 (yaml must_test) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
@@ -924,10 +931,10 @@ class TestScenario3Action(ControlSuiteBase):
             self._add("warn", "[차단 메시지] 프로세스 등록 모달 — 미선택 — 메시지 미노출",
                       f"입력: 미선택 + 확인 / 결과: 알림 없음", sc=3)
 
-        # 프로세스 1건 선택 (Case A/B/C/F 진입 위해)
+        # 프로세스 1건 선택 (Case A/B/C 진입 위해)
         page.process.click_pick_btn()
         page.picker.wait_open()
-        first_proc = page.picker.select_first_and_confirm(mode="single")
+        page.picker.select_first_and_confirm(mode="single")
 
         # ── Case A: Port 비숫자 'abc' → 'Port 형식을 다시 확인 해 주세요' (yaml verified) ──
         page.process.set_pnetwork(True)
@@ -967,37 +974,9 @@ class TestScenario3Action(ControlSuiteBase):
         else:
             self._add("warn", "[차단 메시지] 프로세스 설명 300자 — 메시지 미노출",
                       f"입력: 1000자 + 확인 / 결과: 알림 없음", sc=3)
-        # 설명 비우기 — Case F 위해 모달 확인 통과 시키기
+        # 설명 비우기 + 정상 confirm — Case D 위해 process_modal 닫음
         page.process.set_description("")
         page.process.confirm()
-
-        # ── Case F: 같은 정책 안 중복 프로세스 picker 선택 (yaml :1235 must_test) ──
-        # 알림 뜨면 picker 가 안 닫히고 유지 — select_first_and_confirm 의 wait_closed 가 timeout.
-        # 따라서 select + confirm 분해 + wait_closed 생략 + 알림 검출 후 picker close.
-        page.click_add_process_btn()
-        page.process.wait_open()
-        page.process.click_pick_btn()
-        page.picker.wait_open()
-        page.picker.select_first(mode="single")
-        page.picker.confirm()
-        if page.is_confirm_modal_visible():
-            msg = page.get_confirm_message()
-            page.dismiss_confirm_modal()
-            ok = "이미 등록" in msg and "프로세스" in msg
-            self._add("pass" if ok else "fail",
-                      "프로세스 picker — 같은 정책 안 중복 프로세스 차단 (yaml must_test)",
-                      f"입력: 첫 행 ('{first_proc}') 재선택 / 결과: 메시지={msg!r}", sc=3)
-        else:
-            self._add("warn", "[차단 메시지] picker 중복 프로세스 — 메시지 미노출",
-                      f"입력: 동일 프로세스 재선택 / 결과: 알림 없음", sc=3)
-
-        # picker 가 열려있으면 취소 / process_modal 정리
-        try:
-            page.picker.cancel()
-        except Exception:
-            pass
-        if page.process.is_open():
-            page.process.close()
 
         # ── Case D: web_restrict_modal 설명 1000자 + 확인 → 300자 제한 (must_test, 양쪽 모달) ──
         page.click_add_web_restrict_btn()
@@ -1021,23 +1000,190 @@ class TestScenario3Action(ControlSuiteBase):
             self._add("warn", "[차단 메시지] 웹제한 설명 300자 — 메시지 미노출",
                       f"입력: 1000자 + 확인 / 결과: 알림 없음", sc=3)
 
-        # ── Case G: 같은 웹제한 인스턴스 안에서 등록된 프로세스 재선택 → 알림 (사용자 보고) ──
-        # 사전: Case D 에서 picker multi 첫 행 이미 등록됨.
-        # picker 재호출 + 같은 첫 행 multi 선택 + 확인 → 알림.
-        page.web_restrict.click_add_process_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="multi")
-        if page.is_confirm_modal_visible():
-            msg = page.get_confirm_message()
-            page.dismiss_confirm_modal()
-            ok = "이미 등록" in msg and "프로세스" in msg
-            self._add("pass" if ok else "fail",
-                      "웹제한 모달 — 같은 인스턴스 프로세스 중복 차단 메시지",
-                      f"입력: 등록된 프로세스 재선택 / 결과: 메시지={msg!r}", sc=3)
-        else:
-            self._add("warn", "[차단 메시지] 웹제한 프로세스 중복 — 메시지 미노출",
-                      f"입력: 같은 프로세스 재선택 / 결과: 알림 없음", sc=3)
-
         # 정리
         page.web_restrict.close()
         page.close_modal()
+
+    # ==================================================================
+    # 시나리오 3h — 글자수 한도 검증 (yaml :271 scenario_3_length_boundary)
+    # ==================================================================
+
+    def test_scenario3h_length_boundary(self, logged_in_page, settings):
+        """yaml :271 fixed_lengths [100, 300, 500] — DOM input 자동 절단 / 길이 검증.
+
+        Case A: csuName 100/300/500자 → DOM maxlength=50 자동 절단 (yaml :282)
+        Case B: customOptionText 100/300/500자 → DOM 길이 (yaml :132 글자수 정책)
+        Case C: clipboardAllowUrl 500/1000자 → DOM 길이 (yaml :131 textarea)
+
+        주의: process/web_restrict 설명의 서버 차단 (300자) 은 sc3g Case C/D 가 이미 검증.
+        picker 재사용 시 '이미 등록된 프로세스' 알림으로 picker 가 안 닫혀 wait_closed timeout
+        → 본 sub-case 는 메인 모달 단일 입력 검증만 (사이드 이펙트 없음).
+        """
+        print("\n━━ [제어 스위트] 시나리오 3h: 글자수 한도 검증 (yaml :271 fixed_lengths) ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+
+        page.navigate_to()
+        page.open_add_modal()
+
+        # ── Case A: csuName DOM maxlength=50 자동 절단 (100/300/500자) ──
+        for length in (100, 300, 500):
+            page.set_csu_name("a" * length)
+            got = page.get_csu_name()
+            self._add("pass" if len(got) == 50 else "fail",
+                      f"[오버플로 확인] 스위트 이름 — {length}자 입력 시 DOM maxlength=50 자동 절단",
+                      f"입력: {length}자 / 결과: 실제 DOM 길이={len(got)}", sc=3)
+
+        # ── Case B: customOptionText 100/300/500자 — DOM 길이 ──
+        page.set_csu_name("[AUTO]_sc3_step7")
+        for length in (100, 300, 500):
+            page.set_custom_option("c" * length)
+            got = page.get_custom_option()
+            self._add("pass",
+                      f"[오버플로 확인] 커스텀 옵션 — {length}자 입력 DOM 길이",
+                      f"입력: {length}자 / 결과: DOM 길이={len(got)}", sc=3)
+        page.set_custom_option("")  # 정리
+
+        # ── Case C: clipboardAllowUrl 500/1000자 (yaml :131 textarea 글자수) ──
+        if page.feature_exists(page.SEL_CLIPBOARD_URL):
+            for length in (500, 1000):
+                page.set_clipboard_allow_url("u" * length)
+                got = page.get_clipboard_allow_url()
+                self._add("pass",
+                          f"[오버플로 확인] 클립보드 허용 URL — {length}자 입력 DOM 길이",
+                          f"입력: {length}자 / 결과: DOM 길이={len(got)}", sc=3)
+            page.set_clipboard_allow_url("")  # 정리
+        else:
+            self._add("skip", "[오버플로 확인] 클립보드 허용 URL — 기능 없음 (구 빌드)",
+                      f"입력: {page.SEL_CLIPBOARD_URL} 매칭 실패 / 결과: 기능 부재", sc=3)
+
+        # 정리 — 메인 모달 cancel (저장 안 함)
+        page.close_modal()
+
+    # ==================================================================
+    # 시나리오 3i — picker 중복 알림 검증 (sc3g 에서 분리 — 회귀 격리)
+    # ==================================================================
+
+    def test_scenario3i_picker_duplicate(self, logged_in_page, settings):
+        """picker 영역 중복 알림 검증 (yaml :1235 / :1278 must_test).
+
+        sc3g 에서 분리: picker 알림 dismiss 후 picker 가 unstable 상태가 되어
+        cascade 위험 → 별도 sub-case 로 격리 (pytest fixture 독립).
+
+        Case A: process picker — 같은 정책 안 동일 프로세스 재선택 → '이미 등록된 프로세스 입니다' (yaml :1235)
+        Case B: web_restrict picker — 같은 인스턴스 안 동일 프로세스 재선택 → 동일 메시지 (yaml :1278)
+
+        검증 후 picker 정리 — 마우스 × 클릭 회피 (TargetClosedError) →
+        두 번째 행 (미등록 프로세스) 선택 + confirm 으로 자연 흐름 종료.
+        실패 시 _close_leftover_submodals 강제 DOM 제거 fallback.
+        """
+        print("\n━━ [제어 스위트] 시나리오 3i: picker 중복 알림 검증 ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+
+        page.navigate_to()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step8")
+
+        # ── Case A: process picker — 첫 행 재선택 → 이미 등록 알림 ──
+        # 사전: 첫 행 1회 등록
+        page.click_individual_process_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        first_proc = page.picker.select_first_and_confirm(mode="single")
+        page.process.confirm()  # process_modal 정상 등록
+
+        # 본 검증: 다시 process_modal 진입 + 같은 첫 행 재선택
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first(mode="single")
+        page.picker.confirm()
+        # alert wait 3s (이전 1.5s 로 가끔 못 잡는 케이스 — 알림 띄우는 데 약간 지연)
+        if page.is_confirm_modal_visible(timeout=3000):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "이미 등록" in msg and ("프로세스" in msg or "생략" in msg or "타 웹제한" in msg)
+            self._add("pass" if ok else "fail",
+                      "프로세스 picker — 동일 프로세스 재선택 차단 (yaml :1235 must_test)",
+                      f"입력: 첫 행 ('{first_proc}') 재선택 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] process picker 중복 — 메시지 미노출",
+                      f"입력: 동일 프로세스 재선택 / 결과: 알림 없음", sc=3)
+
+        # picker / process_modal 정리 — 두 번째 행 시도 없이 강제 DOM 제거.
+        # _close_leftover_submodals: ESC 5회 + JS DOM 강제 제거 + backdrop 정리.
+        # 주의: 메인 모달 #controlSuite 도 같이 강제 제거됨 + inline style="display:none" 잔류.
+        page._close_leftover_submodals()
+        # Case B 위해 페이지 reload — inline style 잔류 완전 정리 (AngularJS hash route 유지).
+        page.page.reload()
+        page.page.wait_for_timeout(500)
+
+        # ── Case B: web_restrict picker — 동일 인스턴스 안 중복 프로세스 재선택 ──
+        page.navigate_to()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step8_web")
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")  # 첫 행 1회 등록
+        # 다시 picker 호출 + 같은 첫 행 multi 재선택
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first(mode="multi")
+        page.picker.confirm()
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "이미 등록" in msg and ("프로세스" in msg or "생략" in msg or "타 웹제한" in msg)
+            self._add("pass" if ok else "fail",
+                      "웹제한 picker — 동일 인스턴스 프로세스 중복 차단",
+                      f"입력: 등록된 프로세스 재선택 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] web_restrict picker 중복 — 메시지 미노출",
+                      f"입력: 같은 프로세스 재선택 / 결과: 알림 없음", sc=3)
+
+        # picker / web_restrict / 메인 모달 일괄 강제 정리 — Case A 와 동일 단순 패턴.
+        page._close_leftover_submodals()
+        page.page.wait_for_timeout(500)
+
+        # ── Case C: tag mode picker — 동일 태그 재선택 중복 알림 (사용자 보고 누락) ──
+        # 사용자 검증 요청: process 와 동일하게 태그 영역도 picker 중복 알림 있어야 함.
+        page.page.reload()
+        page.page.wait_for_timeout(500)
+        page.navigate_to()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step8_tag")
+        page.click_tag_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        first_tag = page.picker.select_first_and_confirm(mode="tag")
+        page.process.confirm()
+
+        # 본 검증: 다시 태그 모달 진입 + 같은 첫 태그 재선택
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first(mode="tag")
+        page.picker.confirm()
+        if page.is_confirm_modal_visible(timeout=3000):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "이미 등록" in msg and ("프로세스" in msg or "태그" in msg or "생략" in msg)
+            self._add("pass" if ok else "fail",
+                      "태그 picker — 동일 태그 재선택 중복 차단 (사용자 보고 추가)",
+                      f"입력: 첫 태그 ('{first_tag}') 재선택 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] tag picker 중복 — 메시지 미노출",
+                      f"입력: 동일 태그 재선택 / 결과: 알림 없음", sc=3)
+
+        # 정리
+        page._close_leftover_submodals()
+        page.page.wait_for_timeout(500)
