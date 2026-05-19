@@ -46,7 +46,10 @@ class ProcessSubModal:
     SEL_IP_INPUT           = "div#controlSuiteProcessList #accessAllowIp"
     SEL_PORT_INPUT         = "div#controlSuiteProcessList #accessAllowPort"
     SEL_IP_ADD_BTN         = "div#controlSuiteProcessList #allowIpAddressBtn"
-    SEL_IP_LIST_ITEM       = "div#controlSuiteProcessList #allowIpAddressList li"
+    # IP/Port list 행 — visible 만 매칭 (삭제 후 display:none 으로 잔류 — Chrome MCP 2026-05-19 검증)
+    SEL_IP_LIST_ITEM       = "div#controlSuiteProcessList #allowIpAddressList li:visible"
+    # 행 내부 삭제 버튼 — class 'deleteBtn' (id 는 모든 행에 중복) — Chrome MCP 2026-05-19 검증
+    SEL_IP_DELETE_BTN      = "button.deleteBtn"
 
     # isPControlExtension + 종속 (라디오 + 확장자 input/list)
     SEL_TOGGLE_PCONTROL_EXT = "div#controlSuiteProcessList #isPControlExtension"
@@ -55,7 +58,7 @@ class ProcessSubModal:
     SEL_RADIO_REACT_SPAN    = "div#controlSuiteProcessList #allowExtensionTextP"
     SEL_EXT_INPUT_P         = "div#controlSuiteProcessList #allowExtensionInputP"
     SEL_EXT_ADD_P           = "div#controlSuiteProcessList #allowExtensionInputBtnP"
-    SEL_EXT_LIST_TAG_P      = "div#controlSuiteProcessList #allowExtensionUlP button.tagInput"
+    SEL_EXT_LIST_TAG_P      = "div#controlSuiteProcessList #allowExtensionUlP button.tagInput:visible"
 
     # cache_folder_section (contenteditable div input + 특수폴더 + 추가 + list)
     SEL_CACHE_INPUT         = "div#controlSuiteProcessList #cacheFolderInput"
@@ -166,20 +169,22 @@ class ProcessSubModal:
         return [items.nth(i).inner_text().strip() for i in range(items.count())]
 
     def remove_ip_port(self, ip: str, port: str) -> bool:
-        """IP/Port list 의 해당 행 × 버튼 클릭으로 삭제. 성공 시 True.
+        """IP/Port list 행 삭제. 성공 시 True.
 
-        AngularJS ng-click → JS evaluate click (trusted event 회피).
+        Chrome MCP 2026-05-19 검증 결과:
+          - DOM: `<li><span data-access-allow-ip-address>...<button class='deleteBtn'>`
+          - 삭제 핸들러는 **trusted event 만 받음** — JS `el.click()`, `dispatchEvent`
+            모두 미발화. Playwright `locator.click()` (CDP trusted) 정답.
+          - 삭제 후 li 는 DOM 잔류 + `display:none` 처리 → list selector 에 `:visible` 필수.
         """
         items = self.page.locator(self.SEL_IP_LIST_ITEM)
         cnt = items.count()
         for i in range(cnt):
             text = items.nth(i).inner_text()
             if ip in text and port in text:
-                btn = items.nth(i).locator("button, .remove, i, span.close, a").first
-                try:
-                    btn.evaluate("el => el.click()")
-                except Exception:
-                    items.nth(i).evaluate("el => el.click()")
+                del_btn = items.nth(i).locator(self.SEL_IP_DELETE_BTN).first
+                with overlay_off(self.page):
+                    del_btn.click()
                 return True
         return False
 
@@ -211,16 +216,21 @@ class ProcessSubModal:
         ]
 
     def remove_extension(self, ext: str) -> bool:
-        """process_modal 확장자 tag 1건 × 삭제. 성공 시 True.
+        """process_modal 확장자 tag × 삭제. 성공 시 True.
 
-        AngularJS ng-click → JS evaluate click.
+        yaml :331 verified + Chrome MCP 2026-05-19 직접 인용:
+          DOM: `<span>txt<i class="extentionDeleteBtnP fa fa-times"></i></span>`
+          → **P 접미사** (메인 확장자의 `extentionDeleteBtn` 과 구분).
         """
         tags = self.page.locator(self.SEL_EXT_LIST_TAG_P)
         cnt = tags.count()
         for i in range(cnt):
             text = tags.nth(i).inner_text().strip()
             if text.startswith(ext + " ") or text == ext or text.split()[0] == ext:
-                tags.nth(i).evaluate("el => el.click()")
+                sub = tags.nth(i).locator("i.extentionDeleteBtnP")
+                if sub.count() == 0:
+                    return False
+                sub.first.evaluate("el => el.click()")
                 return True
         return False
 

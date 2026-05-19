@@ -1,4 +1,12 @@
-"""시나리오 3 — ADD 모달 검증 (3b~3e). 3d 가 [AUTO_KEEP]_step5b_mod 생성."""
+"""시나리오 3 — ADD 모달 검증 (3b~3f).
+
+데이터 명명 규칙: `[AUTO]_sc{N}_step{M}` / `[AUTO_KEEP]_sc{N}_step{M}` (시나리오 N 의 sub-step M).
+  - 3b → sc3_step1 (minimal_save)
+  - 3c → sc3_step2 (crud_full_cycle, KEEP — 시나리오 4 가 EDIT)
+  - 3d → sc3_step3 (web_restrict_save)
+  - 3e → sc3_step4 (중복 검증용)
+  - 3f → sc3_step5 (validation extended)
+"""
 import pytest
 
 from pages.npouch_control_suite_page import NpouchControlSuitePage
@@ -21,7 +29,7 @@ class TestScenario3Action(ControlSuiteBase):
           6. 사후 cleanup
         """
         page = NpouchControlSuitePage(logged_in_page, settings)
-        policy_name = "[AUTO]_step3d_save"
+        policy_name = "[AUTO]_sc3_step1"
 
         print("\n━━ [제어 스위트] 시나리오 3b: 프로세스 1건 + 메인 저장 (E2E) ━━━")
         self._page = page.page
@@ -61,37 +69,37 @@ class TestScenario3Action(ControlSuiteBase):
 
 
 
-    def test_scenario3d_crud_full_cycle(self, logged_in_page, settings):
-        """시나리오 3d — ADD 종합 풍부 (각 영역 입력값 set/get 일치 + 메인 저장 + 등록 확인).
+    def test_scenario3c_crud_full_cycle(self, logged_in_page, settings):
+        """시나리오 3c — ADD 종합 풍부 (각 영역 입력값 set/get 일치 + 메인 저장 + 등록 확인).
 
         EDIT 재진입/modify 흐름은 시나리오 4 영역. 본 메서드는 ADD 흐름만.
-        시나리오 4 가 사용할 [AUTO_KEEP]_step5b_mod 정책 생성.
+        시나리오 4 가 사용할 [AUTO_KEEP]_sc3_step2 정책 생성.
         """
         page = NpouchControlSuitePage(logged_in_page, settings)
-        KEEP_NAME = "[AUTO_KEEP]_step5b_mod"
+        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
         D = {
             "clipboard_url":  "naver.com;google.com",
             "extensions":     ["txt", "doc", "exe"],
             "sign_excepts":   ["Claude Sign", "Innotium Inc"],
-            "custom_option":  "step5b_init",
+            "custom_option":  "sc3_step2_init",
             "proc_ip":        "192.168.1.1",
             "proc_port":      "8080",
             "proc_ext":       ["log", "tmp"],
             "proc_drive":     "C;D",
-            "proc_desc":      "step5b 프로세스 설명",
+            "proc_desc":      "sc3_step2 프로세스 설명",
             "tag_ip":         "10.0.0.5",
             "tag_port":       "9090",
             "tag_ext":        ["zip"],
             "tag_drive":      "E;F",
-            "tag_desc":       "step5b 태그 설명",
-            "web_name":       "[AUTO]_web_step5b",
-            "web_url":        "step5b-web.com",
+            "tag_desc":       "sc3_step2 태그 설명",
+            "web_name":       "[AUTO]_web_sc3_step2",
+            "web_url":        "sc3_step2-web.com",
             "web_ext":        "csv",
             "web_limit":      "512",
-            "web_desc":       "step5b 웹제한 초기값",
+            "web_desc":       "sc3_step2 웹제한 초기값",
         }
 
-        print("\n━━ [제어 스위트] 시나리오 3d: ADD 종합 풍부 (메인+프로세스+태그+웹제한+저장+등록) ━━━")
+        print("\n━━ [제어 스위트] 시나리오 3c: ADD 종합 풍부 (메인+프로세스+태그+웹제한+저장+등록) ━━━")
         self._page = page.page
         page.navigate_to()
 
@@ -328,14 +336,16 @@ class TestScenario3Action(ControlSuiteBase):
                       f"입력: '{D['proc_ext'][0]}' 재추가 / 결과: 알림 없음", sc=3)
 
         # 프로세스 확장자 추가 → 삭제 → 잔여 확인
-        page.process.add_extension("tmp_del")
+        # 주의: 확장자 input validation — ". * ; ?" 외 특수문자/한글 거부 (yaml :315).
+        # '_' 도 invalid 로 차단 → 알파벳만 사용 ('tmpdel').
+        page.process.add_extension("tmpdel")
         before = len(page.process.get_extension_list())
-        removed = page.process.remove_extension("tmp_del")
+        removed = page.process.remove_extension("tmpdel")
         after = page.process.get_extension_list()
-        ok = removed and "tmp_del" not in after and len(after) == before - 1
+        ok = removed and "tmpdel" not in after and len(after) == before - 1
         self._add("pass" if ok else "fail",
                   "[입력 확인] 프로세스 확장자 단건 삭제 → 잔여 확인",
-                  f"입력: 'tmp_del' × 클릭 / 결과: 전={before} → 후={len(after)}, list={after}", sc=3)
+                  f"입력: 'tmpdel' × 클릭 / 결과: 전={before} → 후={len(after)}, list={after}", sc=3)
 
         page.process.set_access_drive(True)
         self._add("pass" if page.process.is_toggle_checked(page.process.SEL_TOGGLE_ACCESS_DRIVE) else "fail",
@@ -490,18 +500,16 @@ class TestScenario3Action(ControlSuiteBase):
                       f"입력: '{D['web_ext']}' 재추가 / 결과: 알림 없음", sc=3)
 
         # 웹제한 확장자 추가 → 삭제 → 잔여 확인
+        # 주의: page method 사용 (이전 inline locator 의 [name='ExtentionWebRestrict']
+        # 속성 매칭은 실제 DOM 에서 name 속성 = null 이라 0 반환 — Chrome MCP 검증).
         page.web_restrict.add_file_extension("tmpdel")
-        ext_cnt_before = page.page.locator(
-            "div#controlSuiteWebRestricList button.tagInput[name='ExtentionWebRestrict']"
-        ).count()
+        ext_before = page.web_restrict.get_file_extension_list()
         removed = page.web_restrict.remove_file_extension("tmpdel")
-        ext_cnt_after = page.page.locator(
-            "div#controlSuiteWebRestricList button.tagInput[name='ExtentionWebRestrict']"
-        ).count()
-        ok = removed and ext_cnt_after == ext_cnt_before - 1
+        ext_after = page.web_restrict.get_file_extension_list()
+        ok = removed and "tmpdel" not in ext_after and len(ext_after) == len(ext_before) - 1
         self._add("pass" if ok else "fail",
                   "[입력 확인] 웹제한 확장자 단건 삭제 → 잔여 확인",
-                  f"입력: 'tmpdel' × 클릭 / 결과: 전={ext_cnt_before} → 후={ext_cnt_after}", sc=3)
+                  f"입력: 'tmpdel' × 클릭 / 결과: 전={len(ext_before)} → 후={len(ext_after)}, list={ext_after}", sc=3)
 
         page.web_restrict.set_upload_limit(D["web_limit"])
         self._add("pass" if page.web_restrict.get_upload_limit() == D["web_limit"] else "fail",
@@ -536,7 +544,7 @@ class TestScenario3Action(ControlSuiteBase):
 
 
 
-    def test_scenario3c_web_restrict_save(self, logged_in_page, settings):
+    def test_scenario3d_web_restrict_save(self, logged_in_page, settings):
         """
         프로세스 1건 + 웹제한 1건 + 메인 저장 통합 흐름:
           0. 사전 cleanup ([AUTO]_*)
@@ -549,10 +557,10 @@ class TestScenario3Action(ControlSuiteBase):
           6. 정책 list 검증
           7. 사후 cleanup
         """
-        print("\n━━ [제어 스위트] 시나리오 3c: 웹제한 등록 + 메인 저장 (E2E) ━━━")
+        print("\n━━ [제어 스위트] 시나리오 3d: 웹제한 등록 + 메인 저장 (E2E) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        policy_name = "[AUTO]_step4d_full"
+        policy_name = "[AUTO]_sc3_step3"
 
         page.navigate_to()
 
@@ -575,7 +583,7 @@ class TestScenario3Action(ControlSuiteBase):
         # web_restrict 등록
         page.click_add_web_restrict_btn()
         page.web_restrict.wait_open()
-        page.web_restrict.set_name("[AUTO]_web_step4d")
+        page.web_restrict.set_name("[AUTO]_web_sc3_step3")
 
         page.web_restrict.click_add_process_btn()
         page.picker.wait_open()
@@ -592,7 +600,7 @@ class TestScenario3Action(ControlSuiteBase):
 
         page.web_restrict.add_file_extension("png;jpg")
         page.web_restrict.set_upload_limit("2048")
-        page.web_restrict.set_description("[AUTO] step4d e2e 설명")
+        page.web_restrict.set_description("[AUTO] sc3_step3 e2e 설명")
         self._add("pass", "[입력 확인] 웹제한 모달 — 확장자 + 제한용량 + 설명 입력",
                   "입력: 'png;jpg' / '2048' / 설명 / 결과: 입력 반영", sc=3)
 
@@ -629,7 +637,7 @@ class TestScenario3Action(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 3e: 비정상 케이스 (yaml validation_rules) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        dup_name = "[AUTO]_step6a_dup"
+        dup_name = "[AUTO]_sc3_step4"
 
         page.navigate_to()
 
@@ -734,7 +742,7 @@ class TestScenario3Action(ControlSuiteBase):
 
         page.navigate_to()
         page.open_add_modal()
-        page.set_csu_name("[AUTO]_step3f_validate")
+        page.set_csu_name("[AUTO]_sc3_step5")
 
         # ── 사전: 프로세스 1건 등록 (process_modal validation 진입 위해) ──
         page.click_individual_process_tab()
@@ -774,9 +782,23 @@ class TestScenario3Action(ControlSuiteBase):
 
         page.process.close()
 
-        # ── Case 1: 웹제한 이름 빈값 + 확인 (yaml 1191) ──────────
+        # ── Case 0: 적용 프로세스 0건 + 확인 → "선택된 프로세스가 없습니다." ──
+        # yaml :1257 must_test — 검증 우선순위 (프로세스 ≥ 1건 먼저 > 이름 입력 그 다음).
         page.click_add_web_restrict_btn()
         page.web_restrict.wait_open()
+        page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "프로세스" in msg and ("없" in msg or "선택" in msg)
+            self._add("pass" if ok else "fail",
+                      "웹제한 모달 — 적용 프로세스 0건 + 확인 차단 메시지 (yaml must_test)",
+                      f"입력: 프로세스 0건 + 확인 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("warn", "[차단 메시지] 웹제한 모달 — 프로세스 0건 — 메시지 미노출",
+                      f"입력: 프로세스 0건 + 확인 / 결과: 알림 없음", sc=3)
+
+        # ── Case 1: 웹제한 이름 빈값 + 확인 (yaml :1270) ──────────
         # 프로세스 multi 추가 (이름 외 다른 필수 채움)
         page.web_restrict.click_add_process_btn()
         page.picker.wait_open()

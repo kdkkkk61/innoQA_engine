@@ -72,7 +72,7 @@ class TestScenario1Ui(ControlSuiteBase):
 
         page.navigate_to()
         page.open_add_modal()
-        page.set_csu_name("[AUTO]_step3a")
+        page.set_csu_name("[AUTO]_sc1_step1")
 
         # ── 개별 프로세스 sub-tab ──────────────────────────────
         page.click_individual_process_tab()
@@ -131,7 +131,7 @@ class TestScenario1Ui(ControlSuiteBase):
 
         page.navigate_to()
         page.open_add_modal()
-        page.set_csu_name("[AUTO]_step4a")
+        page.set_csu_name("[AUTO]_sc1_step2")
 
         # ── 웹 제한기능 + 버튼 → 모달 진입 ─────────────────────
         page.click_add_web_restrict_btn()
@@ -142,11 +142,11 @@ class TestScenario1Ui(ControlSuiteBase):
                   f"입력: '+' 클릭 / 결과: title={title!r}, is_open={page.web_restrict.is_open()}", sc=1)
 
         # ── webRestrictName 필드 ──────────────────────────────
-        page.web_restrict.set_name("[AUTO]_web_step4a")
+        page.web_restrict.set_name("[AUTO]_web_sc1_step2")
         got = page.web_restrict.get_name()
-        self._add("pass" if got == "[AUTO]_web_step4a" else "fail",
+        self._add("pass" if got == "[AUTO]_web_sc1_step2" else "fail",
                   "웹 제한 이름",
-                  f"입력: '[AUTO]_web_step4a' / 결과: get={got!r}", sc=1)
+                  f"입력: '[AUTO]_web_sc1_step2' / 결과: get={got!r}", sc=1)
 
         # ── 모달 close ────────────────────────────────────────
         page.web_restrict.close()

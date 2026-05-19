@@ -55,7 +55,7 @@ class NpouchControlSuitePage(BasePage):
     SEL_RADIO_REACT_SPAN    = "span#allowExtensionText"
     SEL_EXT_INPUT           = "input#allowExtensionInput"
     SEL_EXT_ADD             = "button#allowExtensionInputBtn"
-    SEL_EXT_LIST_TAG        = "div#allowExtensionUl button.tagInput"
+    SEL_EXT_LIST_TAG        = "div#allowExtensionUl button.tagInput:visible"
     # 헤더 체크 (독립)
     SEL_HEADER_CHECK        = "input#isHeaderCheck"
     # 전자서명 예외처리
@@ -249,17 +249,20 @@ class NpouchControlSuitePage(BasePage):
         ]
 
     def remove_main_extension(self, ext: str) -> bool:
-        """메인 모달 확장자 tag 1건 삭제 (× 버튼). 삭제 성공 시 True.
+        """메인 모달 확장자 tag 1건 삭제. 삭제 성공 시 True.
 
-        AngularJS ng-click 패턴 — Playwright click 으로 trusted event 미발화 가능 →
-        JS evaluate 클릭 (el.click()) 으로 ng-click 정상 트리거.
+        yaml :224 verified — `i.extentionDeleteBtn` ng-click 패턴.
+        ng-click 은 untrusted JS click 으로도 발화. count check 로 timeout 방지.
         """
         tags = self.page.locator(self.SEL_EXT_LIST_TAG)
         cnt = tags.count()
         for i in range(cnt):
             text = tags.nth(i).inner_text().strip()
             if text.startswith(ext + " ") or text == ext or text.split()[0] == ext:
-                tags.nth(i).evaluate("el => el.click()")
+                sub = tags.nth(i).locator("i.extentionDeleteBtn")
+                if sub.count() == 0:
+                    return False
+                sub.first.evaluate("el => el.click()")
                 return True
         return False
 

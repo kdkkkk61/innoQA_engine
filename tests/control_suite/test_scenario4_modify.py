@@ -16,8 +16,8 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4b: minimal modify (메인 영역) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_step5b_mod"
-        MOD_CUSTOM = "step5b_modified_by_4b"
+        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
+        MOD_CUSTOM = "sc4_modified_by_4b"
 
         page.navigate_to()
         if not page.is_policy_exists(KEEP_NAME):
@@ -61,14 +61,14 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4c: 메인 11 필드 CRUD (3d 의 EDIT 버전) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_step5b_mod"
+        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
         # 4b 결과까지 누적된 상태값 (3d MODIFY + 4b customOption 변경)
         EXPECT = {
             "csuName":           KEEP_NAME,
             "clipboard_url":     "daum.net",
             "extensions":        ["txt", "doc", "exe"],
             "sign_count":        2,
-            "custom_option":     "step5b_modified_by_4b",
+            "custom_option":     "sc4_modified_by_4b",
         }
         MOD = {
             "clipboard_url":  "edit4c.com",
@@ -144,7 +144,7 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4d: 프로세스별 제어 영역 종합 (ON↔OFF) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_step5b_mod"
+        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
         PROC = {
             "ip":      "172.16.0.5",
             "port":    "8080",
@@ -270,7 +270,7 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4e: 태그 영역 종합 (ON↔OFF 양방향) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_step5b_mod"
+        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
         TAG = {
             "ip":      "192.168.99.10",
             "port":    "9090",
@@ -422,11 +422,11 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4f: 웹제한 영역 + cross-instance (3c 의 EDIT 버전) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_step5b_mod"
-        INIT_WEB_NAME = "[AUTO]_web_step5b"
-        INIT_URL      = "step5b-web.com"
+        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
+        INIT_WEB_NAME = "[AUTO]_web_sc3_step2"
+        INIT_URL      = "sc3_step2-web.com"
         INIT_LIMIT    = "512"
-        INIT_DESC     = "step5b 웹제한 초기값"
+        INIT_DESC     = "sc3_step2 웹제한 초기값"
         MOD_URL    = "edit4f.com"
         MOD_EXT    = "png;jpg"
         MOD_LIMIT  = "2048"
@@ -586,7 +586,7 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4g: validation 메시지 (3e 의 EDIT 버전) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_step5b_mod"
+        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
 
         page.navigate_to()
         if not page.is_policy_exists(KEEP_NAME):
@@ -681,7 +681,7 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4h: sub-modal 재진입 + 변경없이 수정 (3 cases) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_step5b_mod"
+        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
 
         page.navigate_to()
         if not page.is_policy_exists(KEEP_NAME):

@@ -56,7 +56,10 @@ class WebRestrictSubModal:
     SEL_RADIO_DECRYPT_1    = "div#controlSuiteWebRestricList input[name='isDataDecrypt'][value='1']"
     SEL_URL_INPUT          = "div#controlSuiteWebRestricList #attachAllowUrl"
     SEL_URL_ADD_BTN        = "div#controlSuiteWebRestricList #attachAllowUrlBtn"
-    SEL_URL_LIST_TAG       = "div#controlSuiteWebRestricList button.tagInput"
+    # URL tag — 부모 `div#allowUrl`, 삭제 후 display:none 잔류 → :visible 필수 (Chrome MCP 2026-05-19 검증)
+    SEL_URL_LIST_TAG       = "div#controlSuiteWebRestricList div#allowUrl button.tagInput:visible"
+    # 확장자 tag — 부모 `div#extension`, 삭제 후 display:none 잔류 → :visible 필수 (Chrome MCP 2026-05-19 검증)
+    SEL_FILE_EXT_LIST_TAG  = "div#controlSuiteWebRestricList div#extension button.tagInput:visible"
 
     # ── 업로드 시 암호화 / 헤더 체크 (Step 4c) ────────────────────
     SEL_FILE_ENCRYPT       = "div#controlSuiteWebRestricList #isFileUploadEncrypt"
@@ -221,26 +224,39 @@ class WebRestrictSubModal:
         return [items.nth(i).inner_text().strip() for i in range(items.count())]
 
     def remove_url(self, url: str) -> bool:
-        """웹제한 URL tag 1건 × 삭제. 성공 시 True. AngularJS ng-click → JS evaluate."""
+        """웹제한 URL tag × 삭제. 성공 시 True.
+
+        Chrome MCP 2026-05-19 검증 — 부모 `div#allowUrl` 안 `button.tagInput`.
+        delete icon = `i.urlDeleteBtn` (확장자의 extentionDeleteBtn 과 별도 이름).
+        ng-click 패턴 — JS `el.click()` 으로 발화.
+        """
         tags = self.page.locator(self.SEL_URL_LIST_TAG)
         cnt = tags.count()
         for i in range(cnt):
             text = tags.nth(i).inner_text().strip()
             if url in text:
-                tags.nth(i).evaluate("el => el.click()")
+                sub = tags.nth(i).locator("i.urlDeleteBtn")
+                if sub.count() == 0:
+                    return False
+                sub.first.evaluate("el => el.click()")
                 return True
         return False
 
     def remove_file_extension(self, ext: str) -> bool:
-        """웹제한 확장자 tag 1건 × 삭제. 성공 시 True. AngularJS ng-click → JS evaluate."""
-        tags = self.page.locator(
-            "div#controlSuiteWebRestricList button.tagInput[name='ExtentionWebRestrict']"
-        )
+        """웹제한 확장자 tag × 삭제. 성공 시 True.
+
+        Chrome MCP 2026-05-19 검증 — 부모 `div#extension` 안 `button.tagInput`.
+        delete icon = `i.extentionDeleteBtn` (메인 확장자 패턴 동일, P 없음).
+        """
+        tags = self.page.locator(self.SEL_FILE_EXT_LIST_TAG)
         cnt = tags.count()
         for i in range(cnt):
             text = tags.nth(i).inner_text().strip()
             if text.startswith(ext + " ") or text == ext or text.split()[0] == ext:
-                tags.nth(i).evaluate("el => el.click()")
+                sub = tags.nth(i).locator("i.extentionDeleteBtn")
+                if sub.count() == 0:
+                    return False
+                sub.first.evaluate("el => el.click()")
                 return True
         return False
 
@@ -277,6 +293,18 @@ class WebRestrictSubModal:
         """업로드 허용 확장자 추가 — ';' 다중 구분자 일괄 등록."""
         self.page.locator(self.SEL_FILE_EXT_INPUT).first.fill(ext)
         self._click(self.page.locator(self.SEL_FILE_EXT_ADD).first)
+
+    def get_file_extension_list(self) -> list[str]:
+        """등록된 업로드 허용 확장자 tag list (visible 만).
+
+        Chrome MCP 2026-05-19 검증: 부모 `div#extension` 안 `button.tagInput`,
+        삭제 후 display:none 잔류 → SEL_FILE_EXT_LIST_TAG 에 `:visible` 적용.
+        """
+        items = self.page.locator(self.SEL_FILE_EXT_LIST_TAG + " span")
+        return [
+            items.nth(i).inner_text().strip().split()[0]
+            for i in range(items.count())
+        ]
 
     # ──────────────────────────────────────────────────────────────
     # Step 4c — 업로드 제한용량

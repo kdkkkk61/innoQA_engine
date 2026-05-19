@@ -205,11 +205,11 @@ class TestScenario2Input(ControlSuiteBase):
         page.open_add_modal()
 
         # ── 스위트 이름 (csuName) ──────────────────────────────
-        page.set_csu_name("[AUTO]_step2_main")
+        page.set_csu_name("[AUTO]_sc2_step1")
         got = page.get_csu_name()
-        self._add("pass" if got == "[AUTO]_step2_main" else "fail",
+        self._add("pass" if got == "[AUTO]_sc2_step1" else "fail",
                   "[입력 확인] 스위트 이름",
-                  f"입력: '[AUTO]_step2_main' / 결과: get={got!r}", sc=2)
+                  f"입력: '[AUTO]_sc2_step1' / 결과: get={got!r}", sc=2)
 
         # ── 클립보드 공유제한 (토글 + 허용 URL) ────────────────
         page.set_clipboard_restrict_toggle(True)
@@ -318,7 +318,7 @@ class TestScenario2Input(ControlSuiteBase):
 
         page.navigate_to()
         page.open_add_modal()
-        page.set_csu_name("[AUTO]_step3c")
+        page.set_csu_name("[AUTO]_sc2_step2")
         page.click_individual_process_tab()
         page.click_add_process_btn()
         page.process.wait_open()
@@ -408,11 +408,11 @@ class TestScenario2Input(ControlSuiteBase):
                   f"입력: 'C;D' / 결과: get={dl!r}", sc=2)
 
         # ── 설명 ───────────────────────────────────────────────
-        page.process.set_description("step3c 자동 테스트 설명")
+        page.process.set_description("sc2_step2 자동 테스트 설명")
         desc = page.process.get_description()
-        self._add("pass" if "step3c" in desc else "fail",
+        self._add("pass" if "sc2_step2" in desc else "fail",
                   "[입력 확인] 프로세스 등록 모달 — 설명 입력",
-                  f"입력: 'step3c 자동 테스트 설명' / 결과: get={desc!r}", sc=2)
+                  f"입력: 'sc2_step2 자동 테스트 설명' / 결과: get={desc!r}", sc=2)
 
         # ── 정리 ───────────────────────────────────────────────
         page.process.close()
@@ -440,7 +440,7 @@ class TestScenario2Input(ControlSuiteBase):
 
         page.navigate_to()
         page.open_add_modal()
-        page.set_csu_name("[AUTO]_step3c_extra")
+        page.set_csu_name("[AUTO]_sc2_step3")
         page.click_individual_process_tab()
         page.click_add_process_btn()
         page.process.wait_open()
@@ -522,7 +522,7 @@ class TestScenario2Input(ControlSuiteBase):
 
         page.navigate_to()
         page.open_add_modal()
-        page.set_csu_name("[AUTO]_step2h_tag")
+        page.set_csu_name("[AUTO]_sc2_step4")
         page.click_tag_tab()
         page.click_add_process_btn()
         page.process.wait_open()
@@ -616,11 +616,11 @@ class TestScenario2Input(ControlSuiteBase):
                   f"입력: 'E;F' / 결과: get={dl!r}", sc=2)
 
         # ── 설명 ───────────────────────────────────────────────
-        page.process.set_description("step2h 태그 설명")
+        page.process.set_description("sc2_step4 태그 설명")
         desc = page.process.get_description()
-        self._add("pass" if "step2h" in desc else "fail",
+        self._add("pass" if "sc2_step4" in desc else "fail",
                   "[입력 확인] 태그 모달 — 설명 입력",
-                  f"입력: 'step2h 태그 설명' / 결과: get={desc!r}", sc=2)
+                  f"입력: 'sc2_step4 태그 설명' / 결과: get={desc!r}", sc=2)
 
         # ── 정리 ───────────────────────────────────────────────
         page.process.close()
@@ -639,10 +639,10 @@ class TestScenario2Input(ControlSuiteBase):
 
         page.navigate_to()
         page.open_add_modal()
-        page.set_csu_name("[AUTO]_step4b")
+        page.set_csu_name("[AUTO]_sc2_step5")
         page.click_add_web_restrict_btn()
         page.web_restrict.wait_open()
-        page.web_restrict.set_name("[AUTO]_web_step4b")
+        page.web_restrict.set_name("[AUTO]_web_sc2_step5")
         self._add("pass", "웹제한 모달 — 진입 + 이름 set",
                   "입력: '+' 클릭 + name 입력 / 결과: 모달 open + name 저장", sc=2)
 
@@ -705,10 +705,10 @@ class TestScenario2Input(ControlSuiteBase):
 
         page.navigate_to()
         page.open_add_modal()
-        page.set_csu_name("[AUTO]_step4c")
+        page.set_csu_name("[AUTO]_sc2_step6")
         page.click_add_web_restrict_btn()
         page.web_restrict.wait_open()
-        page.web_restrict.set_name("[AUTO]_web_step4c")
+        page.web_restrict.set_name("[AUTO]_web_sc2_step6")
 
         # 사전조건: 프로세스 1건 + isProcessOption ON (권한 expand 활성)
         page.web_restrict.click_add_process_btn()
@@ -792,11 +792,11 @@ class TestScenario2Input(ControlSuiteBase):
                   f"입력: '1024' / 결과: get={ul!r}", sc=2)
 
         # ── description ────────────────────────────────────────
-        page.web_restrict.set_description("step4c 자동 테스트")
+        page.web_restrict.set_description("sc2_step6 자동 테스트")
         desc = page.web_restrict.get_description()
-        self._add("pass" if "step4c" in desc else "fail",
+        self._add("pass" if "sc2_step6" in desc else "fail",
                   "[입력 확인] 웹제한 모달 — 설명 입력",
-                  f"입력: 'step4c 자동 테스트' / 결과: get={desc!r}", sc=2)
+                  f"입력: 'sc2_step6 자동 테스트' / 결과: get={desc!r}", sc=2)
 
         # 정리
         page.web_restrict.close()
@@ -815,7 +815,7 @@ class TestScenario2Input(ControlSuiteBase):
 
         page.navigate_to()
         page.open_add_modal()
-        page.set_csu_name("[AUTO]_step3b")
+        page.set_csu_name("[AUTO]_sc2_step7")
 
         # ── single 모드 ────────────────────────────────────────
         page.click_individual_process_tab()

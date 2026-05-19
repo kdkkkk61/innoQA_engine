@@ -12,9 +12,9 @@ class TestScenario5Lifecycle(ControlSuiteBase):
     # ==================================================================
     # 시나리오 5a — 한 정책 lifecycle: ADD (종합) + 재오픈 일치 → 정책 보존
     # ==================================================================
-    # [AUTO_KEEP]_scenario5_lifecycle 정책을 5a → 5b → 5c 에서 공유 사용.
+    # [AUTO_KEEP]_sc5_step1 정책을 5a → 5b → 5c 에서 공유 사용.
     # 5a 는 cleanup 하지 않고 다음 단계에 정책을 넘긴다.
-    LIFECYCLE_NAME = "[AUTO_KEEP]_scenario5_lifecycle"
+    LIFECYCLE_NAME = "[AUTO_KEEP]_sc5_step1"
     LIFECYCLE_ADD = {
         "clipboard_url":   "naver.com;daum.net",
         "ext_list":        ["pdf", "doc", "exe"],
@@ -271,7 +271,7 @@ class TestScenario5Lifecycle(ControlSuiteBase):
     # 시나리오 5b — 한 정책 lifecycle: 5a 정책 EDIT → 입력값 변경 → 저장
     # ==================================================================
     def test_scenario5b_lifecycle_modify(self, logged_in_page, settings):
-        """시나리오 5b — 5a 가 남긴 [AUTO_KEEP]_scenario5_lifecycle 정책의 EDIT 진입 → 메인 필드 변경 → 저장.
+        """시나리오 5b — 5a 가 남긴 [AUTO_KEEP]_sc5_step1 정책의 EDIT 진입 → 메인 필드 변경 → 저장.
 
         5a 정책이 list 에 없으면 (5a 미실행/실패) skip — 5a 의존성 명시.
         """
@@ -284,7 +284,7 @@ class TestScenario5Lifecycle(ControlSuiteBase):
         page.navigate_to()
         if not page.is_policy_exists(NAME):
             self._add("skip",
-                      "시나리오 5b — 5a 정책 ([AUTO_KEEP]_scenario5_lifecycle) 부재로 skip",
+                      "시나리오 5b — 5a 정책 ([AUTO_KEEP]_sc5_step1) 부재로 skip",
                       "입력: 5a 미실행/실패 / 결과: skip", sc=5)
             return
 

@@ -229,13 +229,38 @@ scenario_3_extra_findings_2026_05_13:
       verified: "클로드 전자서명 추가 후 삭제 → 이노티움 1건 잔존"
       chrome_mcp_verified: 2026-05-13
     ip_address:
-      delete_selector: "TODO — selector 미확정 (allowIpAddressList li 안 다른 패턴)"
-      chrome_mcp_status: "page class 구현 시 재검증"
+      delete_selector: "button.deleteBtn"   # Chrome MCP 검증 (2026-05-19)
+      delete_btn_id:   "deleteBtnIpAddress" # 모든 행에 동일 id 중복 → class 사용 필수
+      trigger:         "trusted click only" # JS el.click()/dispatchEvent 미발화 — Playwright locator.click() 사용
+      post_delete:     "li 잔류 + style='display: none'" # → list selector 에 `:visible` 필수
+      verified:        "Chrome MCP native click 으로 행 1개 → 0개 시각 확인 (display:none 적용)"
+      chrome_mcp_verified: 2026-05-19
+      dom_structure: |
+        <li>
+          <span data-status="0" data-access-allow-ip-address="...">IP</span>
+          <span data-access-allow-port="...">Port</span>
+          <button type="button" id="deleteBtnIpAddress" class="deleteBtn"></button>
+        </li>
     cache_folder:
       delete_icon: "i.folderDeleteBtn.fa.fa-times"
       chrome_mcp_status: "JS click 미발화 — page class 의 trusted dispatch 로 재검증 필요"
     url:
-      chrome_mcp_status: "TODO — web_restrict 안 attachAllowUrlList selector 패턴 미확정"
+      container:       "div#controlSuiteWebRestricList div#allowUrl"
+      tag_selector:    "button.tagInput"
+      delete_icon:     "i.urlDeleteBtn.fa.fa-times"   # 확장자의 extentionDeleteBtn 과 별도 이름
+      trigger:         "ng-click — JS el.click() 발화 OK"
+      post_delete:     "DOM 잔류 + display:none → :visible 필터 필수"
+      chrome_mcp_verified: 2026-05-19
+      valid_examples:  ["naver.com", "temp-del-url.com"]  # 하이픈/도메인 모두 OK
+    file_extension_web_restrict:
+      container:       "div#controlSuiteWebRestricList div#extension"
+      tag_selector:    "button.tagInput"
+      delete_icon:     "i.extentionDeleteBtn.fa.fa-times"  # 메인 확장자와 동일 (P 없음)
+      trigger:         "ng-click — JS el.click() 발화 OK"
+      post_delete:     "DOM 잔류 + display:none → :visible 필터 필수"
+      chrome_mcp_verified: 2026-05-19
+      valid_examples:  ["csv", "tmpdel"]
+      invalid_note:    "'_' (언더스코어) 등 '. * ; ?' 외 특수문자 → 알림 차단 (yaml :315)"
 
   cache_folder_no_multi_separator:
     description: |

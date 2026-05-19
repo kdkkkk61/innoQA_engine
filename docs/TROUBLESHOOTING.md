@@ -620,10 +620,11 @@
 ---
 
 ## [RESOLVED] tag_input × 클릭 (remove) — Playwright click 으로 AngularJS ng-click 미발화 → list 변화 없음
-- **날짜**: 2026-05-18
+- **날짜**: 2026-05-18 (1차) / 2026-05-19 (2차 추가 수정)
 - **증상**: 시나리오 3d 의 메인 확장자 단건 삭제 검증 fail. `× 클릭` 후에도 list 변화 없음 (전=3 → 후=3).
-- **원인**: tag_input 의 × 동작은 AngularJS `ng-click` 으로 구현. Playwright `locator.click()` 은 native pointer event 라 ng-click handler 가 trusted event 로 인식 안 함 → 핸들러 미실행. yaml inspection_notes 의 `add_edit_diff_*` 와 동일 부류 이슈.
-- **수정**: 5 개 remove 메서드 모두 JS `evaluate("el => el.click()")` 으로 전환:
+- **원인 (1차)**: tag_input 의 × 동작은 AngularJS `ng-click` 으로 구현. Playwright `locator.click()` 은 native pointer event 라 ng-click handler 가 trusted event 로 인식 안 함.
+- **원인 (2차, 진짜)**: 1차 fix 로 외곽 `button.tagInput` 에 JS `el.click()` 적용했으나 list 여전히 미변경. 실제 ng-click 핸들러는 외곽 button 이 아니라 **내부 `i.extentionDeleteBtn` 아이콘** 에 바인딩됨 (`config/scan_hints/control_suite.yaml:615` — `remove_btn: "i.extentionDeleteBtn"`, Chrome MCP 2026-05-12 검증 주석). 외곽 button 클릭은 ng-click 미발화.
+- **수정**: 5 개 remove 메서드 모두 매칭된 tag 의 내부 `i.extentionDeleteBtn, i` first 를 찾아 JS evaluate click:
   - `npouch_control_suite_page.remove_main_extension`
   - `process_sub_modal.remove_ip_port`
   - `process_sub_modal.remove_extension`
@@ -643,6 +644,86 @@
 - **수정**: `pages/npouch_control_suite_page.py` 의 `SEL_CONFIRM_MODAL` / `SEL_CONFIRM_MODAL_OPEN` / `SEL_CONFIRM_BTN` 을 두 ID OR 로 확장. `SEL_CONFIRM_BODY` 추가. `is_confirm_modal_visible()` 에 1.5s attached 대기 추가 (race condition 방어). `get_confirm_message()` 가 두 selector 모두에서 텍스트 추출.
 - **파일**: `pages/npouch_control_suite_page.py`
 - **검증**: Chrome MCP 2026-05-18 직접 확인 — process_modal 안에서 IP `10.10.10.10` + Port `1234` 두 번 추가 시 `#registeredFolderWarning.in` 노출 + `.modal-body-text` = "이미 등록된 IP와 Port 입니다" 정상 동작.
+
+---
+
+## [RESOLVED] 웹제한 확장자 단건 삭제 검증 — 잘못된 selector 로 count=0 + must_test 누락 (적용 프로세스 0건)
+- **날짜**: 2026-05-19
+- **증상 1**: 시나리오 3d `[FAIL] 웹제한 확장자 단건 삭제 → 잔여 확인: 전=0 → 후=0`. 사용자 화면 관찰 — "삭제 버튼 누르면 실제로는 삭제됨" (selector 동작은 OK 인데 검증만 실패).
+- **원인 1**: 테스트 `test_scenario3_action.py:496/500` 의 inline locator `button.tagInput[name='ExtentionWebRestrict']` — Chrome MCP DOM 검증상 실제 tag 의 `name` 속성 = null. 매칭 0 → count = 0.
+- **수정 1**: page method `page.web_restrict.get_file_extension_list()` 로 변경 (이미 SEL_FILE_EXT_LIST_TAG = `div#extension button.tagInput:visible` 정확 selector 사용).
+- **증상 2**: 사용자 관찰 — "적용프로세스 없이 저장하면 모달 경고 뜨는거 확인없는거같은데?"
+- **원인 2**: yaml `:1257` 의 `web_restrict_modal_no_process_selected` (severity: must_test, expected_message: "선택된 프로세스가 없습니다.") 가 시나리오 3f 에 누락. 기존 Case 1 (이름 빈값) 만 검증.
+- **수정 2**: 시나리오 3f 의 Case 1 직전에 Case 0 추가 — 프로세스 0건 + 확인 → 알림 메시지 검증. yaml :1263 의 우선순위 ("프로세스 ≥ 1건 먼저 > 이름 입력 그 다음") 도 자연스럽게 보증.
+- **파일**: `tests/control_suite/test_scenario3_action.py`
+
+---
+
+## [RESOLVED] tag_input 5개 영역 delete selector 전면 정리 + 확장자 invalid 값 (`_`) 검증
+- **날짜**: 2026-05-19
+- **증상**: 시나리오 3d 의 process_modal 확장자 / web_restrict URL+확장자 add→delete 사이클 모두 fail. 또한 사용자 스크린샷: ". * ; ? 이외의 특수문자 또는 한글이 포함된 확장자는 제외합니다." 알림.
+- **원인 (Chrome MCP 2026-05-19 DOM 인용 기반)**:
+  1. **5개 tag_input 영역의 delete selector 가 모두 다름** — 추측 일반화 불가.
+     | 영역 | 컨테이너 | delete selector |
+     |---|---|---|
+     | 메인 확장자 | `div#allowExtensionUl` | `i.extentionDeleteBtn` |
+     | 메인 전자서명 | `div#signExceptUl` | `i.extentionDeleteBtn` |
+     | process_modal 확장자 | `#allowExtensionUlP` | `i.extentionDeleteBtnP` (**P**) |
+     | web_restrict URL | `div#allowUrl` | `i.urlDeleteBtn` (별도 이름) |
+     | web_restrict 확장자 | `div#extension` | `i.extentionDeleteBtn` |
+     | process_modal IP/Port | `#allowIpAddressList li` | `button.deleteBtn` + **trusted click only** |
+  2. **확장자 input validation** — yaml `:315` 명시 (`'. * ; ?' 외 특수문자/한글 제외`). `tmp_del` 의 `_` 도 invalid 로 차단 → list 에 추가 안 됨 → 후속 delete 매칭 실패. 테스트의 `tmp_del`, `temp-del-url.com`(URL 은 OK), `tmpdel` 같은 값 재검증 필수.
+  3. **공통 삭제 후 동작** — 모든 tag_input 영역에서 삭제된 항목은 DOM 잔류 + `style="display: none"` 처리. `count()` 만으로는 잘못된 결과 → `:visible` filter 필수.
+- **수정 (Chrome MCP 직접 검증 기반)**:
+  - `pages/shared/modals/process_sub_modal.py`:
+    - `SEL_EXT_LIST_TAG_P` → `:visible` 추가.
+    - `remove_extension()` selector → `i.extentionDeleteBtnP` (P 접미사).
+  - `pages/shared/modals/web_restrict_sub_modal.py`:
+    - `SEL_URL_LIST_TAG` → `div#allowUrl button.tagInput:visible` 로 좁힘.
+    - `SEL_FILE_EXT_LIST_TAG` 신설 → `div#extension button.tagInput:visible`.
+    - `remove_url()` selector → `i.urlDeleteBtn`.
+    - `remove_file_extension()` 컨테이너 + selector → `i.extentionDeleteBtn`.
+  - `pages/npouch_control_suite_page.py`:
+    - `SEL_EXT_LIST_TAG` → `:visible` 추가.
+  - `tests/control_suite/test_scenario3_action.py`:
+    - `add_extension("tmp_del")` → `add_extension("tmpdel")` (언더스코어 제거). 동일 `remove_extension`.
+  - `config/scan_hints/control_suite.yaml`:
+    - `add_then_delete.url` / `file_extension_web_restrict` 섹션 — Chrome MCP 인용으로 전면 확정 (TODO → verified).
+- **파일**: `pages/shared/modals/process_sub_modal.py`, `pages/shared/modals/web_restrict_sub_modal.py`, `pages/npouch_control_suite_page.py`, `tests/control_suite/test_scenario3_action.py`, `config/scan_hints/control_suite.yaml`
+
+---
+
+## [RESOLVED] IP/Port 행 삭제 — selector 추측 fix 가 진짜 원인 가린 다중 cascade
+- **날짜**: 2026-05-19
+- **증상**: 시나리오 3d `remove_ip_port("10.20.30.40", "1111")` 에서 `locator.evaluate: Timeout 30000ms exceeded - waiting for ... .locator("i.extentionDeleteBtn, i").first`. 3d 실패 → process_modal 열린 채 logged_in_page 다음 시나리오로 cascade → 3c/3e/3f 의 csuName fill 도 30s timeout (모달 backdrop 잔여).
+- **원인 분석 (코드 인용 기반)**:
+  1. yaml `control_suite.yaml:232` 가 `ip_address.delete_selector: TODO — selector 미확정` 으로 명시. 검증 안 된 상태.
+  2. 이전 fix 가 확장자 패턴 (`i.extentionDeleteBtn` — yaml :224 verified) 을 추측 일반화. IP/Port `li` 안에는 `<i>` 자체가 없어 30s wait.
+  3. 추가 추측 fix (dismiss_confirm_modal 의 backdrop 폴링, add_ip_port 의 visible 대기) 도 모두 추측 — 실제 backdrop 잔여 없음, 원인은 oversight 였음.
+- **Chrome MCP 직접 검증 (2026-05-19)**:
+  ```
+  <li>
+    <span data-status="0" data-access-allow-ip-address="192.168.1.1">192.168.1.1</span>
+    <span data-access-allow-port="8080">8080</span>
+    <button type="button" id="deleteBtnIpAddress" class="deleteBtn"></button>
+  </li>
+  ```
+  - 삭제 button class = `deleteBtn` (id 는 모든 행 중복 → class 필수).
+  - **trusted event 만 발화** — `el.click()`, `dispatchEvent(MouseEvent)`, mousedown/up 시퀀스 모두 미동작. native cursor click 으로만 삭제됨 (count 2→2 / display:none 적용 확인).
+  - 삭제 후 li 는 DOM 잔류 + `style="display: none"` — `get_ip_list` 의 `count()` 가 잔류 항목까지 세는 추가 버그.
+- **수정**:
+  - `pages/shared/modals/process_sub_modal.py`
+    - `SEL_IP_LIST_ITEM` → `:visible` 추가 (display:none 항목 제외).
+    - `SEL_IP_DELETE_BTN = "button.deleteBtn"` 신설.
+    - `remove_ip_port()` — Playwright `locator.click()` (CDP trusted event) 사용. JS `el.click()` 폐기.
+  - 다른 모든 `remove_*` 메서드 (main_extension/extension/file_extension) — yaml :224 verified `i.extentionDeleteBtn` 단일 selector + `count==0 → False` (timeout 차단). `remove_url` 은 yaml :238 TODO 상태 → 검증 전까지 미구현 `False` 반환.
+  - `dismiss_confirm_modal`, `add_ip_port` 의 추측 backdrop fix 모두 revert.
+  - `config/scan_hints/control_suite.yaml:232` — DOM 구조 + selector + trigger 방식 + 삭제 후 상태 모두 코드 인용으로 기록 (`chrome_mcp_verified: 2026-05-19`).
+- **파일**: `pages/shared/modals/process_sub_modal.py`, `pages/shared/modals/web_restrict_sub_modal.py`, `pages/npouch_control_suite_page.py`, `config/scan_hints/control_suite.yaml`
+- **원칙 위반 회고 (CLAUDE.md)**:
+  - "추측 fix 금지 (코드 인용 기반)" 위반 — 확장자 패턴을 IP/Port 에 일반화 시도.
+  - "테스트 실패 시 로그 먼저" 부분 위반 — pytest FAILURES 섹션의 stack trace 가 진작 selector mismatch 를 가리켰는데 별개 backdrop 가설을 먼저 세움.
+  - 교훈: yaml 의 `TODO` 마커는 곧 "코드 인용 없음" 신호. 그 영역 selector 는 Chrome MCP 또는 사용자 검증 전까지 구현 보류가 정답.
 
 ---
 
