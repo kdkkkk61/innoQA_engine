@@ -224,23 +224,39 @@ scenario_3_legacy_build_findings_2026_05_19:
         note: "비숫자 IP 입력 시 input 자동 reset → 빈값으로 처리 → 빈값 알림"
 
     port_invalid_results:
+      # sub-modal 단계 차단 (정상 UX)
       port_abc:
-        message: "Port 형식을 다시 확인 해 주세요"
+        sub_modal: "Port 형식을 다시 확인 해 주세요"
         modal_id: "(BLOCKED — Base64 인식 정책)"
         yaml_ref: ":151 일치"
+        main_save: "sub-modal 단계 차단 — 메인 저장 도달 X"
       port_99999_over_max:
-        message: "Port의 최대값은 65535입니다"   # 신 발견 — yaml 미기록
+        sub_modal: "Port의 최대값은 65535입니다"   # 신 발견 — yaml 미기록
         modal_id: "(BLOCKED)"
+        main_save: "sub-modal 단계 차단 — 메인 저장 도달 X"
+      # sub-modal 단계 통과 + 메인 저장 시점 검증 (격리 cycle 4종)
+      port_8080_normal:
+        sub_modal: null
+        main_save: "저장 하였습니다 (정상)"
+        verified_2026_05_19: true
       port_minus_1:
-        alert: null
-        behavior: "등록 가능 (Port 음수 검증 약함)"
+        sub_modal: null
+        main_save: "서버에서 오류가 발생 하였습니다."   # 신 발견 — UX 결함
+        modal_id: "__globalMessageModal"
+        severity: "ux_defect"
+        verified_2026_05_19: true
       port_0:
-        alert: null
-        behavior: "등록 가능"
+        sub_modal: null
+        main_save: "저장 하였습니다 (정상 — 0 도 valid 처리)"
+        verified_2026_05_19: true
+        note: "예상과 다름. 사용자 검증 시 Port 0 양쪽 모두 통과 확인됨."
       port_empty:
-        alert: null
-        behavior: "등록 가능 (Port 빈값 검증 약함)"
-      severity: "Port 입력 검증 부족 — 제품 권고: -1/0/빈값 차단 필요"
+        sub_modal: null
+        main_save: "서버에서 오류가 발생 하였습니다."
+        modal_id: "__globalMessageModal"
+        severity: "ux_defect"
+        verified_2026_05_19: true
+      severity: "Port -1 + 빈값 = UX 결함 (sub-modal OK → 메인 저장 시 서버 차단). 제품 권고: sub-modal 단계에서 차단"
 
   # 본 서버 mcp 재검증 잔여 항목 (2026-05-19)
   pending_main_server_verification:

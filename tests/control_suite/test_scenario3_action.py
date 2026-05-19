@@ -1118,8 +1118,12 @@ class TestScenario3Action(ControlSuiteBase):
         # _close_leftover_submodals: ESC 5회 + JS DOM 강제 제거 + backdrop 정리.
         # 주의: 메인 모달 #controlSuite 도 같이 강제 제거됨 + inline style="display:none" 잔류.
         page._close_leftover_submodals()
-        # Case B 위해 페이지 reload — inline style 잔류 완전 정리 (AngularJS hash route 유지).
-        page.page.reload()
+        # Case B 위해 inline style 잔류 제거 (reload 회피 — page session 안전).
+        page.page.evaluate("""
+            () => document.querySelectorAll('div.modal-wrap, div.modal').forEach(m => {
+                m.style.display = '';
+            })
+        """)
         page.page.wait_for_timeout(500)
 
         # ── Case B: web_restrict picker — 동일 인스턴스 안 중복 프로세스 재선택 ──
@@ -1153,8 +1157,7 @@ class TestScenario3Action(ControlSuiteBase):
 
         # ── Case C: tag mode picker — 동일 태그 재선택 중복 알림 (사용자 보고 누락) ──
         # 사용자 검증 요청: process 와 동일하게 태그 영역도 picker 중복 알림 있어야 함.
-        page.page.reload()
-        page.page.wait_for_timeout(500)
+        page.page.wait_for_timeout(300)
         page.navigate_to()
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step8_tag")
@@ -1187,3 +1190,169 @@ class TestScenario3Action(ControlSuiteBase):
         # 정리
         page._close_leftover_submodals()
         page.page.wait_for_timeout(500)
+
+    # ==================================================================
+    # 시나리오 3j — save cycle errors (메인 저장 시점 서버 오류 — Phase C 복합)
+    # ==================================================================
+
+    def test_scenario3j_save_cycle_errors(self, logged_in_page, settings):
+        """yaml 구 빌드 검증 (2026-05-19) — 메인 저장 시점 '서버에서 오류 발생' UX 결함 검증.
+
+        검증 패턴 (Phase C): sub-modal 단계는 OK 인데 메인 모달 저장 시점에 서버 차단.
+        DOM maxlength 없음 + sub-modal 알림 없음 → 사용자가 입력 후 저장 누를 때까지 모름.
+
+        Case A: 드라이브 letter 50자 (정상) — 메인 저장 OK 검증
+        Case B: 드라이브 letter 100자 (구 빌드 검증) — 메인 저장 시 '서버에서 오류 발생' 알림
+        Case C: basePath 100자 (web_restrict 기본폴더) — 동일 패턴 검증
+
+        주의:
+          - DOM maxlength 추가가 제품 권고 사항. 자동화는 회귀 검출용.
+          - 본 검증은 50자 통과 + 100자 차단 양쪽 모두 확인 (boundary 검증).
+        """
+        print("\n━━ [제어 스위트] 시나리오 3j: save cycle errors (메인 저장 서버 오류) ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+
+        # ── Case A: 드라이브 letter 50자 (정상 케이스 — 메인 저장 OK) ─
+        page.navigate_to()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step9_drv50")
+        page.click_individual_process_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="single")
+        # 접근 드라이브 토글 ON + 50자 letter
+        if page.feature_exists(page.process.SEL_TOGGLE_ACCESS_DRIVE, timeout=1000):
+            page.process.set_access_drive(True)
+            page.process.set_drive_letter("a" * 50)
+            page.process.confirm()
+            # 메인 저장 시도
+            msg = page.save_policy(mode="add")
+            page.dismiss_confirm_modal()
+            ok = msg == "저장 하였습니다"
+            self._add("pass" if ok else "fail",
+                      "[저장 확인] 드라이브 letter 50자 → 메인 저장 OK (boundary 정상)",
+                      f"입력: letter 50자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("skip", "[저장 확인] 드라이브 letter 50자 — 접근 드라이브 토글 기능 부재",
+                      f"입력: SEL_TOGGLE_ACCESS_DRIVE 매칭 실패 / 결과: 기능 부재 (구 빌드)", sc=3)
+
+        # ── Case B: 드라이브 letter 100자 (메인 저장 시 서버 오류) ─
+        page.navigate_to()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step9_drv100")
+        page.click_individual_process_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="single")
+        if page.feature_exists(page.process.SEL_TOGGLE_ACCESS_DRIVE, timeout=1000):
+            page.process.set_access_drive(True)
+            page.process.set_drive_letter("a" * 100)
+            # process_modal 저장 시점 — 알림 없어야 정상 (사용자 검증)
+            page.process.confirm()
+            # 메인 저장 시도 — '서버에서 오류 발생' 알림 기대
+            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
+            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                state="attached", timeout=page._TIMEOUT_MODAL
+            )
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok_blocked = ("서버" in msg and "오류" in msg) or "발생" in msg
+            self._add("pass" if ok_blocked else "fail",
+                      "[차단 메시지] 드라이브 letter 100자 → 메인 저장 시 서버 오류 (UX 결함)",
+                      f"입력: letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("skip", "[차단 메시지] 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
+        page.close_modal()
+
+        # ── Case C: basePath 100자 (web_restrict 기본폴더 — 메인 저장 시 서버 오류) ─
+        page.navigate_to()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step9_bp100")
+        page.click_individual_process_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="single")
+        page.process.confirm()  # 메인 itemList 행 1건 등록
+        # 웹제한 추가
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")
+        page.web_restrict.set_name("[AUTO]_web_sc3_step9_bp")
+        # basePath 영역 (isProcessOption 토글 ON + basePath 100자)
+        if page.feature_exists(page.web_restrict.SEL_BASE_PATH, timeout=1000):
+            page.web_restrict.set_process_option(True)
+            page.web_restrict.set_base_path("a" * 100)
+            # web_restrict_modal 저장 — 사용자 검증: 여기선 알림 없음
+            page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+            page.web_restrict.wait_closed(timeout=3000)
+            # 메인 저장 — '서버에서 오류 발생' 기대
+            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
+            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                state="attached", timeout=page._TIMEOUT_MODAL
+            )
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok_blocked = ("서버" in msg and "오류" in msg) or "발생" in msg
+            self._add("pass" if ok_blocked else "fail",
+                      "[차단 메시지] basePath 100자 → 메인 저장 시 서버 오류 (UX 결함, 드라이브 letter 동일 패턴)",
+                      f"입력: basePath 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("skip", "[차단 메시지] basePath 100자 — 기능 부재", "(skip)", sc=3)
+        page.close_modal()
+
+        # ── Case D~G: Port invalid 격리 검증 (yaml main_server_verified 기반) ─
+        # 본서버 Chrome MCP 2026-05-19 검증 격리 4 cycle 결과:
+        #   Port=8080 (정상): 저장 OK
+        #   Port=-1: 메인 저장 시 '서버에서 오류 발생' (UX 결함)
+        #   Port=0: 저장 OK (예상과 달리 valid 처리)
+        #   Port=빈값: 메인 저장 시 '서버에서 오류 발생' (UX 결함)
+        port_test_cases = [
+            ("8080",  False, "정상 (대조)", "D"),
+            ("-1",    True,  "음수 (서버 차단)", "E"),
+            ("0",     False, "0 (의외로 허용)", "F"),
+            ("",      True,  "빈값 (서버 차단)", "G"),
+        ]
+        for port_val, expect_server_error, label, case_id in port_test_cases:
+            page.navigate_to()
+            page.open_add_modal()
+            csu = f"[AUTO]_sc3_step9_port_{case_id}"
+            page.set_csu_name(csu)
+            page.click_individual_process_tab()
+            page.click_add_process_btn()
+            page.process.wait_open()
+            page.process.click_pick_btn()
+            page.picker.wait_open()
+            page.picker.select_first_and_confirm(mode="single")
+            page.process.set_pnetwork(True)
+            page.process.add_ip_port(f"192.168.99.{case_id[-1] if case_id[-1].isdigit() else '1'}", port_val)
+            # sub-modal 알림 dismiss (Port='abc'/'99999' 같은 형식 차단 케이스 대비 — 안전)
+            if page.is_confirm_modal_visible(timeout=1500):
+                page.dismiss_confirm_modal()
+            page.process.confirm()
+            # 메인 저장
+            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
+            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                state="attached", timeout=page._TIMEOUT_MODAL
+            )
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            if expect_server_error:
+                ok = "서버" in msg and ("오류" in msg or "발생" in msg)
+                self._add("pass" if ok else "fail",
+                          f"[차단 메시지] Port={port_val!r} {label} → 메인 저장 시 서버 오류",
+                          f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+            else:
+                ok = msg == "저장 하였습니다"
+                self._add("pass" if ok else "fail",
+                          f"[저장 확인] Port={port_val!r} {label} → 메인 저장 OK",
+                          f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+            page.close_modal()
