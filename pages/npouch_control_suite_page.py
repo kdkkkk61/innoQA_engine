@@ -227,7 +227,8 @@ class NpouchControlSuitePage(BasePage):
         except Exception:
             pass
         if not self.is_visible(self.SEL_MODAL_OPEN):
-            return  # 이미 닫혀있음
+            self._cleanup_modal_backdrop()  # 이미 닫혀있어도 잔해 정리
+            return
         try:
             self._click(self.page.locator(self.SEL_CANCEL_BTN).first)
             self.page.locator(self.SEL_MODAL_OPEN).wait_for(
@@ -240,9 +241,11 @@ class NpouchControlSuitePage(BasePage):
                     self.page.keyboard.press("Escape")
                     self.page.wait_for_timeout(200)
                     if not self.is_visible(self.SEL_MODAL_OPEN):
-                        return
+                        break
                 except Exception:
                     break
+        # 모달 닫힘 직후 backdrop 잔해 정리 (2026-05-20 fix — 모든 close 경로)
+        self._cleanup_modal_backdrop()
 
     # ==================================================================
     # 3. 메인 모달 단독 필드 (Step 2)
@@ -711,6 +714,7 @@ class NpouchControlSuitePage(BasePage):
                 self.wait_for(self.SEL_ADD_BTN)
         except Exception:
             pass
+        self._cleanup_modal_backdrop()  # 닫힘 / no-op 모두 잔해 정리
 
     def _dismiss_stale_confirm_modal(self) -> None:
         try:
@@ -723,3 +727,4 @@ class NpouchControlSuitePage(BasePage):
             )
         except Exception:
             pass
+        self._cleanup_modal_backdrop()  # stale alert dismiss 후 잔해 정리
