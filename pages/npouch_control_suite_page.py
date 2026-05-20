@@ -137,18 +137,28 @@ class NpouchControlSuitePage(BasePage):
     # 1. 네비게이션
     # ==================================================================
     def navigate_to(self) -> None:
-        """
-        제어 스위트 관리 페이지로 진입.
+        """제어 스위트 관리 페이지로 진입 + retry/reload 안전 처리.
 
-        흐름 (legacy 검증된 패턴):
-          1. stale confirm modal / 열린 메인 모달 정리
-          2. URL 이미 ControlSuite + addBtn visible 이면 skip
-          3. manager/main.html 진입 보장
-          4. 시스템 관리 아이콘 펼침 (managerSystemManagementList visible 대기)
-          5. 전역정책 헤더 펼침 (managerControlSuite 메뉴가 visible 되도록)
-          6. 제어 스위트 메뉴 클릭 → addBtn 대기
-          7. hash 로 pageSize=100 보정
+        2회 시도: 1회 실패 시 page.reload() → 깨끗한 상태에서 재시도.
+        시나리오 cascade fail (서버 오류 후 모달 stuck / page corrupt) 자동 회복.
         """
+        for attempt in range(2):
+            try:
+                self._navigate_to_attempt()
+                return
+            except Exception as e:
+                if attempt == 0:
+                    # 1차 실패 — page reload 후 재시도
+                    try:
+                        self.page.reload(wait_until="domcontentloaded", timeout=15000)
+                        self.page.wait_for_timeout(800)
+                    except Exception:
+                        pass
+                    continue
+                raise  # 2차도 실패 시 raise
+
+    def _navigate_to_attempt(self) -> None:
+        """navigate_to 의 실제 1회 attempt (내부 — retry 는 navigate_to 가 관리)."""
         self._dismiss_stale_confirm_modal()
         # 이전 테스트에서 남은 sub-modal 정리 (picker / web_restrict / process_modal)
         self._close_leftover_submodals()
@@ -202,8 +212,15 @@ class NpouchControlSuitePage(BasePage):
 
     def close_modal(self) -> None:
         """취소 버튼 클릭 → 메인 모달 detached 대기.
+        alert 잔존 시 먼저 dismiss (alert backdrop 이 cancel 버튼 click 차단 방지).
         모달이 이미 닫혀있으면 no-op (정상 저장 후 자동 닫힘 케이스 안전).
         """
+        # 잔존 alert 먼저 dismiss (메인 저장 실패 후 알림이 cancel 클릭 가리는 케이스)
+        try:
+            if self.is_confirm_modal_visible(timeout=500):
+                self.dismiss_confirm_modal()
+        except Exception:
+            pass
         if not self.is_visible(self.SEL_MODAL_OPEN):
             return  # 이미 닫혀있음
         try:
@@ -212,7 +229,15 @@ class NpouchControlSuitePage(BasePage):
                 state="detached", timeout=self._TIMEOUT_MODAL
             )
         except Exception:
-            pass  # close 실패해도 다음 단계 진행 (무한 timeout 방지)
+            # ESC fallback (cancel 버튼 click 실패 시)
+            for _ in range(3):
+                try:
+                    self.page.keyboard.press("Escape")
+                    self.page.wait_for_timeout(200)
+                    if not self.is_visible(self.SEL_MODAL_OPEN):
+                        return
+                except Exception:
+                    break
 
     # ==================================================================
     # 3. 메인 모달 단독 필드 (Step 2)

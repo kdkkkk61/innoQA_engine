@@ -440,6 +440,16 @@ def logged_in_page(browser, settings, credentials):
     context.add_init_script(_OVERLAY_INJECT)   # 모든 페이지 로드 시 자동 주입
     page = context.new_page()
 
+    # console error/warning listener — JS error 자동화 로그 기록 (UX 결함 후 JS state 진단용)
+    def _log_console(msg):
+        if msg.type in ("error", "warning"):
+            try:
+                print(f"[JS {msg.type.upper()}] {msg.text[:200]}")
+            except Exception:
+                pass
+    page.on("console", _log_console)
+    page.on("pageerror", lambda exc: print(f"[JS PAGE ERROR] {str(exc)[:200]}"))
+
     login = LoginPage(page, settings)
     login.open()
 

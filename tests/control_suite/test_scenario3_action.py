@@ -1227,6 +1227,27 @@ class TestScenario3Action(ControlSuiteBase):
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
 
+        # 사전 정리 — 이전 임시 검증 / 잔존 alert + 모달 강제 정리
+        # 사용자가 Chrome MCP 등으로 직접 검증한 흔적 (csuName 잔존, alert 미 dismiss 등) 안전 처리
+        for _ in range(5):
+            try:
+                page.page.keyboard.press("Escape")
+                page.page.wait_for_timeout(150)
+            except Exception:
+                break
+        try:
+            page.dismiss_confirm_modal()
+        except Exception:
+            pass
+
+        # 사전 cleanup — 이전 실행의 [AUTO]_sc3_step9_* / step10_* 정책 누적 정리
+        # 정상 저장 케이스 (Case A drv50 등) 가 list 에 잔존 → 다음 실행 시 "이미 등록된 이름" 중복 차단
+        page.navigate_to()
+        try:
+            page.delete_all_test_data()
+        except Exception:
+            pass
+
         # ── Case A: 드라이브 letter 50자 (정상 케이스 — 메인 저장 OK) ─
         page.navigate_to()
         page.open_add_modal()
@@ -1282,6 +1303,12 @@ class TestScenario3Action(ControlSuiteBase):
         else:
             self._add("skip", "[차단 메시지] 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
+        # 서버 오류 케이스 후 안전 정리 — 페이지 새로고침 (모달 잔존 / alert 잔여 완전 정리)
+        try:
+            page.page.reload(wait_until="domcontentloaded", timeout=15000)
+            page.page.wait_for_timeout(500)
+        except Exception:
+            pass
 
         # ── Case C: basePath 400자 (web_restrict 기본폴더 — 메인 저장 시 서버 오류) ─
         page.navigate_to()
@@ -1322,6 +1349,12 @@ class TestScenario3Action(ControlSuiteBase):
         else:
             self._add("skip", "[차단 메시지] basePath 400자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
+        # 서버 오류 후 안전 정리 — 페이지 새로고침
+        try:
+            page.page.reload(wait_until="domcontentloaded", timeout=15000)
+            page.page.wait_for_timeout(500)
+        except Exception:
+            pass
 
         # ── Case D~G: Port invalid 격리 검증 (yaml main_server_verified 기반) ─
         # 본서버 Chrome MCP 2026-05-19 검증 격리 4 cycle 결과:
@@ -1370,6 +1403,13 @@ class TestScenario3Action(ControlSuiteBase):
                           f"[저장 확인] Port={port_val!r} {label} → 메인 저장 OK",
                           f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
             page.close_modal()
+            # 서버 오류 case 후 안전 정리 — reload
+            if expect_server_error:
+                try:
+                    page.page.reload(wait_until="domcontentloaded", timeout=15000)
+                    page.page.wait_for_timeout(500)
+                except Exception:
+                    pass
 
         # ── Case H: webRestrictName 500자 → 메인 저장 시 서버 오류 (UX 결함) ─
         # 본서버 Chrome MCP 2026-05-19 검증: 100자 OK / 500자 차단
