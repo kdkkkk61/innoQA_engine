@@ -1124,7 +1124,8 @@ class TestScenario3Action(ControlSuiteBase):
                 break
 
         # ── Case B: web_restrict picker — 동일 인스턴스 안 중복 프로세스 재선택 ──
-        page.navigate_to()
+        # case 사이 F5 — AngularJS modal directive state 누적 방지 (2026-05-20 진단 결과)
+        page.navigate_to_clean()
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step8_web")
         page.click_add_web_restrict_btn()
@@ -1159,7 +1160,8 @@ class TestScenario3Action(ControlSuiteBase):
         # ── Case C: tag mode picker — 동일 태그 재선택 중복 알림 (사용자 보고 누락) ──
         # 사용자 검증 요청: process 와 동일하게 태그 영역도 picker 중복 알림 있어야 함.
         page.page.wait_for_timeout(300)
-        page.navigate_to()
+        # case 사이 F5
+        page.navigate_to_clean()
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step8_tag")
         page.click_tag_tab()
@@ -1250,7 +1252,8 @@ class TestScenario3Action(ControlSuiteBase):
             pass
 
         # ── Case A: 드라이브 letter 50자 (정상 케이스 — 메인 저장 OK) ─
-        page.navigate_to()
+        # case 사이 F5 — AngularJS modal state 누적 방지
+        page.navigate_to_clean()
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step9_drv50")
         page.click_individual_process_tab()
@@ -1276,7 +1279,7 @@ class TestScenario3Action(ControlSuiteBase):
                       f"입력: SEL_TOGGLE_ACCESS_DRIVE 매칭 실패 / 결과: 기능 부재 (구 빌드)", sc=3)
 
         # ── Case B: 드라이브 letter 100자 (메인 저장 시 서버 오류) ─
-        page.navigate_to()
+        page.navigate_to_clean()
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step9_drv100")
         page.click_individual_process_tab()
@@ -1312,7 +1315,7 @@ class TestScenario3Action(ControlSuiteBase):
             pass
 
         # ── Case C: basePath 400자 (web_restrict 기본폴더 — 메인 저장 시 서버 오류) ─
-        page.navigate_to()
+        page.navigate_to_clean()
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step9_bp100")
         page.click_individual_process_tab()
@@ -1365,7 +1368,7 @@ class TestScenario3Action(ControlSuiteBase):
             ("",      True,  "빈값 (서버 차단)", "G"),
         ]
         for port_val, expect_server_error, label, case_id in port_test_cases:
-            page.navigate_to()
+            page.navigate_to_clean()
             page.open_add_modal()
             csu = f"[AUTO]_sc3_step9_port_{case_id}"
             page.set_csu_name(csu)
@@ -1409,7 +1412,7 @@ class TestScenario3Action(ControlSuiteBase):
 
         # ── Case H: webRestrictName 500자 → 메인 저장 시 서버 오류 (UX 결함) ─
         # 본서버 Chrome MCP 2026-05-19 검증: 100자 OK / 500자 차단
-        page.navigate_to()
+        page.navigate_to_clean()
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step10_webname500")
         page.click_add_web_restrict_btn()

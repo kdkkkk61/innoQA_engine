@@ -160,6 +160,23 @@ class NpouchControlSuitePage(BasePage):
         except Exception:
             pass
 
+    def navigate_to_clean(self) -> None:
+        """F5 reload + navigate_to — 테스트 내부 case 전환 시 깨끗한 상태 보장.
+
+        진단 결과 (sc3i / sc3j cascade fail):
+        - 테스트 끝 F5 만으로는 부족 — 한 테스트 안에 여러 modal open/close 사이클이
+          AngularJS Bootstrap modal directive 내부 state 누적 → 4번째 / 5번째 open 에서
+          modal element 가 .in 잠깐 붙었다 박탈 → display:none → fill timeout.
+        - F5 reload 가 가장 확실한 정리. user 의도: "f5 쓴경우 모달 찌꺼기 싹 날라간다".
+        - 이 메서드는 case 사이에서만 호출. 테스트 시작 시는 navigate_to() 사용 (F5 불필요).
+        """
+        try:
+            self.page.reload(wait_until="domcontentloaded", timeout=15000)
+            self.page.wait_for_timeout(500)
+        except Exception:
+            pass
+        self.navigate_to()
+
     def navigate_to(self) -> None:
         """제어 스위트 관리 페이지로 진입.
 
