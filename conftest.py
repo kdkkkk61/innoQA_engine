@@ -450,6 +450,27 @@ def logged_in_page(browser, settings, credentials):
     page.on("console", _log_console)
     page.on("pageerror", lambda exc: print(f"[JS PAGE ERROR] {str(exc)[:200]}"))
 
+    # 네트워크 요청/응답 ring buffer — cascade fail 진단용 (최근 20건만 유지)
+    # 5xx / 4xx 는 별도 로그. ring buffer 는 fail 시 dump.
+    page._qa_recent_net = []
+    def _on_response(resp):
+        try:
+            entry = {
+                "method": resp.request.method,
+                "url": resp.url[:120],
+                "status": resp.status,
+            }
+            page._qa_recent_net.append(entry)
+            if len(page._qa_recent_net) > 20:
+                page._qa_recent_net.pop(0)
+            if resp.status >= 500:
+                print(f"[NET 5xx] {entry['method']} {entry['status']} {entry['url']}")
+            elif resp.status >= 400 and resp.request.method != "GET":
+                print(f"[NET 4xx] {entry['method']} {entry['status']} {entry['url']}")
+        except Exception:
+            pass
+    page.on("response", _on_response)
+
     login = LoginPage(page, settings)
     login.open()
 
@@ -547,3 +568,52 @@ def pytest_runtest_makereport(item, call):
             print(f"\n[스크린샷 저장] {path}")
         except Exception as e:
             print(f"\n[스크린샷 저장 실패] {e}")
+
+        # ── cascade fail 진단 dump (로그로만, 별도 파일 X) ─────────────
+        print(f"\n[진단 DUMP] === {item.name} fail 시점 상태 ===")
+        # 1) DOM snapshot — modal/backdrop/body class
+        try:
+            dom_state = page.evaluate("""
+                () => {
+                    const open_modals = Array.from(document.querySelectorAll('.modal.in'))
+                        .map(m => m.id || m.className);
+                    const backdrops = document.querySelectorAll('.modal-backdrop').length;
+                    const body_cls = document.body.className;
+                    const body_style = document.body.getAttribute('style') || '';
+                    return {open_modals, backdrops, body_cls, body_style};
+                }
+            """)
+            print(f"[진단 DOM] open_modals={dom_state['open_modals']} backdrops={dom_state['backdrops']} body_cls='{dom_state['body_cls']}' body_style='{dom_state['body_style']}'")
+        except Exception as e:
+            print(f"[진단 DOM] 실패: {e}")
+
+        # 2) AngularJS $rootScope 상태
+        try:
+            ng_state = page.evaluate("""
+                () => {
+                    if (!window.angular) return {error: 'angular not loaded'};
+                    const body = angular.element(document.body);
+                    const rs = body.scope() ? body.scope().$root : null;
+                    if (!rs) return {error: 'rootScope not found'};
+                    return {
+                        phase: rs.$$phase || null,
+                        watchers: (rs.$$watchersCount !== undefined ? rs.$$watchersCount : 'n/a'),
+                        children: rs.$$childHead ? 'has_children' : 'no_children',
+                        digest_pending: !!rs.$$asyncQueue && rs.$$asyncQueue.length > 0,
+                        async_q_len: rs.$$asyncQueue ? rs.$$asyncQueue.length : 0,
+                    };
+                }
+            """)
+            print(f"[진단 NG] {ng_state}")
+        except Exception as e:
+            print(f"[진단 NG] 실패: {e}")
+
+        # 3) 최근 네트워크 요청 (ring buffer)
+        try:
+            recent = getattr(page, "_qa_recent_net", [])
+            print(f"[진단 NET] 최근 {len(recent)}건:")
+            for entry in recent[-10:]:
+                print(f"  {entry['method']:6s} {entry['status']} {entry['url']}")
+        except Exception as e:
+            print(f"[진단 NET] 실패: {e}")
+        print(f"[진단 DUMP] === end ===\n")
