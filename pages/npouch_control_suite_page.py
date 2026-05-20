@@ -206,11 +206,49 @@ class NpouchControlSuitePage(BasePage):
     # 2. 메인 모달 진입 / 탈출
     # ==================================================================
     def open_add_modal(self) -> None:
-        """addBtn 클릭 → 메인 모달 #controlSuite.in attached 대기."""
+        """addBtn 클릭 → 메인 모달 #controlSuite.in attached 대기.
+
+        진단 (2026-05-20 sc3g hang): .in 부착 후 input#csuName 비가시 케이스 dump.
+        backdrop 이 visibility 차단 안 함 → 다른 원인 (parent display / z-index 가림)
+        가능성 확인용 인라인 dump.
+        """
         self._click(self.page.locator(self.SEL_ADD_BTN).first)
         self.page.locator(self.SEL_MODAL_OPEN).first.wait_for(
             state="attached", timeout=self._TIMEOUT_MODAL
         )
+        # ── 진단: 모달 .in 부착 후 csuName 실제 가시성 / parent state dump ─
+        try:
+            diag = self.page.evaluate("""
+                () => {
+                    const m = document.querySelector('div#controlSuite');
+                    const inp = document.querySelector('input#csuName');
+                    if (!inp) return {error: 'csuName not in DOM'};
+                    const r = inp.getBoundingClientRect();
+                    const cs = getComputedStyle(inp);
+                    const mcs = m ? getComputedStyle(m) : null;
+                    // 위에 가리는 element 확인 (input 중앙 좌표 elementFromPoint)
+                    const cx = r.left + r.width/2;
+                    const cy = r.top + r.height/2;
+                    const top = document.elementFromPoint(cx, cy);
+                    return {
+                        modal_classes: m ? m.className : null,
+                        modal_display: mcs ? mcs.display : null,
+                        modal_visibility: mcs ? mcs.visibility : null,
+                        input_rect: {x:r.x|0, y:r.y|0, w:r.width|0, h:r.height|0},
+                        input_display: cs.display,
+                        input_visibility: cs.visibility,
+                        input_opacity: cs.opacity,
+                        backdrops: document.querySelectorAll('.modal-backdrop').length,
+                        body_cls: document.body.className,
+                        top_at_input: top ? (top.tagName + '#' + top.id + '.' + top.className).slice(0,80) : null,
+                        open_modals: Array.from(document.querySelectorAll('.modal.in'))
+                                          .map(x => x.id || x.className),
+                    };
+                }
+            """)
+            print(f"[진단 OPEN_MODAL] {diag}")
+        except Exception as e:
+            print(f"[진단 OPEN_MODAL] dump 실패: {e}")
 
     def get_modal_title(self) -> str:
         return self.page.locator(self.SEL_MODAL_TITLE).first.inner_text().strip()
