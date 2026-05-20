@@ -1322,8 +1322,10 @@ class TestScenario3Action(ControlSuiteBase):
             )
             msg = page.get_confirm_message()
             page.dismiss_confirm_modal()
-            ok_blocked = ("서버" in msg and "오류" in msg) or "발생" in msg
-            self._add("pass" if ok_blocked else "fail",
+            defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+            # 서버 오류 노출 = UX 결함 재현 (sub-modal 단계 검증 누락) → warn (BUG 리포트)
+            # 메인 저장 정상 통과 = 결함 없음 (sub-modal 에서 정상 차단) → pass
+            self._add("warn" if defect_found else "pass",
                       "[UX 결함] 드라이브 letter 100자 → 메인 저장 시 서버 오류 (sub-modal 단계에서 차단되어야 정상)",
                       f"입력: letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         else:
@@ -1368,8 +1370,8 @@ class TestScenario3Action(ControlSuiteBase):
             )
             msg = page.get_confirm_message()
             page.dismiss_confirm_modal()
-            ok_blocked = ("서버" in msg and "오류" in msg) or "발생" in msg
-            self._add("pass" if ok_blocked else "fail",
+            defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+            self._add("warn" if defect_found else "pass",
                       "[UX 결함] basePath 400자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상, 드라이브 letter 동일 패턴)",
                       f"입력: basePath 400자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         else:
@@ -1414,8 +1416,9 @@ class TestScenario3Action(ControlSuiteBase):
             msg = page.get_confirm_message()
             page.dismiss_confirm_modal()
             if expect_server_error:
-                ok = "서버" in msg and ("오류" in msg or "발생" in msg)
-                self._add("pass" if ok else "fail",
+                defect_found = "서버" in msg and ("오류" in msg or "발생" in msg)
+                # 서버 오류 노출 = UX 결함 재현 → warn (BUG 리포트)
+                self._add("warn" if defect_found else "pass",
                           f"[UX 결함] Port={port_val!r} {label} → 메인 저장 시 서버 오류 (process_modal 단계에서 차단되어야 정상)",
                           f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
             else:
@@ -1453,8 +1456,8 @@ class TestScenario3Action(ControlSuiteBase):
         )
         msg = page.get_confirm_message()
         page.dismiss_confirm_modal()
-        ok_blocked = ("서버" in msg and "오류" in msg) or "발생" in msg
-        self._add("pass" if ok_blocked else "fail",
+        defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+        self._add("warn" if defect_found else "pass",
                   "[UX 결함] webRestrictName 500자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
                   f"입력: webRestrictName 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         page.close_modal()
