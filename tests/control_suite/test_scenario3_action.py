@@ -1304,7 +1304,7 @@ class TestScenario3Action(ControlSuiteBase):
             page.dismiss_confirm_modal()
             ok_blocked = ("서버" in msg and "오류" in msg) or "발생" in msg
             self._add("pass" if ok_blocked else "fail",
-                      "[차단 메시지] 드라이브 letter 100자 → 메인 저장 시 서버 오류 (UX 결함)",
+                      "[UX 결함] 드라이브 letter 100자 → 메인 저장 시 서버 오류 (sub-modal 단계에서 차단되어야 정상)",
                       f"입력: letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         else:
             self._add("skip", "[차단 메시지] 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
@@ -1350,7 +1350,7 @@ class TestScenario3Action(ControlSuiteBase):
             page.dismiss_confirm_modal()
             ok_blocked = ("서버" in msg and "오류" in msg) or "발생" in msg
             self._add("pass" if ok_blocked else "fail",
-                      "[차단 메시지] basePath 400자 → 메인 저장 시 서버 오류 (UX 결함, 드라이브 letter 동일 패턴)",
+                      "[UX 결함] basePath 400자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상, 드라이브 letter 동일 패턴)",
                       f"입력: basePath 400자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         else:
             self._add("skip", "[차단 메시지] basePath 400자 — 기능 부재", "(skip)", sc=3)
@@ -1396,7 +1396,7 @@ class TestScenario3Action(ControlSuiteBase):
             if expect_server_error:
                 ok = "서버" in msg and ("오류" in msg or "발생" in msg)
                 self._add("pass" if ok else "fail",
-                          f"[차단 메시지] Port={port_val!r} {label} → 메인 저장 시 서버 오류",
+                          f"[UX 결함] Port={port_val!r} {label} → 메인 저장 시 서버 오류 (process_modal 단계에서 차단되어야 정상)",
                           f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
             else:
                 ok = msg == "저장 하였습니다"
@@ -1435,6 +1435,6 @@ class TestScenario3Action(ControlSuiteBase):
         page.dismiss_confirm_modal()
         ok_blocked = ("서버" in msg and "오류" in msg) or "발생" in msg
         self._add("pass" if ok_blocked else "fail",
-                  "[차단 메시지] webRestrictName 500자 → 메인 저장 시 서버 오류 (UX 결함)",
+                  "[UX 결함] webRestrictName 500자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
                   f"입력: webRestrictName 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         page.close_modal()
