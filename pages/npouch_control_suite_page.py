@@ -136,16 +136,13 @@ class NpouchControlSuitePage(BasePage):
     # ==================================================================
     # 1. 네비게이션
     # ==================================================================
-    def navigate_to(self) -> None:
-        """제어 스위트 관리 페이지로 진입.
+    def _cleanup_modal_backdrop(self) -> None:
+        """Bootstrap 3 modal 잔해 정리 — .modal-backdrop + body.modal-open + padding-right.
 
         cascade fail 진단 결과 (2026-05-20):
-        - 이전 테스트 끝 modal.in 은 닫혔지만 .modal-backdrop div + body.modal-open
-          클래스가 잔존 → 다음 테스트 input fill timeout (backdrop pointer-events 차단)
-        - 진입 직후 1회 backdrop/body 강제 정리로 cascade 완전 해소
-          (reload 미봉책이 아닌 잔해만 surgical 제거 — Karpathy 원칙 준수)
+        modal 닫힘 후 backdrop div 가 잔존 → 다음 input fill 시 pointer-events 차단.
+        server error alert dismiss 후 / 메인 모달 close 후 / navigate_to 진입 시 호출.
         """
-        # ── Bootstrap 3 modal 잔해 정리 — backdrop + body.modal-open + padding-right
         try:
             self.page.evaluate("""
                 () => {
@@ -157,6 +154,16 @@ class NpouchControlSuitePage(BasePage):
         except Exception:
             pass
 
+    def navigate_to(self) -> None:
+        """제어 스위트 관리 페이지로 진입.
+
+        cascade fail 진단 결과 (2026-05-20):
+        - 이전 테스트 끝 modal.in 은 닫혔지만 .modal-backdrop div + body.modal-open
+          클래스가 잔존 → 다음 테스트 input fill timeout (backdrop pointer-events 차단)
+        - 진입 직후 + alert dismiss 후 + modal close 후 backdrop cleanup
+          (reload 미봉책이 아닌 잔해만 surgical 제거 — Karpathy 원칙 준수)
+        """
+        self._cleanup_modal_backdrop()
         self._dismiss_stale_confirm_modal()
         # 이전 테스트에서 남은 sub-modal 정리 (picker / web_restrict / process_modal)
         self._close_leftover_submodals()
@@ -649,6 +656,8 @@ class NpouchControlSuitePage(BasePage):
         self.page.locator(self.SEL_CONFIRM_MODAL_OPEN).wait_for(
             state="detached", timeout=self._TIMEOUT_MODAL
         )
+        # alert 닫힘 직후 backdrop 잔해 정리 — server error 후 누적 방지 (2026-05-20 fix)
+        self._cleanup_modal_backdrop()
 
     # ==================================================================
     # 5. 내부 헬퍼
