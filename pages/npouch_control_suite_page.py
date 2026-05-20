@@ -169,7 +169,9 @@ class NpouchControlSuitePage(BasePage):
         - 진입 직후 + alert dismiss 후 + modal close 후 backdrop cleanup
           (reload 미봉책이 아닌 잔해만 surgical 제거 — Karpathy 원칙 준수)
         """
-        self._cleanup_modal_backdrop()
+        # _cleanup_modal_backdrop() 호출 제거 — 사용자 평가: 추가 cleanup 이 cascade 트리거 가능성.
+        # F5 reload (teardown) 만으로 깨끗한 상태 유지. (2026-05-20 진단 결과)
+        # self._cleanup_modal_backdrop()
         self._dismiss_stale_confirm_modal()
         # 이전 테스트에서 남은 sub-modal 정리 (picker / web_restrict / process_modal)
         self._close_leftover_submodals()
@@ -271,7 +273,9 @@ class NpouchControlSuitePage(BasePage):
         except Exception:
             pass
         if not self.is_visible(self.SEL_MODAL_OPEN):
-            self._cleanup_modal_backdrop()  # 이미 닫혀있어도 잔해 정리
+            # _cleanup_modal_backdrop() 호출 제거 — 사용자 평가: 추가 cleanup 이 cascade 트리거 가능성.
+        # F5 reload (teardown) 만으로 깨끗한 상태 유지. (2026-05-20 진단 결과)
+        # self._cleanup_modal_backdrop()  # 이미 닫혀있어도 잔해 정리
             return
         try:
             self._click(self.page.locator(self.SEL_CANCEL_BTN).first)
@@ -289,15 +293,18 @@ class NpouchControlSuitePage(BasePage):
                 except Exception:
                     break
         # 모달 닫힘 직후 backdrop 잔해 정리 (2026-05-20 fix — 모든 close 경로)
-        self._cleanup_modal_backdrop()
+        # _cleanup_modal_backdrop() 호출 제거 — 사용자 평가: 추가 cleanup 이 cascade 트리거 가능성.
+        # F5 reload (teardown) 만으로 깨끗한 상태 유지. (2026-05-20 진단 결과)
+        # self._cleanup_modal_backdrop()
 
     # ==================================================================
     # 3. 메인 모달 단독 필드 (Step 2)
     # ==================================================================
 
     # ── csuName ─────────────────────────────────────────────────────
-    def set_csu_name(self, name: str) -> None:
-        self.page.locator(self.SEL_CSU_NAME).first.fill(name)
+    def set_csu_name(self, name: str, timeout: int = 5000) -> None:
+        # 명시적 timeout=5000 — 기본 30s 가 set_default_timeout 으로 안 잡히는 케이스 대응
+        self.page.locator(self.SEL_CSU_NAME).first.fill(name, timeout=timeout)
 
     def get_csu_name(self) -> str:
         return self.page.locator(self.SEL_CSU_NAME).first.input_value()
@@ -704,7 +711,9 @@ class NpouchControlSuitePage(BasePage):
             state="detached", timeout=self._TIMEOUT_MODAL
         )
         # alert 닫힘 직후 backdrop 잔해 정리 — server error 후 누적 방지 (2026-05-20 fix)
-        self._cleanup_modal_backdrop()
+        # _cleanup_modal_backdrop() 호출 제거 — 사용자 평가: 추가 cleanup 이 cascade 트리거 가능성.
+        # F5 reload (teardown) 만으로 깨끗한 상태 유지. (2026-05-20 진단 결과)
+        # self._cleanup_modal_backdrop()
 
     # ==================================================================
     # 5. 내부 헬퍼
@@ -758,7 +767,9 @@ class NpouchControlSuitePage(BasePage):
                 self.wait_for(self.SEL_ADD_BTN)
         except Exception:
             pass
-        self._cleanup_modal_backdrop()  # 닫힘 / no-op 모두 잔해 정리
+        # _cleanup_modal_backdrop() 호출 제거 — 사용자 평가: 추가 cleanup 이 cascade 트리거 가능성.
+        # F5 reload (teardown) 만으로 깨끗한 상태 유지. (2026-05-20 진단 결과)
+        # self._cleanup_modal_backdrop()  # 닫힘 / no-op 모두 잔해 정리
 
     def _dismiss_stale_confirm_modal(self) -> None:
         try:
@@ -771,4 +782,6 @@ class NpouchControlSuitePage(BasePage):
             )
         except Exception:
             pass
-        self._cleanup_modal_backdrop()  # stale alert dismiss 후 잔해 정리
+        # _cleanup_modal_backdrop() 호출 제거 — 사용자 평가: 추가 cleanup 이 cascade 트리거 가능성.
+        # F5 reload (teardown) 만으로 깨끗한 상태 유지. (2026-05-20 진단 결과)
+        # self._cleanup_modal_backdrop()  # stale alert dismiss 후 잔해 정리
