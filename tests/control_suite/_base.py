@@ -94,22 +94,14 @@ class ControlSuiteBase:
         # ScanResult fallback attach
         if self._srs and not getattr(self._request.node, "_scan_report", None):
             self._attach(self._srs)
-        # 매 테스트 끝 — modal/backdrop 강제 정리 (다음 테스트 영향 방지)
+        # 매 테스트 끝 — page reload 로 깨끗한 상태 보장 (다음 sub-case cascade 방지)
+        # 이전 JS evaluate 강제 정리는 sc3i/3j 의 page close cascade 야기한 issue 확인됨 → reload 로 교체.
+        # reload 가 sub-case 끝마다 호출되지만 안전성 우선 (서버 오류 후 cascade 차단).
         page_obj = request.node.funcargs.get("logged_in_page")
         if page_obj is not None:
             try:
-                page_obj.evaluate("""
-                    () => {
-                        document.querySelectorAll('div.modal-wrap.in, div.modal.in').forEach(m => {
-                            m.classList.remove('in');
-                            m.style.display = 'none';
-                        });
-                        document.querySelectorAll('div.modal-backdrop').forEach(b => b.remove());
-                        document.body.classList.remove('modal-open');
-                        document.body.style.paddingRight = '';
-                        document.body.style.overflow = '';
-                    }
-                """)
+                page_obj.reload(wait_until="domcontentloaded", timeout=15000)
+                page_obj.wait_for_timeout(500)
             except Exception:
                 pass
 

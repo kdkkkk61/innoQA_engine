@@ -5,6 +5,33 @@
 
 ---
 
+## [WORKAROUND] sc3 sub-case cascade fail — 서버 오류 후 다음 sub-case 진입 차단 (재설계 보류)
+- **날짜**: 2026-05-20
+- **증상**: sc3 전체 실행 시 sc3f-3i cascade fail. sub-case 단독 실행 (예: sc3j) 은 PASS. 메인 저장 시 "서버에서 오류가 발생 하였습니다." 알림 후 다음 정책 생성 시 `Locator.fill: input#csuName not visible` 30s timeout. 다음 sub-case 까지 cascade.
+- **추정 원인** (확정 아님 — 별도 진단 세션 필요):
+  - sub-case 끝 후 모달 / alert / backdrop 잔존 상태가 다음 sub-case 의 navigate_to 또는 open_add_modal 시점 element 접근 차단
+  - JS state corrupt 또는 AngularJS scope 꼬임 가능성
+  - 진짜 원인 미진단 — JS error 는 단순 HTTP 500 응답만 ('Failed to load resource: status of 500')
+- **임시 회피 (WORKAROUND — 미봉책)**:
+  1. `pages/npouch_control_suite_page.py:navigate_to()` — 2회 retry + reload fallback (1차 실패 시 page.reload())
+  2. `tests/control_suite/test_scenario3_action.py:sc3j` — Case B/C/Port-E/Port-G 끝마다 page.reload() (서버 오류 case 후 안전 정리)
+  3. `tests/control_suite/_base.py:_setup` autouse fixture — 매 sub-case 끝 page.reload() (이전 JS evaluate 강제 정리는 자체가 page close cascade 야기 → reload 로 교체)
+  4. `pages/npouch_control_suite_page.py:close_modal()` — alert dismiss 먼저 (alert backdrop 이 cancel click 차단 방지) + ESC fallback
+  5. `pages/npouch_control_suite_page.py:SEL_CONFIRM_*` — 4종 alert modal ID 통합 (__globalMessageModal + registeredFolderWarning + nullEnteredWarning + registeredProcessExtentionWarning)
+  6. `conftest.py` — JS console error/pageerror listener 추가 (page.on('console', ...))
+- **검증 결과**: sc3j 단독 실행 8건 PASS (commit d71d10d)
+- **사용자 평가** (2026-05-20): "새로고침은 간접 해결 — 올바르지 않다고 판단. 재설계 필요. 임시 유지 + 별도 진단 세션."
+- **재설계 plan (보류)**:
+  1. reload 모두 제거 → fail 직접 노출 → stack trace 정확 분석
+  2. sub-case 끝 직후 page state 캡쳐 (DOM / 모달 / backdrop)
+  3. JS error / AngularJS scope 진단 (단순 HTTP 500 외 다른 error 있는지)
+  4. 원인 확정 후 정확 fix (reload 제거)
+- **파일**: pages/npouch_control_suite_page.py, tests/control_suite/_base.py, tests/control_suite/test_scenario3_action.py, conftest.py
+- **관련 commit**: 907b056, d71d10d
+- **상태**: [WORKAROUND] — 임시 회피 적용. 진짜 원인 미진단. 재설계 보류.
+
+---
+
 ## [RESOLVED] Step 5b 이름 중복 — [AUTO_KEEP]_ 정책이 이전 실행 잔존
 - **날짜**: 2026-05-14
 - **증상**: Step 5b 두 번째 실행부터 `modify 저장 메시지: '이미 등록된 이름 입니다.'` 로 fail. 사용자: "마지막 이슈 확인 아마 이름 겹치는 뭐가 있나"
