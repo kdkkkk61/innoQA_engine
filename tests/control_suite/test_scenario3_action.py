@@ -1461,3 +1461,94 @@ class TestScenario3Action(ControlSuiteBase):
                   "[UX 결함] webRestrictName 500자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
                   f"입력: webRestrictName 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         page.close_modal()
+
+        # ── Case I: attachAllowUrl 1000자 (silent invalid + 메인 저장 서버 오류) ─
+        # yaml :326 verified — URL list 등록 안 됨 + 알림 없음 (silent invalid) + 메인 저장 서버 오류
+        page.navigate_to_clean()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step11_url1000")
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")
+        page.web_restrict.set_name("[AUTO]_web_sc3_step11")
+        page.web_restrict.set_is_url(True)
+        page.web_restrict.add_url("a" * 1000)
+        # web_restrict_modal 저장 (silent invalid — URL 등록 자체가 안 됨 + 알림 없음)
+        page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+        page.web_restrict.wait_closed(timeout=3000)
+        # 메인 저장 → 서버 오류 기대
+        page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
+        page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+            state="attached", timeout=page._TIMEOUT_MODAL
+        )
+        msg = page.get_confirm_message()
+        page.dismiss_confirm_modal()
+        defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+        self._add("warn" if defect_found else "pass",
+                  "[UX 결함] attachAllowUrl 1000자 → silent invalid + 메인 저장 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
+                  f"입력: URL 1000자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        page.close_modal()
+
+        # ── Case J: allowFileExtention 500자 (web 확장자) → 메인 저장 서버 오류 ─
+        # yaml :360 verified — process 확장자는 안전 / web 확장자만 백엔드 차단 (server-side 검증 차이)
+        page.navigate_to_clean()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step12_webext500")
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")
+        page.web_restrict.set_name("[AUTO]_web_sc3_step12")
+        # web 확장자 500자 — sub-modal 단계는 통과 (yaml :164 동일 길이 등록 OK)
+        if page.feature_exists(page.web_restrict.SEL_FILE_EXT_INPUT, timeout=1000):
+            page.web_restrict.add_file_extension("a" * 500)
+            page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+            page.web_restrict.wait_closed(timeout=3000)
+            # 메인 저장 → 서버 오류
+            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
+            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                state="attached", timeout=page._TIMEOUT_MODAL
+            )
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+            self._add("warn" if defect_found else "pass",
+                      "[UX 결함] allowFileExtention(web) 500자 → 메인 저장 서버 오류 (process 확장자와 다른 동작 — web 만 차단)",
+                      f"입력: web 확장자 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("skip", "[UX 결함] allowFileExtention 500자 — 기능 부재", "(skip)", sc=3)
+        page.close_modal()
+
+        # ── Case K: cacheFolderInput 500자 → 메인 저장 서버 오류 ─
+        # yaml :361 verified — 한글/특수/500자 모두 sub-modal 통과 (DOM 차단 없음) + 메인 저장 서버 오류
+        # 진단 격리: 500자만 단독 (한글/특수와 분리)
+        page.navigate_to_clean()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step13_cache500")
+        page.click_individual_process_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="single")
+        if page.feature_exists(page.process.SEL_CACHE_INPUT, timeout=1000):
+            page.process.set_cache_input("a" * 500)
+            page.process.click_cache_add_btn()
+            page.process.confirm()
+            # 메인 저장 → 서버 오류 기대
+            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
+            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                state="attached", timeout=page._TIMEOUT_MODAL
+            )
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+            self._add("warn" if defect_found else "pass",
+                      "[UX 결함] cacheFolderInput 500자 → 메인 저장 서버 오류 (process_modal 단계에서 글자수 차단되어야 정상)",
+                      f"입력: cache 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("skip", "[UX 결함] cacheFolderInput 500자 — 기능 부재", "(skip)", sc=3)
+        page.close_modal()
