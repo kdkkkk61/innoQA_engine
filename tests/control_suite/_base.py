@@ -83,25 +83,36 @@ class ControlSuiteBase:
         )
         self._attach([sr])
 
+    # 짧은 default timeout — cascade 시 wait 시간 폭증 방지 (5s).
+    # 진단 hook 으로 fail 시점 정보는 그대로 수집 → 차후 원인 분석 가능.
+    _SC_DEFAULT_TIMEOUT = 5000
+
     @pytest.fixture(autouse=True)
     def _setup(self, request):
-        """매 테스트 시작 — request + ScanResult 누적 리스트 초기화."""
+        """매 테스트 시작 — short timeout 적용 + 끝 F5 + 진단 정보 유지."""
         self._request = request
         self._lines: list[str] = []
         self._srs:   list[ScanResult] = []
-        self._page = None    # _add 의 fail 스크린샷용 — test 메서드가 세팅
+        self._page = None
+        # 시작 — page default timeout 단축 (cascade hang 시간 폭증 방지)
+        try:
+            if "logged_in_page" in request.fixturenames:
+                page = request.getfixturevalue("logged_in_page")
+                page.set_default_timeout(self._SC_DEFAULT_TIMEOUT)
+        except Exception:
+            pass
         yield
         # ScanResult fallback attach
         if self._srs and not getattr(self._request.node, "_scan_report", None):
             self._attach(self._srs)
-        # 매 테스트 끝 — page.reload() 복원 (2026-05-20 실용 복구).
-        # 진짜 원인 확정 시도 → 백드롭/cleanup race 등 발견했지만 cascade 완전 해소 못함.
-        # 사용자 평가: "이전 무식한 F5가 더 유용한 상태" → 실용성 우선.
-        # 진단 hook (DOM/NET ring buffer) 은 그대로 유지 → fail 시 정보 수집은 계속.
+        # 끝 — timeout 원복 + page.reload() (실용 복구)
+        # 사용자 평가: "이전 무식한 F5 가 더 유용" → reload 유지
+        # 진단 hook 은 그대로 → fail 시 [진단 OPEN_MODAL/DOM/NET] 누적
         try:
             page = (self._request.node.funcargs.get("logged_in_page")
                     or self._request.node.funcargs.get("fresh_page"))
             if page is not None:
+                page.set_default_timeout(30000)   # 원복
                 page.reload(wait_until="domcontentloaded", timeout=15000)
                 page.wait_for_timeout(500)
         except Exception:
