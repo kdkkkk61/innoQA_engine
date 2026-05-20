@@ -5,7 +5,43 @@
 
 ---
 
-## [RESOLVED] sc3 sub-case cascade fail — modal-backdrop + body.modal-open 잔존 (2026-05-20)
+## [RESOLVED] sc3 within-test cascade fail — case 사이 F5 (navigate_to_clean) 적용 (2026-05-20 최종)
+- **날짜**: 2026-05-20 (3차 진단 + 최종 해결)
+- **증상**: sc3i / sc3j 내부에서 2번째+ open_add_modal 시 `Locator.fill: Timeout` cascade fail.
+  sc3b~3h 는 teardown F5 만으로 PASS — 테스트 boundary 는 OK. 한 테스트 안의 multi-case 가 문제.
+- **진단 흐름**:
+  1. modal-backdrop 누적 가설 → 무조건 cleanup 적용 → 실패 (cleanup 자체가 race 야기)
+  2. cleanup 조건부 (open modal 보호) → sc3i 여전히 fail
+  3. cleanup 완전 제거 → 동일하게 fail → cleanup 이 원인 아님 확정
+  4. MCP 직접 검증: 순수 ESC + reopen 410ms 안에 정상 modal — transition 자체는 깨끗
+  5. fail dump 일관 패턴: `body_cls='modal-open'` 잔존 + modal `.in` 없음 + display:none
+- **진짜 원인 추정**: AngularJS Bootstrap modal directive 가 같은 page lifecycle 안에서
+  multi open/close 시 내부 state 누적 → 4번째~5번째 open 에서 modal element 가 `.in` 잠깐
+  붙었다 박탈 → display:none → input not visible 30s (5s timeout 적용 후 5s) timeout.
+  진짜 라이브러리 레벨 fix 는 차후 본격 분석 필요.
+- **fix (실용 — user 의도 "f5 쓴경우 모달 찌꺼기 싹 날라간다")**:
+  1. `pages/npouch_control_suite_page.py:navigate_to_clean()` 신규 — F5 reload + navigate_to
+  2. `tests/control_suite/test_scenario3_action.py`:
+     - sc3i Case B, C 진입: navigate_to_clean()
+     - sc3j Case A/B/C/D-G loop/H 진입: navigate_to_clean()
+     - 첫 호출 (test start) 은 navigate_to() 유지 — teardown F5 직후라 불필요
+  3. `tests/control_suite/_base.py:_setup` — set_default_timeout(5000) + teardown F5 유지
+  4. `pages/npouch_control_suite_page.py:set_csu_name(timeout=5000)` 명시적 timeout
+  5. `conftest.py` — 진단 hook (DOM/NET ring buffer + fail 시 dump) 유지 → 차후 본격
+     분석 시 누적 dump 활용 가능
+- **검증 결과** (`reports/runs/20260520_124700_all.log`): sc3b~3j 9 PASSED in 169s
+  - sc3i: 3 OPEN_MODAL dumps 모두 `modal-wrap in / block / w=466` ✓
+  - sc3j: 8 OPEN_MODAL dumps 모두 정상 ✓
+- **관련 commit**: 80fdaaf (reload 제거 시도) → 190741f (진단 hook) → f415d13 / 93ad58c / c801ab1 (cleanup 시도) → a41f9a1 (조건부) → e7b91a7 (timeout 단축) → 91166d9 (cleanup 제거) → c5ec127 (navigate_to_clean 최종)
+- **차후 본격 분석 단서**:
+  1. F5 없이 해결하려면 AngularJS modal directive 의 $scope state 직접 정리 필요
+  2. open_modal_factory 추적 → 내부 $$childHead chain / digest queue 확인
+  3. 진단 hook 의 [진단 NG] $rootScope dump 활용
+- **상태**: [RESOLVED] — 실용 해결. 진짜 원인 (AngularJS state 누적) 미진단 → 차후 본격 분석 가능 상태 유지.
+
+---
+
+## [SUPERSEDED] sc3 sub-case cascade fail — modal-backdrop + body.modal-open 잔존 (2026-05-20 1차 시도)
 - **날짜**: 2026-05-20 (진단 + fix 완료)
 - **증상 재현**: reload 미봉책 제거 후 sc3f~3j 실행 시 sc3f PASS / sc3g-3j 모두 `Locator.fill: Timeout` cascade fail
 - **진단 결과** (conftest.py 진단 hook 추가 후 `reports/runs/20260520_102258_all.log`):
