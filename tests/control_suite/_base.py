@@ -68,6 +68,25 @@ class ControlSuiteBase:
 
     PAGE_ID = "npouch_control_suite"
 
+    # session-level cleanup 1회 flag — sc1a 미실행 시 sc3/4/5 등 단독 실행 안전 보장.
+    # 사용자 평가 (2026-05-20): "이미 등록된 이름 차단은 시스템 정상 동작 — sc1 cleanup
+    # 미실행이 진짜 원인". → session 시작 시 무조건 1회 cleanup.
+    _SESSION_CLEANUP_DONE = False
+
+    def _ensure_session_cleanup(self, page) -> None:
+        """session 시작 시 [AUTO]_ + [AUTO_KEEP]_ 1회 일괄 정리.
+
+        sc1a 가 이미 cleanup 했으면 (delete_all_test_data) idempotent — 추가 정리 없음.
+        sc1a 가 안 실행됐으면 (subset run: pytest sc3 만) 여기서 cleanup.
+        """
+        if ControlSuiteBase._SESSION_CLEANUP_DONE:
+            return
+        try:
+            page.delete_all_test_data()
+        except Exception:
+            pass
+        ControlSuiteBase._SESSION_CLEANUP_DONE = True
+
     def _attach(self, scan_results: list[ScanResult]) -> None:
         """PageScanReport 를 test node 에 첨부 — conftest 가 수집해서 html_reporter 로 전달."""
         report = PageScanReport(page_id=self.PAGE_ID)

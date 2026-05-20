@@ -35,8 +35,8 @@ class TestScenario3Action(ControlSuiteBase):
         self._page = page.page
 
         page.navigate_to()
-        # 시나리오 3 단독 실행 안전성 — 1a (세션 시작 정리) 미동작 시 잔여 정리.
-        page.delete_all_test_data()
+        # 시나리오 3 단독 실행 안전성 — sc1a 미실행 시 자동 cleanup
+        self._ensure_session_cleanup(page)
 
         page.open_add_modal()
         page.set_csu_name(policy_name)
@@ -102,13 +102,8 @@ class TestScenario3Action(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 3c: ADD 종합 풍부 (메인+프로세스+태그+웹제한+저장+등록) ━━━")
         self._page = page.page
         page.navigate_to()
-        # 멱등 보장 — KEEP_NAME 이 이전 실행에서 보존된 경우 중복 차단 회피
-        # (memory: 5b 패턴과 동일 — delete_all_auto_policies 는 KEEP 자동 제외라 명시 삭제 필요)
-        try:
-            if page.is_policy_exists(KEEP_NAME):
-                page.delete_policy(KEEP_NAME)
-        except Exception:
-            pass
+        # 세션 시작 정리 보장 (sc1a 미실행 시 자동 cleanup — _base.py 의 _ensure_session_cleanup)
+        self._ensure_session_cleanup(page)
 
         # ════ 메인 모달 입력 ════
         page.open_add_modal()
@@ -575,18 +570,9 @@ class TestScenario3Action(ControlSuiteBase):
         # ════ 메인 저장 + 정책 등록 확인 ════
         msg = page.save_policy(mode="add")
         page.dismiss_confirm_modal()
-        ok_save = (msg == "저장 하였습니다")
-        # FAIL 시 원인 명확화: "이미 등록된 이름" 메시지면 멱등 정리 실패 / 그 외는 실제 저장 오류
-        if not ok_save and "이미 등록" in msg:
-            detail = (f"기대: '저장 하였습니다' / 실제: {msg!r} "
-                      f"— 원인 가능: 이전 실행 [AUTO_KEEP] 잔존 + 시작 시 멱등 정리 실패")
-        elif not ok_save:
-            detail = (f"기대: '저장 하였습니다' / 실제: {msg!r} "
-                      f"— 원인 가능: 저장 시점 서버 오류 또는 검증 차단")
-        else:
-            detail = f"입력: '추가' 클릭 / 결과: 메시지={msg!r}"
-        self._add("pass" if ok_save else "fail",
-                  "[저장 확인] 스위트 추가 모달 — '추가' 저장", detail, sc=3)
+        self._add("pass" if msg == "저장 하였습니다" else "fail",
+                  "[저장 확인] 스위트 추가 모달 — '추가' 저장",
+                  f"입력: '추가' 클릭 / 결과: 메시지={msg!r}", sc=3)
 
         exists = page.is_policy_exists(KEEP_NAME)
         self._add("pass" if exists else "fail",

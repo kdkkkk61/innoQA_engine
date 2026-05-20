@@ -23,9 +23,9 @@ class TestScenario1Ui(ControlSuiteBase):
         page = NpouchControlSuitePage(logged_in_page, settings)
         lines, srs = [], []
 
-        # 1. navigate + 세션 시작 정리 (auto + keep 모두)
+        # 1. navigate + 세션 시작 정리 (auto + keep 모두) — _base helper 통일
         page.navigate_to()
-        page.delete_all_test_data()
+        self._ensure_session_cleanup(page)
         url_ok = "managerControlSuite" in page.page.url
         t, s = _r(
             "pass" if url_ok else "fail",
