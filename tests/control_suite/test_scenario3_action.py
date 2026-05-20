@@ -1242,9 +1242,10 @@ class TestScenario3Action(ControlSuiteBase):
 
         # 사전 cleanup — 이전 실행의 [AUTO]_sc3_step9_* / step10_* 정책 누적 정리
         # 정상 저장 케이스 (Case A drv50 등) 가 list 에 잔존 → 다음 실행 시 "이미 등록된 이름" 중복 차단
+        # 주의: delete_all_auto_policies() 사용 ([AUTO_KEEP]_ 보호 — sc4 가 sc3 KEEP 정책 의존)
         page.navigate_to()
         try:
-            page.delete_all_test_data()
+            page.delete_all_auto_policies()
         except Exception:
             pass
 
@@ -1349,12 +1350,7 @@ class TestScenario3Action(ControlSuiteBase):
         else:
             self._add("skip", "[차단 메시지] basePath 400자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
-        # 서버 오류 후 안전 정리 — 페이지 새로고침
-        try:
-            page.page.reload(wait_until="domcontentloaded", timeout=15000)
-            page.page.wait_for_timeout(500)
-        except Exception:
-            pass
+        # reload 미봉책 제거 (재설계 진단 단계)
 
         # ── Case D~G: Port invalid 격리 검증 (yaml main_server_verified 기반) ─
         # 본서버 Chrome MCP 2026-05-19 검증 격리 4 cycle 결과:

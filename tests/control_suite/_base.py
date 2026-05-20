@@ -94,16 +94,9 @@ class ControlSuiteBase:
         # ScanResult fallback attach
         if self._srs and not getattr(self._request.node, "_scan_report", None):
             self._attach(self._srs)
-        # 매 테스트 끝 — page reload 로 깨끗한 상태 보장 (다음 sub-case cascade 방지)
-        # 이전 JS evaluate 강제 정리는 sc3i/3j 의 page close cascade 야기한 issue 확인됨 → reload 로 교체.
-        # reload 가 sub-case 끝마다 호출되지만 안전성 우선 (서버 오류 후 cascade 차단).
-        page_obj = request.node.funcargs.get("logged_in_page")
-        if page_obj is not None:
-            try:
-                page_obj.reload(wait_until="domcontentloaded", timeout=15000)
-                page_obj.wait_for_timeout(500)
-            except Exception:
-                pass
+        # 매 테스트 끝 — page reload 미봉책 제거 (재설계 진단 단계).
+        # 이전 JS evaluate 강제 정리도 page close cascade 야기. 둘 다 제거.
+        # cascade fail 노출 → stack trace 정확 분석 → 진짜 원인 확정 → 정확 fix 적용 단계.
 
     def _add(self, status: str, label: str, detail: str = "", sc: int = 0) -> None:
         """한 줄로 print + ScanResult 누적. 각 검증 블록 단위 호출."""

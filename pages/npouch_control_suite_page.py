@@ -137,28 +137,9 @@ class NpouchControlSuitePage(BasePage):
     # 1. 네비게이션
     # ==================================================================
     def navigate_to(self) -> None:
-        """제어 스위트 관리 페이지로 진입 + retry/reload 안전 처리.
-
-        2회 시도: 1회 실패 시 page.reload() → 깨끗한 상태에서 재시도.
-        시나리오 cascade fail (서버 오류 후 모달 stuck / page corrupt) 자동 회복.
+        """제어 스위트 관리 페이지로 진입. retry/reload 미봉책 제거 (재설계 진단 단계).
+        cascade fail 노출 → 진짜 원인 확정 후 정확 fix 적용 예정.
         """
-        for attempt in range(2):
-            try:
-                self._navigate_to_attempt()
-                return
-            except Exception as e:
-                if attempt == 0:
-                    # 1차 실패 — page reload 후 재시도
-                    try:
-                        self.page.reload(wait_until="domcontentloaded", timeout=15000)
-                        self.page.wait_for_timeout(800)
-                    except Exception:
-                        pass
-                    continue
-                raise  # 2차도 실패 시 raise
-
-    def _navigate_to_attempt(self) -> None:
-        """navigate_to 의 실제 1회 attempt (내부 — retry 는 navigate_to 가 관리)."""
         self._dismiss_stale_confirm_modal()
         # 이전 테스트에서 남은 sub-modal 정리 (picker / web_restrict / process_modal)
         self._close_leftover_submodals()
