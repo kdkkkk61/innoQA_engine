@@ -137,18 +137,24 @@ class NpouchControlSuitePage(BasePage):
     # 1. 네비게이션
     # ==================================================================
     def _cleanup_modal_backdrop(self) -> None:
-        """Bootstrap 3 modal 잔해 정리 — .modal-backdrop + body.modal-open + padding-right.
+        """Bootstrap 3 modal 잔해 정리 — 조건부: 열린 modal-wrap.in 이 없을 때만 실행.
 
-        cascade fail 진단 결과 (2026-05-20):
-        modal 닫힘 후 backdrop div 가 잔존 → 다음 input fill 시 pointer-events 차단.
-        server error alert dismiss 후 / 메인 모달 close 후 / navigate_to 진입 시 호출.
+        진단 결과 (2026-05-20):
+        sc3g fail 원인 = 무조건 cleanup 이 새 모달의 'body.modal-open' 을 떼서
+        Bootstrap 이 즉시 .in 제거 → modal display:none → input not visible.
+
+        Karpathy 원칙: 동작 중인 modal 건드리지 않기. 정말 stale 잔해만 정리.
         """
         try:
             self.page.evaluate("""
                 () => {
+                    // 열린 modal-wrap.in 이 하나라도 있으면 cleanup 스킵 (정상 modal 보호)
+                    const open = document.querySelectorAll('div.modal-wrap.in, div.modal.in').length;
+                    if (open > 0) return 'skip: modal open';
                     document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
                     document.body.classList.remove('modal-open');
                     document.body.style.paddingRight = '';
+                    return 'cleaned';
                 }
             """)
         except Exception:
