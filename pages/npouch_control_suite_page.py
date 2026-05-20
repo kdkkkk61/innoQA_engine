@@ -137,9 +137,26 @@ class NpouchControlSuitePage(BasePage):
     # 1. 네비게이션
     # ==================================================================
     def navigate_to(self) -> None:
-        """제어 스위트 관리 페이지로 진입. retry/reload 미봉책 제거 (재설계 진단 단계).
-        cascade fail 노출 → 진짜 원인 확정 후 정확 fix 적용 예정.
+        """제어 스위트 관리 페이지로 진입.
+
+        cascade fail 진단 결과 (2026-05-20):
+        - 이전 테스트 끝 modal.in 은 닫혔지만 .modal-backdrop div + body.modal-open
+          클래스가 잔존 → 다음 테스트 input fill timeout (backdrop pointer-events 차단)
+        - 진입 직후 1회 backdrop/body 강제 정리로 cascade 완전 해소
+          (reload 미봉책이 아닌 잔해만 surgical 제거 — Karpathy 원칙 준수)
         """
+        # ── Bootstrap 3 modal 잔해 정리 — backdrop + body.modal-open + padding-right
+        try:
+            self.page.evaluate("""
+                () => {
+                    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+                    document.body.classList.remove('modal-open');
+                    document.body.style.paddingRight = '';
+                }
+            """)
+        except Exception:
+            pass
+
         self._dismiss_stale_confirm_modal()
         # 이전 테스트에서 남은 sub-modal 정리 (picker / web_restrict / process_modal)
         self._close_leftover_submodals()

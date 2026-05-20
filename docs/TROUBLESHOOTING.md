@@ -5,7 +5,37 @@
 
 ---
 
-## [WORKAROUND] sc3 sub-case cascade fail — 서버 오류 후 다음 sub-case 진입 차단 (재설계 보류)
+## [RESOLVED] sc3 sub-case cascade fail — modal-backdrop + body.modal-open 잔존 (2026-05-20)
+- **날짜**: 2026-05-20 (진단 + fix 완료)
+- **증상 재현**: reload 미봉책 제거 후 sc3f~3j 실행 시 sc3f PASS / sc3g-3j 모두 `Locator.fill: Timeout` cascade fail
+- **진단 결과** (conftest.py 진단 hook 추가 후 `reports/runs/20260520_102258_all.log`):
+  - 4번 fail 시점 DOM 100% 동일 패턴:
+    ```
+    open_modals=[]                       ← .modal.in 없음 (모달은 닫힘)
+    backdrops=1                          ← .modal-backdrop div 잔존 ←진짜 원인
+    body_cls='modal-open'                ← body 클래스 잔존         ←진짜 원인
+    body_style='padding-right: 10px;'    ← Bootstrap 스크롤 보정 잔존
+    ```
+  - backdrop div 가 pointer-events 차단 → 다음 모달 input fill 30s timeout
+- **진짜 원인 확정**: Bootstrap 3 modal 이 server error 500 처리 직후 `.modal-backdrop` + `body.modal-open` 제거를 누락. reload 가 "동작"했던 이유 = 페이지 새로 로드 시 자연 소멸 → 결과만 가린 미봉책
+- **fix (surgical)**: `pages/npouch_control_suite_page.py:navigate_to()` 진입 직후 1회 cleanup:
+  ```python
+  self.page.evaluate("""
+      () => {
+          document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+          document.body.classList.remove('modal-open');
+          document.body.style.paddingRight = '';
+      }
+  """)
+  ```
+  Karpathy "본인이 만든 잔해만 정리" 원칙 — reload 없이 정확한 원인만 제거
+- **관련 commit**: 80fdaaf (reload 제거), 190741f (진단 hook 추가), (이번 commit — backdrop cleanup)
+- **상태**: [RESOLVED] — 진단 + 정확 fix. reload 미봉책 완전 제거.
+
+---
+
+## [SUPERSEDED] sc3 sub-case cascade fail — 서버 오류 후 다음 sub-case 진입 차단 (재설계 보류)
+> 위 [RESOLVED] 항목으로 대체됨. 원인 확정 + 정확 fix 완료.
 - **날짜**: 2026-05-20
 - **증상**: sc3 전체 실행 시 sc3f-3i cascade fail. sub-case 단독 실행 (예: sc3j) 은 PASS. 메인 저장 시 "서버에서 오류가 발생 하였습니다." 알림 후 다음 정책 생성 시 `Locator.fill: input#csuName not visible` 30s timeout. 다음 sub-case 까지 cascade.
 - **추정 원인** (확정 아님 — 별도 진단 세션 필요):
