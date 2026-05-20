@@ -1181,16 +1181,36 @@ class TestScenario3Action(ControlSuiteBase):
         page.picker.wait_open()
         page.picker.select_first(mode="tag")
         page.picker.confirm()
-        if page.is_confirm_modal_visible(timeout=3000):
-            msg = page.get_confirm_message()
-            page.dismiss_confirm_modal()
-            ok = "이미 등록" in msg and ("프로세스" in msg or "태그" in msg or "생략" in msg)
+        # 텍스트 기반 강화 detection — 5s 까지 100ms 단위 polling
+        # ('이미 등록된 태그 입니다' 알림 ID 미확정 / picker→main modal 전환 시점 race 대응)
+        found_msg = None
+        for _ in range(50):
+            txt = page.page.evaluate("""() => {
+                const sel = '.modal-body-text, .modal-body, div#__globalMessageModal .modal-body';
+                const els = document.querySelectorAll(sel);
+                for (const el of els) {
+                    const t = el.textContent?.trim();
+                    if (t && t.includes('이미 등록')) return t;
+                }
+                return null;
+            }""")
+            if txt:
+                found_msg = txt
+                break
+            page.page.wait_for_timeout(100)
+        if found_msg:
+            ok = "이미 등록" in found_msg and ("프로세스" in found_msg or "태그" in found_msg or "생략" in found_msg)
+            # dismiss alert
+            try:
+                page.dismiss_confirm_modal()
+            except Exception:
+                pass
             self._add("pass" if ok else "fail",
                       "태그 picker — 동일 태그 재선택 중복 차단 (사용자 보고 추가)",
-                      f"입력: 첫 태그 ('{first_tag}') 재선택 / 결과: 메시지={msg!r}", sc=3)
+                      f"입력: 첫 태그 ('{first_tag}') 재선택 / 결과: 메시지={found_msg!r}", sc=3)
         else:
-            self._add("warn", "[차단 메시지] tag picker 중복 — 메시지 미노출",
-                      f"입력: 동일 태그 재선택 / 결과: 알림 없음", sc=3)
+            self._add("warn", "[UX 모호] tag picker 중복 — silent skip (process picker 와 정책 불일치)",
+                      f"입력: 동일 태그 재선택 / 결과: 알림 노출 안 됨 + picker 자동 닫힘 (yaml :1934 silent_skip)", sc=3)
 
         # 정리 — ESC 만 (JS evaluate 회피)
         for _ in range(5):
