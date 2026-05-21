@@ -102,15 +102,8 @@ class TestScenario3Action(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 3c: ADD 종합 풍부 (메인+프로세스+태그+웹제한+저장+등록) ━━━")
         self._page = page.page
         page.navigate_to()
-        # 세션 시작 정리 보장 (sc1a 미실행 시 자동 cleanup — _base.py 의 _ensure_session_cleanup)
+        # 세션 시작 정리 (idempotent — sc3b 가 이미 호출했으면 no-op)
         self._ensure_session_cleanup(page)
-        # 안전망 — _ensure_session_cleanup 가 silently 실패한 경우 KEEP_NAME 직접 삭제
-        # (delete_all_test_data 가 페이지네이션 / 타이밍 등으로 KEEP 못 잡는 케이스 대응)
-        try:
-            if page.is_policy_exists(KEEP_NAME):
-                page.delete_policy(KEEP_NAME)
-        except Exception:
-            pass
 
         # ════ 메인 모달 입력 ════
         page.open_add_modal()
@@ -611,6 +604,7 @@ class TestScenario3Action(ControlSuiteBase):
         policy_name = "[AUTO]_sc3_step3"
 
         page.navigate_to()
+        self._ensure_session_cleanup(page)
 
         page.open_add_modal()
         page.set_csu_name(policy_name)
@@ -688,6 +682,7 @@ class TestScenario3Action(ControlSuiteBase):
         dup_name = "[AUTO]_sc3_step4"
 
         page.navigate_to()
+        self._ensure_session_cleanup(page)
 
         # ── A. csuName maxlength=50 자동 절단 ───────────────────
         page.open_add_modal()
@@ -789,6 +784,7 @@ class TestScenario3Action(ControlSuiteBase):
         self._page = page.page
 
         page.navigate_to()
+        self._ensure_session_cleanup(page)
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step5")
 
@@ -936,6 +932,7 @@ class TestScenario3Action(ControlSuiteBase):
         long_desc = "가" * 1000   # 한글 1000자 (서버 한도 300자 초과)
 
         page.navigate_to()
+        self._ensure_session_cleanup(page)
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step6")
 
@@ -1076,6 +1073,7 @@ class TestScenario3Action(ControlSuiteBase):
         self._page = page.page
 
         page.navigate_to()
+        self._ensure_session_cleanup(page)
         page.open_add_modal()
 
         # ── Case A: csuName DOM maxlength=50 자동 절단 (100/300/500자) ──
@@ -1134,6 +1132,7 @@ class TestScenario3Action(ControlSuiteBase):
         self._page = page.page
 
         page.navigate_to()
+        self._ensure_session_cleanup(page)
         page.open_add_modal()
         page.set_csu_name("[AUTO]_sc3_step8")
 
@@ -1355,14 +1354,11 @@ class TestScenario3Action(ControlSuiteBase):
         except Exception:
             pass
 
-        # 사전 cleanup — 이전 실행의 [AUTO]_sc3_step9_* / step10_* 정책 누적 정리
-        # 정상 저장 케이스 (Case A drv50 등) 가 list 에 잔존 → 다음 실행 시 "이미 등록된 이름" 중복 차단
-        # 주의: delete_all_auto_policies() 사용 ([AUTO_KEEP]_ 보호 — sc4 가 sc3 KEEP 정책 의존)
+        # 세션 시작 정리 (idempotent — sc3b 가 이미 호출했으면 no-op)
+        # 명시 delete_all_auto_policies 제거: sc4 가 sc3 가 생성한 [AUTO]_ 정책을
+        # EDIT 검증에 직접 사용하므로 중간 삭제 금지. 세션 시작 시 1회 cleanup 으로 충분.
         page.navigate_to()
-        try:
-            page.delete_all_auto_policies()
-        except Exception:
-            pass
+        self._ensure_session_cleanup(page)
 
         # ── Case A: 드라이브 letter 50자 (정상 케이스 — 메인 저장 OK) ─
         # case 사이 F5 — AngularJS modal state 누적 방지
