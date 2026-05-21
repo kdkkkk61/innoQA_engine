@@ -590,9 +590,29 @@ class NpouchControlSuitePage(BasePage):
     def is_policy_exists(self, name: str) -> bool:
         return name in self.get_policy_names()
 
+    def _find_policy_row(self, name: str):
+        """정책 이름 정확 일치 (첫 td 셀 텍스트 == name) 행 반환.
+
+        사용자 안전 우려 (2026-05-22) 해결:
+        - 기존 filter(has_text=name) 는 substring 매칭 → 다른 정책 이름의 일부와 충돌 위험
+        - exact match 만 허용 — 매칭 실패 시 RuntimeError 발생 (잘못 선택 사고 방지)
+        """
+        rows = self.page.locator(self.SEL_TABLE_ROW)
+        for i in range(rows.count()):
+            tds = rows.nth(i).locator("td")
+            if tds.count() == 0:
+                continue
+            cell_text = tds.first.inner_text().strip()
+            if cell_text == name:
+                return rows.nth(i)
+        raise RuntimeError(
+            f"정책 '{name}' 을 list 에서 찾을 수 없음 — "
+            f"존재하지 않거나 페이지네이션 (pageSize=100 초과) 확인 필요"
+        )
+
     def check_policy_row(self, name: str) -> None:
-        """행 체크박스 선택. checkbox 는 visible — JS 클릭."""
-        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
+        """행 체크박스 선택 — 정확 일치 매칭 (substring 충돌 방지)."""
+        row = self._find_policy_row(name)
         cb = row.locator(self.SEL_ROW_CHECKBOX).first
         self._click_hidden(cb)
 
@@ -601,8 +621,9 @@ class NpouchControlSuitePage(BasePage):
         EDIT 진입 사전조건 — 행 자체 클릭 → tActive 부착 (mousedown 필요).
         legacy 검증된 패턴: overlay OFF + row.click(force=True) — 좌표 클릭으로 mousedown 발생.
         ⚠ td#strProcessName 은 modal 안 itemList 의 cell ID — 메인 list 에는 없음.
+        정확 일치 매칭 — substring 충돌 방지 (2026-05-22).
         """
-        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
+        row = self._find_policy_row(name)
         self._toggle_overlay(False)
         try:
             row.click(force=True)
@@ -617,12 +638,27 @@ class NpouchControlSuitePage(BasePage):
             pass
 
     def open_modify_modal(self, name: str) -> None:
-        """행 active + modifyItemBtn 클릭 → EDIT 모달 열림."""
+        """행 active + modifyItemBtn 클릭 → EDIT 모달 열림 + verify (잘못 선택 안전망).
+
+        verify: 모달 진입 후 csuName == name 확인 (사용자 안전 우려 2026-05-22).
+        불일치 시 RuntimeError → 사고 (잘못된 정책 EDIT) 즉시 감지.
+        """
         self.click_policy_row(name)
         self._click(self.page.locator(self.SEL_MODIFY_BTN).first)
         self.page.locator(self.SEL_MODAL_OPEN).first.wait_for(
             state="attached", timeout=self._TIMEOUT_MODAL
         )
+        # ── 안전망: 진입한 EDIT 모달의 csuName 이 기대한 정책 이름과 일치하는가 ──
+        try:
+            loaded = self.get_csu_name()
+        except Exception:
+            loaded = "<load 실패>"
+        if loaded != name:
+            raise RuntimeError(
+                f"EDIT 모달 잘못 진입 — 기대 정책 '{name}', "
+                f"실제 load 된 csuName '{loaded}'. "
+                f"잘못 선택 사고 방지를 위해 즉시 중단."
+            )
 
     def is_edit_mode(self) -> bool:
         """모달 제목에 '수정' 포함 여부."""
