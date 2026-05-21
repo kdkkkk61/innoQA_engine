@@ -195,19 +195,43 @@ def _render_summary_card(page_id: str, report: PageScanReport) -> str:
     </div>"""
 
 
-def _label_group_prefix(r: ScanResult) -> str:
-    """라벨 영역 그룹 prefix 추출.
+def _label_area_priority(r: ScanResult) -> tuple:
+    """라벨에서 (영역 우선순위, 그룹명) 튜플 추출 — 영역별 sort 용.
 
-    예: '[UX 결함] 프로세스별 제어 (개별 프로세스) - 접근 드라이브...'
-        → '프로세스별 제어 (개별 프로세스)'
+    사용자 의도 (2026-05-21):
+      1차 모달 (메인 스위트 모달 내 직접 input) — 스위트 이름, 클립보드, 전자서명 등
+      2차 모달 - 프로세스별 제어 (개별 프로세스)
+      3차 - 프로세스별 제어 (태그)
+      4차 - 웹제한 기능
 
-    page_id 조건부 sort 에서 사용. 같은 영역의 case 들이 보고서에서 연속 표시되도록.
-    선두 [...] tag 제거 후 첫 ' - ' 까지가 그룹 식별자.
+    page_id 조건부 sort 에서 사용. whitelist 외 페이지는 미사용.
     """
     lbl = r.label or ""
+    # 선두 [tag] 제거
     if lbl.startswith("[") and "]" in lbl:
         lbl = lbl.split("]", 1)[1].strip()
-    return lbl.split(" - ", 1)[0].strip() if " - " in lbl else lbl
+
+    # 1: 1차 (메인 스위트 모달) — 스위트 추가/이름/저장, 클립보드, 네트워크, 헤더, 전자서명, 커스텀 옵션 등
+    main_kw = ["스위트 추가 모달", "스위트 이름", "메인 모달",
+               "클립보드", "네트워크 허용", "헤더 체크",
+               "전자서명 예외처리", "커스텀 옵션", "메인 확장자"]
+    if any(kw in lbl for kw in main_kw):
+        return (1, "1차 (메인 모달)")
+
+    # 2: 프로세스별 제어 (개별 프로세스) — 명시 prefix 또는 'process_modal'/'프로세스 등록 모달'
+    if "(개별 프로세스)" in lbl or "프로세스 등록 모달" in lbl:
+        return (2, "2차 (프로세스별 제어 (개별 프로세스))")
+
+    # 3: 프로세스별 제어 (태그) — 명시 prefix 또는 'tag picker'/'태그 모달'
+    if "(태그)" in lbl or "태그 picker" in lbl or "tag picker" in lbl.lower():
+        return (3, "2차 (프로세스별 제어 (태그))")
+
+    # 4: 웹제한 기능 — 명시 prefix 또는 '웹제한 모달'/'web_restrict'
+    if "웹제한" in lbl or "web_restrict" in lbl.lower():
+        return (4, "2차 (웹제한 기능)")
+
+    # 5: 기타 (picker 일반, IP/Port 무영역, KEEP 보존 등)
+    return (5, "기타")
 
 
 # 영역별 sort 적용 page_id 목록 — 추후 다른 페이지 추가 시 여기에 추가
@@ -223,9 +247,9 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
         """extra["scenario"] 우선, 없으면 phase, 없으면 0."""
         return (r.extra or {}).get("scenario") or r.phase or 0
 
-    # page_id 조건부 sort — 영역 그룹 sort 적용 페이지만 label_group 사용
+    # page_id 조건부 sort — 영역 우선순위 (1차 → 2차 프로세스 → 태그 → 웹제한) 적용
     if page_id in _PAGE_IDS_USE_LABEL_GROUP_SORT:
-        sort_key = lambda x: (_scenario_num(x), _label_group_prefix(x), x.order or 9999)
+        sort_key = lambda x: (_scenario_num(x), _label_area_priority(x), x.order or 9999)
     else:
         # 기존 동작 (시나리오 → order) — RansomCruncher 등 영향 없음
         sort_key = lambda x: (_scenario_num(x), x.order or 9999)
@@ -272,10 +296,10 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
         label      = _PAGE_LABELS.get(page_id, page_id)
         is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
         bug_items  = [r for r in report.results if r.status in ("fail", "warn", "known_bug", "error")]
-        # page_id 조건부 sort — 영역 그룹 sort 적용 페이지만 (RansomCruncher 등 무관)
+        # page_id 조건부 sort — 영역 우선순위 (1차 → 2차) (RansomCruncher 등 무관)
         if page_id in _PAGE_IDS_USE_LABEL_GROUP_SORT:
             sc_num = lambda r: (r.extra or {}).get("scenario") or r.phase or 0
-            bug_items.sort(key=lambda r: (sc_num(r), _label_group_prefix(r), r.order or 9999))
+            bug_items.sort(key=lambda r: (sc_num(r), _label_area_priority(r), r.order or 9999))
         for r in bug_items:
             issue_num += 1
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
