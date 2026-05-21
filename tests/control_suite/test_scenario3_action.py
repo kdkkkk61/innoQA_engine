@@ -951,6 +951,19 @@ class TestScenario3Action(ControlSuiteBase):
             self._add("warn", "[차단 메시지] Port 비숫자 — 메시지 미노출",
                       f"입력: 'abc' / 결과: 알림 없음", sc=3)
 
+        # ── Case A2: Port 최대값 초과 '99999' → 'Port의 최대값은 65535입니다' (yaml :234 verified, must_test) ──
+        # 신규 추가 — 정상 차단 검증 (sub-modal 단계에서 정확히 차단되어야 정상 UX)
+        page.process.add_ip_port("192.168.10.11", "99999")
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            self._add("pass" if "65535" in msg or ("Port" in msg and "최대" in msg) else "fail",
+                      "프로세스 등록 모달 - Port 최대값 초과(99999) 차단 메시지 (yaml :234 must_test)",
+                      f"입력: Port='99999' + 추가 / 결과: 메시지={msg!r}", sc=3)
+            page.dismiss_confirm_modal()
+        else:
+            self._add("warn", "[차단 메시지] Port 최대값 초과 — 메시지 미노출",
+                      f"입력: '99999' / 결과: 알림 없음", sc=3)
+
         # ── Case B: IP 형식 잘못 'abc.def.ghi.jkl' → '아이피 주소 형식...' (yaml :347) ──
         page.process.add_ip_port("abc.def.ghi.jkl", "8080")
         if page.is_confirm_modal_visible():
