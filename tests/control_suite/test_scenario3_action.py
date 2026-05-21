@@ -1321,15 +1321,15 @@ class TestScenario3Action(ControlSuiteBase):
                 state="attached", timeout=page._TIMEOUT_MODAL
             )
             msg = page.get_confirm_message()
-            page.dismiss_confirm_modal()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-            # 서버 오류 노출 = UX 결함 재현 (sub-modal 단계 검증 누락) → warn (BUG 리포트)
-            # 메인 저장 정상 통과 = 결함 없음 (sub-modal 에서 정상 차단) → pass
+            # 서버 오류 alert 떠있는 상태에서 _add → 스크린샷에 결함 상태 포함 (사용자 요청)
+            # warn = UX 결함 재현 → BUG 리포트 / pass = sub-modal 정상 차단
             self._add("warn" if defect_found else "pass",
-                      "[UX 결함] 드라이브 letter 100자 → 메인 저장 시 서버 오류 (sub-modal 단계에서 차단되어야 정상)",
+                      "[UX 결함] 프로세스별 제어 - 접근 드라이브 letter 100자 → 메인 저장 시 서버 오류 (process_modal 단계에서 차단되어야 정상)",
                       f"입력: letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+            page.dismiss_confirm_modal()
         else:
-            self._add("skip", "[차단 메시지] 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
+            self._add("skip", "[UX 결함] 프로세스별 제어 - 접근 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
         # 서버 오류 케이스 후 안전 정리 — 페이지 새로고침 (모달 잔존 / alert 잔여 완전 정리)
         try:
@@ -1369,13 +1369,14 @@ class TestScenario3Action(ControlSuiteBase):
                 state="attached", timeout=page._TIMEOUT_MODAL
             )
             msg = page.get_confirm_message()
-            page.dismiss_confirm_modal()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+            # 스크린샷에 서버 오류 alert 포함되도록 dismiss 전에 _add
             self._add("warn" if defect_found else "pass",
-                      "[UX 결함] basePath 400자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상, 드라이브 letter 동일 패턴)",
+                      "[UX 결함] 웹제한 기능 - 기본폴더 basePath 400자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상, 드라이브 letter 동일 패턴)",
                       f"입력: basePath 400자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+            page.dismiss_confirm_modal()
         else:
-            self._add("skip", "[차단 메시지] basePath 400자 — 기능 부재", "(skip)", sc=3)
+            self._add("skip", "[UX 결함] 웹제한 기능 - 기본폴더 basePath 400자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
         # reload 미봉책 제거 (재설계 진단 단계)
 
@@ -1414,18 +1415,18 @@ class TestScenario3Action(ControlSuiteBase):
                 state="attached", timeout=page._TIMEOUT_MODAL
             )
             msg = page.get_confirm_message()
-            page.dismiss_confirm_modal()
+            # dismiss 전 _add → 스크린샷에 서버 오류 alert 포함 (사용자 요청)
             if expect_server_error:
                 defect_found = "서버" in msg and ("오류" in msg or "발생" in msg)
-                # 서버 오류 노출 = UX 결함 재현 → warn (BUG 리포트)
                 self._add("warn" if defect_found else "pass",
-                          f"[UX 결함] Port={port_val!r} {label} → 메인 저장 시 서버 오류 (process_modal 단계에서 차단되어야 정상)",
+                          f"[UX 결함] 프로세스별 제어 - 허용 IP/Port Port={port_val!r} {label} → 메인 저장 시 서버 오류 (process_modal 단계에서 차단되어야 정상)",
                           f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
             else:
                 ok = msg == "저장 하였습니다"
                 self._add("pass" if ok else "fail",
-                          f"[저장 확인] Port={port_val!r} {label} → 메인 저장 OK",
+                          f"[저장 확인] 프로세스별 제어 - 허용 IP/Port Port={port_val!r} {label} → 메인 저장 OK",
                           f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+            page.dismiss_confirm_modal()
             page.close_modal()
             # 서버 오류 case 후 안전 정리 — reload
             if expect_server_error:
@@ -1455,11 +1456,12 @@ class TestScenario3Action(ControlSuiteBase):
             state="attached", timeout=page._TIMEOUT_MODAL
         )
         msg = page.get_confirm_message()
-        page.dismiss_confirm_modal()
         defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+        # dismiss 전 _add → 스크린샷에 서버 오류 alert 포함
         self._add("warn" if defect_found else "pass",
-                  "[UX 결함] webRestrictName 500자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
+                  "[UX 결함] 웹제한 기능 - 웹제한 이름 webRestrictName 500자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
                   f"입력: webRestrictName 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        page.dismiss_confirm_modal()
         page.close_modal()
 
         # ── Case I: attachAllowUrl 1000자 (silent invalid + 메인 저장 서버 오류) ─
@@ -1484,11 +1486,11 @@ class TestScenario3Action(ControlSuiteBase):
             state="attached", timeout=page._TIMEOUT_MODAL
         )
         msg = page.get_confirm_message()
-        page.dismiss_confirm_modal()
         defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
         self._add("warn" if defect_found else "pass",
-                  "[UX 결함] attachAllowUrl 1000자 → silent invalid + 메인 저장 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
+                  "[UX 결함] 웹제한 기능 - 적용 URL attachAllowUrl 1000자 → silent invalid + 메인 저장 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
                   f"입력: URL 1000자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        page.dismiss_confirm_modal()
         page.close_modal()
 
         # ── Case J: allowFileExtention 500자 (web 확장자) → 메인 저장 서버 오류 ─
@@ -1513,13 +1515,13 @@ class TestScenario3Action(ControlSuiteBase):
                 state="attached", timeout=page._TIMEOUT_MODAL
             )
             msg = page.get_confirm_message()
-            page.dismiss_confirm_modal()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
             self._add("warn" if defect_found else "pass",
-                      "[UX 결함] allowFileExtention(web) 500자 → 메인 저장 서버 오류 (process 확장자와 다른 동작 — web 만 차단)",
+                      "[UX 결함] 웹제한 기능 - 업로드 허용 확장자 allowFileExtention 500자 → 메인 저장 서버 오류 (process 확장자와 다른 동작 — web 만 차단)",
                       f"입력: web 확장자 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+            page.dismiss_confirm_modal()
         else:
-            self._add("skip", "[UX 결함] allowFileExtention 500자 — 기능 부재", "(skip)", sc=3)
+            self._add("skip", "[UX 결함] 웹제한 기능 - 업로드 허용 확장자 500자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
 
         # ── Case K: cacheFolderInput 500자 → 메인 저장 서버 오류 ─
@@ -1544,11 +1546,11 @@ class TestScenario3Action(ControlSuiteBase):
                 state="attached", timeout=page._TIMEOUT_MODAL
             )
             msg = page.get_confirm_message()
-            page.dismiss_confirm_modal()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
             self._add("warn" if defect_found else "pass",
-                      "[UX 결함] cacheFolderInput 500자 → 메인 저장 서버 오류 (process_modal 단계에서 글자수 차단되어야 정상)",
+                      "[UX 결함] 프로세스별 제어 - 기본폴더 지정 cacheFolderInput 500자 → 메인 저장 서버 오류 (process_modal 단계에서 글자수 차단되어야 정상)",
                       f"입력: cache 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+            page.dismiss_confirm_modal()
         else:
-            self._add("skip", "[UX 결함] cacheFolderInput 500자 — 기능 부재", "(skip)", sc=3)
+            self._add("skip", "[UX 결함] 프로세스별 제어 - 기본폴더 지정 cacheFolderInput 500자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
