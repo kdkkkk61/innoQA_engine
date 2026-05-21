@@ -888,6 +888,23 @@ class TestScenario3Action(ControlSuiteBase):
 
         # 정리
         page.web_restrict.close()
+
+        # ── Case 6: 메인 모달 전자서명 예외처리 중복 → '이미 등록된 전자서명' (yaml :382 신 발견) ──
+        # 신규 추가 — yaml 미기록 신 발견 (2026-05-19) 검증
+        page.set_sign_except_toggle(True)
+        page.add_sign_except("Innotium Inc")
+        page.add_sign_except("Innotium Inc")  # 동일값 재추가
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            ok = "이미 등록" in msg and "전자서명" in msg
+            self._add("pass" if ok else "fail",
+                      "메인 모달 - 전자서명 예외처리 중복 차단 메시지 (yaml :382 신 발견)",
+                      f"입력: 'Innotium Inc' (재추가) / 결과: 메시지={msg!r}", sc=3)
+            page.dismiss_confirm_modal()
+        else:
+            self._add("warn", "[차단 메시지] 전자서명 예외처리 중복 — 메시지 미노출",
+                      f"입력: 같은 전자서명 재추가 / 결과: 알림 없음", sc=3)
+
         page.close_modal()
 
     # ==================================================================
@@ -963,6 +980,19 @@ class TestScenario3Action(ControlSuiteBase):
         else:
             self._add("warn", "[차단 메시지] Port 최대값 초과 — 메시지 미노출",
                       f"입력: '99999' / 결과: 알림 없음", sc=3)
+
+        # ── Case B1: IP 형식 오류 '256.256.256.256' → '아이피 주소 형식이 잘못' (yaml :337-339 format_error pattern) ──
+        # 신규 추가 — yaml 의 format_error / input_reset 2-pattern 중 format_error 검증
+        page.process.add_ip_port("256.256.256.256", "8080")
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            self._add("pass" if ("아이피" in msg or "IP" in msg) and ("형식" in msg or "잘못" in msg) else "fail",
+                      "프로세스 등록 모달 - IP 범위 초과(256.256.256.256) 형식 오류 차단 (yaml :337 format_error)",
+                      f"입력: IP='256.256.256.256' + 추가 / 결과: 메시지={msg!r}", sc=3)
+            page.dismiss_confirm_modal()
+        else:
+            self._add("warn", "[차단 메시지] IP 범위 초과 — 메시지 미노출",
+                      f"입력: '256.256.256.256' / 결과: 알림 없음", sc=3)
 
         # ── Case B: IP 형식 잘못 'abc.def.ghi.jkl' → '아이피 주소 형식...' (yaml :347) ──
         page.process.add_ip_port("abc.def.ghi.jkl", "8080")
@@ -1232,6 +1262,47 @@ class TestScenario3Action(ControlSuiteBase):
                 page.page.wait_for_timeout(200)
             except Exception:
                 break
+
+        # ── Case D: cacheFolderInput picker 동일 reserved_word 재추가 → '이미 등록된 폴더 경로' (yaml :346-348) ──
+        # 신규 추가 — 특수폴더 picker 같은 항목 중복 등록 시 attachCacheFolderBtn 차단 알림
+        page.navigate_to_clean()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step8_cache_dup")
+        page.click_individual_process_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="single")
+        # 1st: 특수폴더 picker → 'DESKTOP' 선택 + 추가
+        if page.feature_exists(page.process.SEL_CACHE_SPECIAL_BTN, timeout=1000):
+            page.process.click_special_folder_btn()
+            page.special_folder.wait_open()
+            page.special_folder.select_and_confirm(["DESKTOP"])
+            page.process.click_cache_add_btn()
+            # 2nd: 같은 'DESKTOP' 다시 picker → 확인 → 추가 → 중복 알림 기대
+            page.process.click_special_folder_btn()
+            page.special_folder.wait_open()
+            page.special_folder.select_and_confirm(["DESKTOP"])
+            page.process.click_cache_add_btn()
+            if page.is_confirm_modal_visible(timeout=3000):
+                msg = page.get_confirm_message()
+                ok = "이미 등록" in msg and ("폴더" in msg or "경로" in msg)
+                self._add("pass" if ok else "fail",
+                          "프로세스 등록 모달 - 특수폴더 picker 동일 reserved_word 중복 차단 (yaml :346-348)",
+                          f"입력: DESKTOP 재선택 + 추가 / 결과: 메시지={msg!r}", sc=3)
+                page.dismiss_confirm_modal()
+            else:
+                self._add("warn", "[차단 메시지] 특수폴더 picker 중복 — 메시지 미노출",
+                          f"입력: DESKTOP 재추가 / 결과: 알림 없음", sc=3)
+        else:
+            self._add("skip", "[차단 메시지] 특수폴더 picker — 기능 부재", "(skip)", sc=3)
+        # 정리
+        try:
+            page.process.close() if hasattr(page.process, 'close') else None
+        except Exception:
+            pass
+        page.close_modal()
 
     # ==================================================================
     # 시나리오 3j — 모달 단계 OK + 메인 저장 차단 (3 영역 그룹 검증)
@@ -1566,4 +1637,115 @@ class TestScenario3Action(ControlSuiteBase):
             page.dismiss_confirm_modal()
         else:
             self._add("skip", "[UX 결함] 프로세스별 제어 - 기본폴더 지정 cacheFolderInput 500자 — 기능 부재", "(skip)", sc=3)
+        page.close_modal()
+
+        # ── Case L: 태그 mode drive letter 100자 → 메인 저장 서버 오류 (yaml :404 process 동일) ──
+        # 신규 추가 — 태그 영역도 process 와 동일 UX 결함 적용 검증
+        page.navigate_to_clean()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step14_tag_drv100")
+        page.click_tag_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="tag")
+        if page.feature_exists(page.process.SEL_TOGGLE_ACCESS_DRIVE, timeout=1000):
+            page.process.set_access_drive(True)
+            page.process.set_drive_letter("a" * 100)
+            page.process.confirm()
+            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
+            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                state="attached", timeout=page._TIMEOUT_MODAL
+            )
+            msg = page.get_confirm_message()
+            defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+            self._add("warn" if defect_found else "pass",
+                      "[UX 결함] 태그 제어 - 접근 드라이브 letter 100자 → 메인 저장 시 서버 오류 (process_modal 동일 패턴, yaml :404)",
+                      f"입력: 태그 mode + letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+            page.dismiss_confirm_modal()
+        else:
+            self._add("skip", "[UX 결함] 태그 제어 - 접근 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
+        page.close_modal()
+
+        # ── Case M: 태그 mode Port -1 → 메인 저장 서버 오류 (yaml :403 process 동일) ──
+        # 신규 추가 — 태그 영역 Port 같은 UX 결함 검증
+        page.navigate_to_clean()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step15_tag_port_m1")
+        page.click_tag_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="tag")
+        page.process.set_pnetwork(True)
+        page.process.add_ip_port("192.168.99.1", "-1")
+        if page.is_confirm_modal_visible(timeout=1500):
+            page.dismiss_confirm_modal()
+        page.process.confirm()
+        page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
+        page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+            state="attached", timeout=page._TIMEOUT_MODAL
+        )
+        msg = page.get_confirm_message()
+        defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+        self._add("warn" if defect_found else "pass",
+                  "[UX 결함] 태그 제어 - 허용 IP/Port Port=-1 → 메인 저장 시 서버 오류 (process_modal 동일 패턴, yaml :403)",
+                  f"입력: 태그 mode + Port='-1' + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        page.dismiss_confirm_modal()
+        page.close_modal()
+
+        # ── Case N: basePath 300자 입력 + 메인 저장 → '저장 하였습니다' (정상 boundary, yaml :433-436) ──
+        # 신규 추가 — basePath 300자 OK / 400자 차단 boundary 의 정상측 검증 (대조군)
+        page.navigate_to_clean()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step16_bp300_ok")
+        page.click_individual_process_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="single")
+        page.process.confirm()
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")
+        page.web_restrict.set_name("[AUTO]_web_sc3_step16")
+        if page.feature_exists(page.web_restrict.SEL_BASE_PATH, timeout=1000):
+            page.web_restrict.set_process_option(True)
+            page.web_restrict.set_base_path("a" * 300)
+            page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+            page.web_restrict.wait_closed(timeout=3000)
+            msg = page.save_policy(mode="add")
+            page.dismiss_confirm_modal()
+            ok_save = (msg == "저장 하였습니다")
+            self._add("pass" if ok_save else "fail",
+                      "[boundary 정상] 웹제한 기능 - 기본폴더 basePath 300자 → 메인 저장 OK (boundary 정상측, yaml :433-436)",
+                      f"입력: basePath 300자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("skip", "[boundary 정상] basePath 300자 — 기능 부재", "(skip)", sc=3)
+        page.close_modal()
+
+        # ── Case O: webRestrictName 100자 입력 + 메인 저장 → '저장 하였습니다' (정상 boundary, yaml :428-431) ──
+        # 신규 추가 — webRestrictName 100자 OK / 500자 차단 boundary 의 정상측 검증 (대조군)
+        page.navigate_to_clean()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step17_webname100_ok")
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")
+        page.web_restrict.set_name("a" * 100)
+        page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+        page.web_restrict.wait_closed(timeout=3000)
+        msg = page.save_policy(mode="add")
+        page.dismiss_confirm_modal()
+        ok_save = (msg == "저장 하였습니다")
+        self._add("pass" if ok_save else "fail",
+                  "[boundary 정상] 웹제한 기능 - 웹제한 이름 webRestrictName 100자 → 메인 저장 OK (boundary 정상측, yaml :428-431)",
+                  f"입력: webRestrictName 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         page.close_modal()
