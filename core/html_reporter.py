@@ -203,23 +203,8 @@ def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
         """extra["scenario"] 우선, 없으면 phase, 없으면 0."""
         return (r.extra or {}).get("scenario") or r.phase or 0
 
-    def _label_group(r: ScanResult) -> str:
-        """영역 그룹 prefix 추출 — '[UX 결함] 프로세스별 제어 (개별 프로세스) - 접근...' → '프로세스별 제어 (개별 프로세스)'
-
-        보고서 영역별 그룹화용 — 같은 영역의 case 들이 연속 표시되도록.
-        """
-        lbl = r.label or ""
-        # 선두 [...] tag 제거
-        if lbl.startswith("[") and "]" in lbl:
-            lbl = lbl.split("]", 1)[1].strip()
-        # 첫 ' - ' 까지 (영역 식별자)
-        if " - " in lbl:
-            return lbl.split(" - ", 1)[0].strip()
-        return lbl
-
-    # 시나리오 번호 → 영역 그룹 → UI 순서(order) 로 정렬
-    # (같은 영역의 case 들이 연속 표시됨 — 보고서 가독성 향상)
-    sort_key = lambda x: (_scenario_num(x), _label_group(x), x.order or 9999)
+    # 시나리오 번호 → UI 순서(order) 로 정렬: 같은 시나리오 안에서 화면 위→아래
+    sort_key = lambda x: (_scenario_num(x), x.order or 9999)
 
     for r in sorted(report.results, key=sort_key):
         badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
@@ -259,23 +244,10 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
     """전체 페이지에서 fail + warn + error 항목 모아서 결함 목록 생성."""
     defects = []
     issue_num = 0
-
-    def _defect_sort_key(r: ScanResult) -> tuple:
-        """결함 카드 정렬: 시나리오 번호 → 영역 그룹 → order
-        같은 영역의 결함들이 보고서에서 연속 표시되도록.
-        """
-        sc_num = (r.extra or {}).get("scenario") or r.phase or 0
-        lbl = r.label or ""
-        if lbl.startswith("[") and "]" in lbl:
-            lbl = lbl.split("]", 1)[1].strip()
-        group = lbl.split(" - ", 1)[0].strip() if " - " in lbl else lbl
-        return (sc_num, group, r.order or 9999)
-
     for page_id, report in all_reports:
         label      = _PAGE_LABELS.get(page_id, page_id)
         is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
         bug_items  = [r for r in report.results if r.status in ("fail", "warn", "known_bug", "error")]
-        bug_items.sort(key=_defect_sort_key)
         for r in bug_items:
             issue_num += 1
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
