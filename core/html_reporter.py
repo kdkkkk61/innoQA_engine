@@ -259,10 +259,23 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
     """전체 페이지에서 fail + warn + error 항목 모아서 결함 목록 생성."""
     defects = []
     issue_num = 0
+
+    def _defect_sort_key(r: ScanResult) -> tuple:
+        """결함 카드 정렬: 시나리오 번호 → 영역 그룹 → order
+        같은 영역의 결함들이 보고서에서 연속 표시되도록.
+        """
+        sc_num = (r.extra or {}).get("scenario") or r.phase or 0
+        lbl = r.label or ""
+        if lbl.startswith("[") and "]" in lbl:
+            lbl = lbl.split("]", 1)[1].strip()
+        group = lbl.split(" - ", 1)[0].strip() if " - " in lbl else lbl
+        return (sc_num, group, r.order or 9999)
+
     for page_id, report in all_reports:
         label      = _PAGE_LABELS.get(page_id, page_id)
         is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
         bug_items  = [r for r in report.results if r.status in ("fail", "warn", "known_bug", "error")]
+        bug_items.sort(key=_defect_sort_key)
         for r in bug_items:
             issue_num += 1
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
