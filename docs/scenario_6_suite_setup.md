@@ -30,6 +30,44 @@
 
 ---
 
+## AUTO / AUTO_KEEP Lifecycle (2026-05-22 명세)
+
+### 전체 흐름
+
+```
+세션 시작 (sc1a / _ensure_session_cleanup)
+  → delete_all_test_data() = AUTO + AUTO_KEEP 모두 삭제 (clean slate)
+
+sc1~5 실행
+  → AUTO + AUTO_KEEP 생성 / 검증
+  → 같은 페이지 안 시나리오 사이는 삭제 이벤트 없음
+    (sc3 가 만든 [AUTO]_sc3_step1 등은 sc4 가 EDIT 검증에 그대로 사용 가능)
+
+sc1~5 끝 (필요 시 명시 cleanup)
+  → delete_all_auto_policies() = AUTO 만 삭제 / AUTO_KEEP 유지
+
+sc6 (연계 페이지 / 다음 정책 페이지)
+  → AUTO_KEEP 정책 확인 후 유지 (다음 페이지가 사용)
+  → 예: 운용 프로세스 [AUTO]_np_proc_suite — 태그 페이지가 사용
+
+zz_cleanup (test_zz_cleanup.py — 최종)
+  → delete_all_test_data() = AUTO + AUTO_KEEP 일괄 삭제 (다음 session clean)
+```
+
+### sc3 / sc4 관계 (생성-수정 연계, 같은 페이지 안)
+
+- sc3 가 `[AUTO]_sc3_step{N}` 또는 `[AUTO_KEEP]_sc3_step{N}` 생성 → 세션 안 보존
+- sc4 가 동일 정책 사용해 EDIT 검증 → 이름 변경 / 새로 생성 불필요
+- sc4 단독 실행 시 sc3 정책 없으면 `pytest.skip` 처리 (의존 명시)
+
+### 두 접두사가 일정 기간 공존
+
+- 기존 코드는 `[AUTO]_*_suite` 형식으로 보존 데이터를 표시하고 있음
+- 신규 시나리오 6 작성 시부터 `[AUTO_KEEP]_*` 형식 적용
+- 기존 코드 마이그레이션은 별도 작업 예정
+
+---
+
 ## 연계 순서 (nPouch 계열)
 
 ```

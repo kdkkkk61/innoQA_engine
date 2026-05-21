@@ -56,43 +56,8 @@
 ## 데이터 안전 규칙
 
 - `[AUTO]` 접두사 항목만 생성·삭제 가능. 미충족 시 Page 클래스에서 Exception 발생
-- `[AUTO_KEEP]` 접두사: 시나리오 6에서 다른 페이지의 테스트가 사용할 데이터를
-  의도적으로 남겨둘 때 사용. 세션 안 sc1~5 일반 cleanup 대상에서 제외된다.
-
-### Lifecycle (정확한 흐름) — 2026-05-22 명세 추가
-
-```
-세션 시작 (sc1a / _ensure_session_cleanup)
-  → delete_all_test_data() = AUTO + AUTO_KEEP 모두 삭제 (clean slate)
-
-sc1~5 실행
-  → AUTO + AUTO_KEEP 생성 / 검증
-  → 같은 페이지 안 시나리오 사이는 삭제 이벤트 없음
-    (sc3 가 만든 [AUTO]_sc3_step1 등은 sc4 가 EDIT 검증에 그대로 사용 가능)
-
-sc1~5 끝 (필요 시 명시 cleanup)
-  → delete_all_auto_policies() = AUTO 만 삭제 / AUTO_KEEP 유지
-
-sc6 (연계 페이지 / 다음 정책 페이지)
-  → AUTO_KEEP 정책 확인 후 유지 (다음 페이지가 사용)
-  → 예: 운용 프로세스 [AUTO]_np_proc_suite — 태그 페이지가 사용
-
-zz_cleanup (test_zz_cleanup.py — 최종)
-  → delete_all_test_data() = AUTO + AUTO_KEEP 일괄 삭제 (다음 session clean)
-```
-
-### sc3 / sc4 관계 (생성-수정 연계, 같은 페이지 안)
-- sc3 가 [AUTO]_sc3_step{N} 또는 [AUTO_KEEP]_sc3_step{N} 생성 → 세션 안 보존
-- sc4 가 동일 정책 사용해 EDIT 검증 → 이름 변경 / 새로 생성 불필요
-- sc4 단독 실행 시 sc3 정책 없으면 `pytest.skip` 처리 (의존 명시)
-
-### 두 접두사가 일정 기간 공존
-- 기존 코드는 `[AUTO]_*_suite` 형식으로 보존 데이터를 표시하고 있음
-- 신규 시나리오 6 작성 시부터 `[AUTO_KEEP]_*` 형식 적용
-- 기존 코드 마이그레이션은 별도 작업 예정 (이번 문서 정리 범위 아님)
-
-### 상세 문서
-- `docs/scenario_6_suite_setup.md` — 시나리오 6 연계 데이터 규칙
+- `[AUTO_KEEP]` 접두사: 시나리오 6 연계용 (sc1~5 일반 cleanup 대상 제외)
+- **Lifecycle / sc3↔sc4 연계 / 사용 규칙 상세**: `docs/scenario_6_suite_setup.md` 참조
 - 이 규칙은 어떤 경우에도 우회하지 않는다
 
 ---
