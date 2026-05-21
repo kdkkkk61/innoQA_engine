@@ -195,7 +195,27 @@ def _render_summary_card(page_id: str, report: PageScanReport) -> str:
     </div>"""
 
 
-def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
+def _label_group_prefix(r: ScanResult) -> str:
+    """라벨 영역 그룹 prefix 추출.
+
+    예: '[UX 결함] 프로세스별 제어 (개별 프로세스) - 접근 드라이브...'
+        → '프로세스별 제어 (개별 프로세스)'
+
+    page_id 조건부 sort 에서 사용. 같은 영역의 case 들이 보고서에서 연속 표시되도록.
+    선두 [...] tag 제거 후 첫 ' - ' 까지가 그룹 식별자.
+    """
+    lbl = r.label or ""
+    if lbl.startswith("[") and "]" in lbl:
+        lbl = lbl.split("]", 1)[1].strip()
+    return lbl.split(" - ", 1)[0].strip() if " - " in lbl else lbl
+
+
+# 영역별 sort 적용 page_id 목록 — 추후 다른 페이지 추가 시 여기에 추가
+_PAGE_IDS_USE_LABEL_GROUP_SORT = {"npouch_control_suite"}
+
+
+def _render_results_table(report: PageScanReport, is_list_page: bool,
+                           page_id: str = "") -> str:
     rows = []
     prev_scenario = None
 
@@ -203,8 +223,12 @@ def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
         """extra["scenario"] 우선, 없으면 phase, 없으면 0."""
         return (r.extra or {}).get("scenario") or r.phase or 0
 
-    # 시나리오 번호 → UI 순서(order) 로 정렬: 같은 시나리오 안에서 화면 위→아래
-    sort_key = lambda x: (_scenario_num(x), x.order or 9999)
+    # page_id 조건부 sort — 영역 그룹 sort 적용 페이지만 label_group 사용
+    if page_id in _PAGE_IDS_USE_LABEL_GROUP_SORT:
+        sort_key = lambda x: (_scenario_num(x), _label_group_prefix(x), x.order or 9999)
+    else:
+        # 기존 동작 (시나리오 → order) — RansomCruncher 등 영향 없음
+        sort_key = lambda x: (_scenario_num(x), x.order or 9999)
 
     for r in sorted(report.results, key=sort_key):
         badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
@@ -248,6 +272,10 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
         label      = _PAGE_LABELS.get(page_id, page_id)
         is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
         bug_items  = [r for r in report.results if r.status in ("fail", "warn", "known_bug", "error")]
+        # page_id 조건부 sort — 영역 그룹 sort 적용 페이지만 (RansomCruncher 등 무관)
+        if page_id in _PAGE_IDS_USE_LABEL_GROUP_SORT:
+            sc_num = lambda r: (r.extra or {}).get("scenario") or r.phase or 0
+            bug_items.sort(key=lambda r: (sc_num(r), _label_group_prefix(r), r.order or 9999))
         for r in bug_items:
             issue_num += 1
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
@@ -445,7 +473,7 @@ def generate_html_report(
     for page_id, report in reports:
         label      = _PAGE_LABELS.get(page_id, page_id)
         is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
-        table_html = _render_results_table(report, is_list)
+        table_html = _render_results_table(report, is_list, page_id)
         p, f, k, e = (len(report.passed), len(report.failed),
                       len(report.known_bugs), len(report.errors))
         page_sections.append(f"""
