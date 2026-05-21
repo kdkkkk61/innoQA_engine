@@ -104,6 +104,13 @@ class TestScenario3Action(ControlSuiteBase):
         page.navigate_to()
         # 세션 시작 정리 보장 (sc1a 미실행 시 자동 cleanup — _base.py 의 _ensure_session_cleanup)
         self._ensure_session_cleanup(page)
+        # 안전망 — _ensure_session_cleanup 가 silently 실패한 경우 KEEP_NAME 직접 삭제
+        # (delete_all_test_data 가 페이지네이션 / 타이밍 등으로 KEEP 못 잡는 케이스 대응)
+        try:
+            if page.is_policy_exists(KEEP_NAME):
+                page.delete_policy(KEEP_NAME)
+        except Exception:
+            pass
 
         # ════ 메인 모달 입력 ════
         page.open_add_modal()
@@ -1278,23 +1285,23 @@ class TestScenario3Action(ControlSuiteBase):
         if page.feature_exists(page.process.SEL_CACHE_SPECIAL_BTN, timeout=1000):
             page.process.click_special_folder_btn()
             page.special_folder.wait_open()
-            page.special_folder.select_and_confirm(["DESKTOP"])
+            page.special_folder.select_and_confirm(["[/DESKTOP/]"])
             page.process.click_cache_add_btn()
             # 2nd: 같은 'DESKTOP' 다시 picker → 확인 → 추가 → 중복 알림 기대
             page.process.click_special_folder_btn()
             page.special_folder.wait_open()
-            page.special_folder.select_and_confirm(["DESKTOP"])
+            page.special_folder.select_and_confirm(["[/DESKTOP/]"])
             page.process.click_cache_add_btn()
             if page.is_confirm_modal_visible(timeout=3000):
                 msg = page.get_confirm_message()
                 ok = "이미 등록" in msg and ("폴더" in msg or "경로" in msg)
                 self._add("pass" if ok else "fail",
                           "프로세스 등록 모달 - 특수폴더 picker 동일 reserved_word 중복 차단 (yaml :346-348)",
-                          f"입력: DESKTOP 재선택 + 추가 / 결과: 메시지={msg!r}", sc=3)
+                          f"입력: [/DESKTOP/] 재선택 + 추가 / 결과: 메시지={msg!r}", sc=3)
                 page.dismiss_confirm_modal()
             else:
                 self._add("warn", "[차단 메시지] 특수폴더 picker 중복 — 메시지 미노출",
-                          f"입력: DESKTOP 재추가 / 결과: 알림 없음", sc=3)
+                          f"입력: [/DESKTOP/] 재추가 / 결과: 알림 없음", sc=3)
         else:
             self._add("skip", "[차단 메시지] 특수폴더 picker — 기능 부재", "(skip)", sc=3)
         # 정리
