@@ -203,8 +203,23 @@ def _render_results_table(report: PageScanReport, is_list_page: bool) -> str:
         """extra["scenario"] 우선, 없으면 phase, 없으면 0."""
         return (r.extra or {}).get("scenario") or r.phase or 0
 
-    # 시나리오 번호 → UI 순서(order) 로 정렬: 같은 시나리오 안에서 화면 위→아래
-    sort_key = lambda x: (_scenario_num(x), x.order or 9999)
+    def _label_group(r: ScanResult) -> str:
+        """영역 그룹 prefix 추출 — '[UX 결함] 프로세스별 제어 (개별 프로세스) - 접근...' → '프로세스별 제어 (개별 프로세스)'
+
+        보고서 영역별 그룹화용 — 같은 영역의 case 들이 연속 표시되도록.
+        """
+        lbl = r.label or ""
+        # 선두 [...] tag 제거
+        if lbl.startswith("[") and "]" in lbl:
+            lbl = lbl.split("]", 1)[1].strip()
+        # 첫 ' - ' 까지 (영역 식별자)
+        if " - " in lbl:
+            return lbl.split(" - ", 1)[0].strip()
+        return lbl
+
+    # 시나리오 번호 → 영역 그룹 → UI 순서(order) 로 정렬
+    # (같은 영역의 case 들이 연속 표시됨 — 보고서 가독성 향상)
+    sort_key = lambda x: (_scenario_num(x), _label_group(x), x.order or 9999)
 
     for r in sorted(report.results, key=sort_key):
         badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
