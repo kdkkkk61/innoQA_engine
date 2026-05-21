@@ -1416,11 +1416,11 @@ class TestScenario3Action(ControlSuiteBase):
             # 서버 오류 alert 떠있는 상태에서 _add → 스크린샷에 결함 상태 포함 (사용자 요청)
             # warn = UX 결함 재현 → BUG 리포트 / pass = sub-modal 정상 차단
             self._add("warn" if defect_found else "pass",
-                      "[UX 결함] 프로세스별 제어 - 접근 드라이브 letter 100자 → 메인 저장 시 서버 오류 (process_modal 단계에서 차단되어야 정상)",
+                      "[UX 결함] 프로세스별 제어 (개별 프로세스) - 접근 드라이브 letter 100자 → 메인 저장 시 서버 오류 (sub-modal 단계에서 차단되어야 정상)",
                       f"입력: letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
             page.dismiss_confirm_modal()
         else:
-            self._add("skip", "[UX 결함] 프로세스별 제어 - 접근 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
+            self._add("skip", "[UX 결함] 프로세스별 제어 (개별 프로세스) - 접근 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
         # 서버 오류 케이스 후 안전 정리 — 페이지 새로고침 (모달 잔존 / alert 잔여 완전 정리)
         try:
@@ -1510,12 +1510,12 @@ class TestScenario3Action(ControlSuiteBase):
             if expect_server_error:
                 defect_found = "서버" in msg and ("오류" in msg or "발생" in msg)
                 self._add("warn" if defect_found else "pass",
-                          f"[UX 결함] 프로세스별 제어 - 허용 IP/Port Port={port_val!r} {label} → 메인 저장 시 서버 오류 (process_modal 단계에서 차단되어야 정상)",
+                          f"[UX 결함] 프로세스별 제어 (개별 프로세스) - 허용 IP/Port Port={port_val!r} {label} → 메인 저장 시 서버 오류 (sub-modal 단계에서 차단되어야 정상)",
                           f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
             else:
                 ok = msg == "저장 하였습니다"
                 self._add("pass" if ok else "fail",
-                          f"[저장 확인] 프로세스별 제어 - 허용 IP/Port Port={port_val!r} {label} → 메인 저장 OK",
+                          f"[저장 확인] 프로세스별 제어 (개별 프로세스) - 허용 IP/Port Port={port_val!r} {label} → 메인 저장 OK",
                           f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
             page.dismiss_confirm_modal()
             page.close_modal()
@@ -1639,11 +1639,11 @@ class TestScenario3Action(ControlSuiteBase):
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
             self._add("warn" if defect_found else "pass",
-                      "[UX 결함] 프로세스별 제어 - 기본폴더 지정 cacheFolderInput 500자 → 메인 저장 서버 오류 (process_modal 단계에서 글자수 차단되어야 정상)",
+                      "[UX 결함] 프로세스별 제어 (개별 프로세스) - 캐시폴더 지정 cacheFolderInput 500자 → 메인 저장 서버 오류 (process_modal 단계에서 글자수 차단되어야 정상)",
                       f"입력: cache 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
             page.dismiss_confirm_modal()
         else:
-            self._add("skip", "[UX 결함] 프로세스별 제어 - 기본폴더 지정 cacheFolderInput 500자 — 기능 부재", "(skip)", sc=3)
+            self._add("skip", "[UX 결함] 프로세스별 제어 (개별 프로세스) - 캐시폴더 지정 cacheFolderInput 500자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
 
         # ── Case L: 태그 mode drive letter 100자 → 메인 저장 서버 오류 (yaml :404 process 동일) ──
@@ -1668,11 +1668,11 @@ class TestScenario3Action(ControlSuiteBase):
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
             self._add("warn" if defect_found else "pass",
-                      "[UX 결함] 태그 제어 - 접근 드라이브 letter 100자 → 메인 저장 시 서버 오류 (process_modal 동일 패턴, yaml :404)",
+                      "[UX 결함] 프로세스별 제어 (태그) - 접근 드라이브 letter 100자 → 메인 저장 시 서버 오류 (개별 프로세스 동일 패턴, yaml :404)",
                       f"입력: 태그 mode + letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
             page.dismiss_confirm_modal()
         else:
-            self._add("skip", "[UX 결함] 태그 제어 - 접근 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
+            self._add("skip", "[UX 결함] 프로세스별 제어 (태그) - 접근 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
 
         # ── Case M: 태그 mode Port -1 → 메인 저장 서버 오류 (yaml :403 process 동일) ──
@@ -1698,7 +1698,7 @@ class TestScenario3Action(ControlSuiteBase):
         msg = page.get_confirm_message()
         defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
         self._add("warn" if defect_found else "pass",
-                  "[UX 결함] 태그 제어 - 허용 IP/Port Port=-1 → 메인 저장 시 서버 오류 (process_modal 동일 패턴, yaml :403)",
+                  "[UX 결함] 프로세스별 제어 (태그) - 허용 IP/Port Port=-1 → 메인 저장 시 서버 오류 (개별 프로세스 동일 패턴, yaml :403)",
                   f"입력: 태그 mode + Port='-1' + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         page.dismiss_confirm_modal()
         page.close_modal()
@@ -1733,7 +1733,7 @@ class TestScenario3Action(ControlSuiteBase):
                       "[boundary 정상] 웹제한 기능 - 기본폴더 basePath 300자 → 메인 저장 OK (boundary 정상측, yaml :433-436)",
                       f"입력: basePath 300자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
         else:
-            self._add("skip", "[boundary 정상] basePath 300자 — 기능 부재", "(skip)", sc=3)
+            self._add("skip", "[boundary 정상] 웹제한 기능 - 기본폴더 basePath 300자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
 
         # ── Case O: webRestrictName 100자 입력 + 메인 저장 → '저장 하였습니다' (정상 boundary, yaml :428-431) ──
@@ -1755,4 +1755,34 @@ class TestScenario3Action(ControlSuiteBase):
         self._add("pass" if ok_save else "fail",
                   "[boundary 정상] 웹제한 기능 - 웹제한 이름 webRestrictName 100자 → 메인 저장 OK (boundary 정상측, yaml :428-431)",
                   f"입력: webRestrictName 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+        page.close_modal()
+
+        # ── Case P: 태그 mode 캐시폴더 500자 → 메인 저장 서버 오류 (UX 결함, yaml :112) ──
+        # 신규 추가 — yaml :112 "모드 변경만 다름. UI 요소는 14필드 + cache_folder + 라디오 모두 동일"
+        # 태그 모드도 개별 프로세스와 동일하게 cache_folder UX 결함 적용 검증
+        page.navigate_to_clean()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step18_tag_cache500")
+        page.click_tag_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="tag")
+        if page.feature_exists(page.process.SEL_CACHE_INPUT, timeout=1000):
+            page.process.set_cache_input("a" * 500)
+            page.process.click_cache_add_btn()
+            page.process.confirm()
+            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
+            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                state="attached", timeout=page._TIMEOUT_MODAL
+            )
+            msg = page.get_confirm_message()
+            defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+            self._add("warn" if defect_found else "pass",
+                      "[UX 결함] 프로세스별 제어 (태그) - 캐시폴더 지정 cacheFolderInput 500자 → 메인 저장 서버 오류 (개별 프로세스 동일 패턴, yaml :112)",
+                      f"입력: 태그 mode + cache 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+            page.dismiss_confirm_modal()
+        else:
+            self._add("skip", "[UX 결함] 프로세스별 제어 (태그) - 캐시폴더 지정 500자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
