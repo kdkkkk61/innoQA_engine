@@ -1782,3 +1782,27 @@ class TestScenario3Action(ControlSuiteBase):
         else:
             self._add("skip", "[UX 결함] 프로세스별 제어 (태그) - 캐시폴더 지정 500자 — 기능 부재", "(skip)", sc=3)
         page.close_modal()
+
+        # ── Case Q: 태그 mode 정상 저장 (sc4 4e EDIT 검증 데이터 확보) ─
+        # sc3j Case L/M/P 는 모두 server error (UX 결함) 라 태그 정책 생성 X.
+        # sc4 4e (태그 EDIT) 가 EDIT 할 데이터 확보 — 정상값 (drv 50자, Port 8080) 으로 저장.
+        page.navigate_to_clean()
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step19_tag_normal")
+        page.click_tag_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="tag")
+        # 정상값 입력 (drv 50자 — UX 결함 100자 미만)
+        if page.feature_exists(page.process.SEL_TOGGLE_ACCESS_DRIVE, timeout=1000):
+            page.process.set_access_drive(True)
+            page.process.set_drive_letter("a" * 50)
+        page.process.confirm()
+        msg = page.save_policy(mode="add")
+        page.dismiss_confirm_modal()
+        ok_save = (msg == "저장 하였습니다")
+        self._add("pass" if ok_save else "fail",
+                  "[저장 확인] 프로세스별 제어 (태그) - 정상 저장 → 메인 저장 OK (sc4 4e EDIT 데이터)",
+                  f"입력: 태그 mode + drv 50자 (정상) + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
