@@ -169,12 +169,15 @@ class TestScenario4Modify(ControlSuiteBase):
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
         TARGET_NAME = "[AUTO]_sc3_step2"
+        # MCP 진단 (2026-05-22): sc3 데이터 + 이전 run 누적 → 같은 값 재추가 시 '이미 등록' 알림
+        # 매 run unique 값 (timestamp 짧은 hash) → 중복 알림 회피 / 정상 add 흐름 보장
+        _ts = int(time.time()) % 10000   # 4자리 — Port 범위 / 짧은 식별자
         PROC = {
-            "ip":      "172.16.0.5",
-            "port":    "8080",
-            "ext":     ["zip", "iso"],
+            "ip":      f"172.16.{(_ts // 100) % 256}.{_ts % 256}",   # 매 run unique IP
+            "port":    str(9000 + (_ts % 500)),                       # 매 run unique Port
+            "ext":     [f"r{_ts}a", f"r{_ts}b"],                       # 매 run unique 확장자
             "drive":   "D;E",
-            "desc":    "edit_4d 프로세스 설명",
+            "desc":    f"edit_4d_{_ts}",
         }
 
         page.navigate_to_clean()
@@ -204,10 +207,16 @@ class TestScenario4Modify(ControlSuiteBase):
         page.process.set_deny_except_drive(True)
         page.process.set_pnetwork(True)
         page.process.add_ip_port(PROC["ip"], PROC["port"])
+        # 안전망 — 중복 알림 (registeredFolderWarning) 뜨면 dismiss (sc3 누적 시 대비)
+        if page.is_confirm_modal_visible(timeout=1000):
+            page.dismiss_confirm_modal()
         page.process.set_pcontrol_extension(True)
         page.process.click_radio_allowp()
         for ext in PROC["ext"]:
             page.process.add_extension(ext)
+            # 안전망 — 확장자 중복 알림 dismiss
+            if page.is_confirm_modal_visible(timeout=500):
+                page.dismiss_confirm_modal()
         page.process.set_access_drive(True)
         page.process.set_drive_letter(PROC["drive"])
         page.process.set_description(PROC["desc"])
@@ -297,12 +306,14 @@ class TestScenario4Modify(ControlSuiteBase):
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
         TARGET_NAME = "[AUTO]_sc3_step2"
+        # 매 run unique 값 — sc3 + 이전 sc4 누적 중복 회피 (MCP 진단 2026-05-22)
+        _ts = (int(time.time()) // 7) % 10000   # 7로 나눠 4d 와 다른 값
         TAG = {
-            "ip":      "192.168.99.10",
-            "port":    "9090",
-            "ext":     ["docx", "xlsx"],
+            "ip":      f"192.168.{(_ts // 100) % 256}.{_ts % 256}",
+            "port":    str(9500 + (_ts % 400)),
+            "ext":     [f"t{_ts}a", f"t{_ts}b"],
             "drive":   "F;G",
-            "desc":    "edit_4e 태그 설명",
+            "desc":    f"edit_4e_{_ts}",
         }
 
         page.navigate_to_clean()
@@ -339,10 +350,16 @@ class TestScenario4Modify(ControlSuiteBase):
         page.process.set_deny_except_drive(True)
         page.process.set_pnetwork(True)
         page.process.add_ip_port(TAG["ip"], TAG["port"])
+        # 안전망 — IP/Port 중복 알림 dismiss
+        if page.is_confirm_modal_visible(timeout=1000):
+            page.dismiss_confirm_modal()
         page.process.set_pcontrol_extension(True)
         page.process.click_radio_allowp()
         for ext in TAG["ext"]:
             page.process.add_extension(ext)
+            # 안전망 — 확장자 중복 알림 dismiss
+            if page.is_confirm_modal_visible(timeout=500):
+                page.dismiss_confirm_modal()
         page.process.set_access_drive(True)
         page.process.set_drive_letter(TAG["drive"])
         page.process.set_description(TAG["desc"])
@@ -457,10 +474,12 @@ class TestScenario4Modify(ControlSuiteBase):
         INIT_URL      = "sc3_step2-web.com"
         INIT_LIMIT    = "512"
         INIT_DESC     = "sc3_step2 웹제한 초기값"
-        MOD_URL    = "edit4f.com"
-        MOD_EXT    = "png;jpg"
+        # 매 run unique 값 — sc3 + 이전 sc4 누적 중복 회피 (MCP 진단 2026-05-22)
+        _ts = (int(time.time()) // 11) % 10000   # 11로 나눠 4d/4e 와 다른 값
+        MOD_URL    = f"edit4f-{_ts}.com"
+        MOD_EXT    = f"w{_ts}"
         MOD_LIMIT  = "2048"
-        MOD_DESC   = "edit_4f 종합 수정"
+        MOD_DESC   = f"edit_4f_{_ts}"
 
         page.navigate_to_clean()
         if not page.is_policy_exists(TARGET_NAME):
@@ -504,11 +523,17 @@ class TestScenario4Modify(ControlSuiteBase):
 
         # 4 영역 modify
         page.web_restrict.add_url(MOD_URL)
+        # 안전망 — URL 중복 알림 dismiss (재추가 시)
+        if page.is_confirm_modal_visible(timeout=500):
+            page.dismiss_confirm_modal()
         self._add("pass" if any(MOD_URL in u for u in page.web_restrict.get_url_list()) else "fail",
                   "웹제한 모달 — 적용 URL 추가 (수정)",
                   f"입력: '{MOD_URL}' / 결과: list={page.web_restrict.get_url_list()}", sc=4)
 
         page.web_restrict.add_file_extension(MOD_EXT)
+        # 안전망 — 확장자 중복 알림 dismiss
+        if page.is_confirm_modal_visible(timeout=500):
+            page.dismiss_confirm_modal()
         self._add("pass", "웹제한 모달 — 확장자 추가 (수정)",
                   f"입력: '{MOD_EXT}' / 결과: 입력 반영", sc=4)
 
