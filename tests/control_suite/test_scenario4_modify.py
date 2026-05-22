@@ -1,4 +1,4 @@
-"""시나리오 4 — EDIT 모달 검증 (4b~4g). 3d 가 남긴 KEEP 정책 사용."""
+"""시나리오 4 — EDIT 모달 검증 (4b~4j). sc3 가 만든 [AUTO]_sc3_step* 정책 사용 (같은 세션 안 잔존)."""
 import pytest
 
 from pages.npouch_control_suite_page import NpouchControlSuitePage
@@ -16,7 +16,7 @@ class TestScenario4Modify(ControlSuiteBase):
         """시나리오 4b — 메인 영역 최소 modify
         (이름 load 검증 + customOption 1 필드 변경 + 저장 + 재진입 일치 검증).
 
-        AUTO_KEEP_LIFECYCLE: sc3b 가 만든 [AUTO]_sc3_step1 정책 사용.
+        의존: sc3b 가 만든 [AUTO]_sc3_step1 정책 사용 (같은 세션 안 잔존).
         sc3 단독 실행 후 sc4 만 돌릴 때도 동작 (정책 잔존).
         """
         print("\n━━ [제어 스위트] 시나리오 4b: minimal modify (메인 영역) ━━━")
@@ -73,10 +73,10 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4c: 메인 11 필드 CRUD (3d 의 EDIT 버전) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
+        TARGET_NAME = "[AUTO]_sc3_step2"
         # 4b 결과까지 누적된 상태값 (3d MODIFY + 4b customOption 변경)
         EXPECT = {
-            "csuName":           KEEP_NAME,
+            "csuName":           TARGET_NAME,
             "clipboard_url":     "daum.net",
             "extensions":        ["txt", "doc", "exe"],
             "sign_count":        2,
@@ -89,12 +89,12 @@ class TestScenario4Modify(ControlSuiteBase):
         }
 
         page.navigate_to()
-        if not page.is_policy_exists(KEEP_NAME):
-            self._add("skip", "시나리오 4c — KEEP 정책 부재 → skip",
-                      f"입력: 진입 / 결과: '{KEEP_NAME}' 없음", sc=4)
+        if not page.is_policy_exists(TARGET_NAME):
+            self._add("skip", "시나리오 4c — sc3 정책 부재 → skip",
+                      f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
             return
 
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         load_checks = {
             "스위트 이름":               page.get_csu_name() == EXPECT["csuName"],
             "클립보드 제한 토글":         page.page.locator(page.SEL_CLIPBOARD_RESTRICT).first.is_checked(),
@@ -123,12 +123,12 @@ class TestScenario4Modify(ControlSuiteBase):
                   "스위트 수정 모달 — 3 필드 변경 + '수정' 저장",
                   f"입력: URL/custom/확장자 변경 / 결과: 메시지={msg!r}", sc=4)
 
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         verify_checks = {
             "클립보드 허용 URL 변경 반영":   MOD["clipboard_url"] in page.get_clipboard_allow_url(),
             "커스텀 옵션 변경 반영":         page.get_custom_option() == MOD["custom_option"],
             "확장자 추가 반영":              MOD["new_extension"] in page.get_main_extension_list(),
-            "스위트 이름 보존":              page.get_csu_name() == KEEP_NAME,
+            "스위트 이름 보존":              page.get_csu_name() == TARGET_NAME,
             "네트워크 접근 토글 보존":       page.is_network_checked(),
             "헤더 체크 토글 보존":           page.page.locator(page.SEL_HEADER_CHECK).first.is_checked(),
             "전자서명 예외 토글 보존":       page.page.locator(page.SEL_SIGN_EXCEPT_TOGGLE).first.is_checked(),
@@ -150,13 +150,13 @@ class TestScenario4Modify(ControlSuiteBase):
     def test_scenario4d_edit_process_full(self, logged_in_page, settings):
         """시나리오 4d — 프로세스 영역 종합 검증.
 
-        KEEP 정책 EDIT 진입 → 개별 프로세스 1건 load → 첫 행 클릭 (process_modal 재진입) →
+        sc3 정책 EDIT 진입 → 개별 프로세스 1건 load → 첫 행 클릭 (process_modal 재진입) →
         12 필드 OFF→ON 변경 + 저장 + 재오픈 verify → ON→OFF 양방향 + 저장 + verify.
         """
         print("\n━━ [제어 스위트] 시나리오 4d: 프로세스별 제어 영역 종합 (ON↔OFF) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
+        TARGET_NAME = "[AUTO]_sc3_step2"
         PROC = {
             "ip":      "172.16.0.5",
             "port":    "8080",
@@ -166,13 +166,13 @@ class TestScenario4Modify(ControlSuiteBase):
         }
 
         page.navigate_to()
-        if not page.is_policy_exists(KEEP_NAME):
-            self._add("skip", "시나리오 4d — KEEP 정책 부재 → skip",
-                      f"입력: 진입 / 결과: '{KEEP_NAME}' 없음", sc=4)
+        if not page.is_policy_exists(TARGET_NAME):
+            self._add("skip", "시나리오 4d — sc3 정책 부재 → skip",
+                      f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
             return
 
         # ── EDIT 진입 + 개별 프로세스 1건 load ─────────────────
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         rows = len(page.get_item_list_rows())
         self._add("pass" if rows >= 1 else "fail",
                   "프로세스별 제어 — 기존 프로세스 1건 load (itemList)",
@@ -208,7 +208,7 @@ class TestScenario4Modify(ControlSuiteBase):
                   f"입력: 4 토글 + IP/Port + 확장자 + drive + 설명 / 결과: 메시지={msg!r}", sc=4)
 
         # ── 재오픈 → process_modal 재진입 + OFF→ON 값 일치 ────
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         page.click_item_list_row(0)
         re_checks = {
             "프로세스 제외 토글 (OFF→ON)":            page.process.is_toggle_checked(page.process.SEL_TOGGLE_PROC_EXCEPT),
@@ -246,7 +246,7 @@ class TestScenario4Modify(ControlSuiteBase):
                   f"입력: 7 토글 모두 OFF / 결과: 메시지={msg2!r}", sc=4)
 
         # 재오픈 → ON→OFF 일치
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         page.click_item_list_row(0)
         off_checks = {
             "프로세스 제외 토글 (ON→OFF)":             not page.process.is_toggle_checked(page.process.SEL_TOGGLE_PROC_EXCEPT),
@@ -282,7 +282,7 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4e: 태그 영역 종합 (ON↔OFF 양방향) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
+        TARGET_NAME = "[AUTO]_sc3_step2"
         TAG = {
             "ip":      "192.168.99.10",
             "port":    "9090",
@@ -292,13 +292,13 @@ class TestScenario4Modify(ControlSuiteBase):
         }
 
         page.navigate_to()
-        if not page.is_policy_exists(KEEP_NAME):
-            self._add("skip", "시나리오 4e — KEEP 정책 부재 → skip",
-                      f"입력: 진입 / 결과: '{KEEP_NAME}' 없음", sc=4)
+        if not page.is_policy_exists(TARGET_NAME):
+            self._add("skip", "시나리오 4e — sc3 정책 부재 → skip",
+                      f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
             return
 
         # ── EDIT 진입 + Tag tab + itemTagList 0행 load ─────────
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         page.click_tag_tab()
         before_rows = len(page.get_item_tag_list_rows())
         self._add("pass" if before_rows == 0 else "fail",
@@ -346,7 +346,7 @@ class TestScenario4Modify(ControlSuiteBase):
                   f"입력: '수정' 클릭 / 결과: 메시지={msg!r}", sc=4)
 
         # ── 재오픈 + Tag tab → 행 재진입 + 11 필드 일치 ─────────
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         page.click_tag_tab()
         final_rows = len(page.get_item_tag_list_rows())
         self._add("pass" if final_rows == 1 else "fail",
@@ -399,7 +399,7 @@ class TestScenario4Modify(ControlSuiteBase):
                   f"입력: 7 토글 모두 OFF / 결과: 메시지={msg2!r}", sc=4)
 
         # 재오픈 → 7 토글 OFF 일치
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         page.click_tag_tab()
         page.click_item_tag_list_row(0)
         off_checks = {
@@ -428,13 +428,13 @@ class TestScenario4Modify(ControlSuiteBase):
     def test_scenario4f_edit_web_restrict_full(self, logged_in_page, settings):
         """시나리오 4f — 웹제한 영역 종합 검증.
 
-        Part A (3c EDIT): KEEP 의 기존 웹제한 모달 재진입 → 5 필드 load + 4 영역 modify + 모달 확인.
+        Part A (3c EDIT): sc3 정책의 기존 웹제한 모달 재진입 → 5 필드 load + 4 영역 modify + 모달 확인.
         Part B (cross-instance): 2번째 웹제한 추가 → 사용중 프로세스 선택 시 알림 + 미사용 선택 + 정상 등록.
         """
         print("\n━━ [제어 스위트] 시나리오 4f: 웹제한 영역 + cross-instance (3c 의 EDIT 버전) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
+        TARGET_NAME = "[AUTO]_sc3_step2"
         INIT_WEB_NAME = "[AUTO]_web_sc3_step2"
         INIT_URL      = "sc3_step2-web.com"
         INIT_LIMIT    = "512"
@@ -445,13 +445,13 @@ class TestScenario4Modify(ControlSuiteBase):
         MOD_DESC   = "edit_4f 종합 수정"
 
         page.navigate_to()
-        if not page.is_policy_exists(KEEP_NAME):
-            self._add("skip", "시나리오 4f — KEEP 정책 부재 → skip",
-                      f"입력: 진입 / 결과: '{KEEP_NAME}' 없음", sc=4)
+        if not page.is_policy_exists(TARGET_NAME):
+            self._add("skip", "시나리오 4f — sc3 정책 부재 → skip",
+                      f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
             return
 
         # ════ Part A: 기존 웹제한 모달 재진입 + 종합 수정 ════
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         wr_rows = page.get_item_web_restrict_rows()
         self._add("pass" if len(wr_rows) >= 1 else "fail",
                   "스위트 수정 모달 — 기존 웹제한 1건 로드 (itemWebRestrictList)",
@@ -559,7 +559,7 @@ class TestScenario4Modify(ControlSuiteBase):
                   f"입력: 종합 변경 / 결과: 메시지={msg!r}", sc=4)
 
         # 재오픈 + verify
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         final_rows = len(page.get_item_web_restrict_rows())
         self._add("pass" if final_rows == 2 else "fail",
                   "스위트 수정 모달 — 재오픈 후 웹제한 2건 (Part A 유지 + Part B 신규)",
@@ -598,16 +598,16 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4g: validation 메시지 (3e 의 EDIT 버전) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
+        TARGET_NAME = "[AUTO]_sc3_step2"
 
         page.navigate_to()
-        if not page.is_policy_exists(KEEP_NAME):
-            self._add("skip", "시나리오 4g — KEEP 정책 부재 → skip",
-                      f"입력: 진입 / 결과: '{KEEP_NAME}' 없음", sc=4)
+        if not page.is_policy_exists(TARGET_NAME):
+            self._add("skip", "시나리오 4g — sc3 정책 부재 → skip",
+                      f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
             return
 
         # ── A. EDIT csuName maxlength=50 자동 절단 ──────────────
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         page.set_csu_name("z" * 100)
         got = page.get_csu_name()
         self._add("pass" if len(got) == 50 else "fail",
@@ -633,7 +633,7 @@ class TestScenario4Modify(ControlSuiteBase):
                   f"입력: ADD 메시지 vs EDIT 메시지 비교 / 결과: ADD={ADD_MSG!r} != EDIT={edit_msg!r}", sc=4)
 
         # ── E. EDIT csuName 중복 차단 메시지 ─────────────────────
-        page.set_csu_name(KEEP_NAME)
+        page.set_csu_name(TARGET_NAME)
         page.close_modal()
         DUP_PEER = "[AUTO]_4g_dup_peer"
         page.open_add_modal()
@@ -648,8 +648,8 @@ class TestScenario4Modify(ControlSuiteBase):
         page.save_policy(mode="add")
         page.dismiss_confirm_modal()
 
-        # KEEP EDIT 진입 후 DUP_PEER 이름으로 변경 시도
-        page.open_modify_modal(KEEP_NAME)
+        # sc3 정책 EDIT 진입 후 DUP_PEER 이름으로 변경 시도
+        page.open_modify_modal(TARGET_NAME)
         page.set_csu_name(DUP_PEER)
         page._click(page.page.locator(page.SEL_SUBMIT_MODIFY).first)
         page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
@@ -662,7 +662,7 @@ class TestScenario4Modify(ControlSuiteBase):
         page.dismiss_confirm_modal()
 
         # 원복 (수정 모달 그대로 유지 — 다음 검증에 활용)
-        page.set_csu_name(KEEP_NAME)
+        page.set_csu_name(TARGET_NAME)
 
         # ── F. 수정 내용 없이 '수정' → '수정된 항목이 없습니다' 알림 ──
         page._click(page.page.locator(page.SEL_SUBMIT_MODIFY).first)
@@ -693,16 +693,16 @@ class TestScenario4Modify(ControlSuiteBase):
         print("\n━━ [제어 스위트] 시나리오 4h: sub-modal 재진입 + 변경없이 수정 (3 cases) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
+        TARGET_NAME = "[AUTO]_sc3_step2"
 
         page.navigate_to()
-        if not page.is_policy_exists(KEEP_NAME):
-            self._add("skip", "시나리오 4h — KEEP 정책 부재 → skip",
-                      f"입력: 진입 / 결과: '{KEEP_NAME}' 없음", sc=4)
+        if not page.is_policy_exists(TARGET_NAME):
+            self._add("skip", "시나리오 4h — sc3 정책 부재 → skip",
+                      f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
             return
 
         # ── Case G: 프로세스 sub-modal 재진입 + 닫기 + 메인 수정 ──
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         if len(page.get_item_list_rows()) >= 1:
             page.click_item_list_row(0)
             page.process.close()    # 변경 없이 닫기
@@ -722,7 +722,7 @@ class TestScenario4Modify(ControlSuiteBase):
         page.close_modal()
 
         # ── Case H: 태그 sub-modal 재진입 + 닫기 + 메인 수정 ──
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         page.click_tag_tab()
         if len(page.get_item_tag_list_rows()) >= 1:
             page.click_item_tag_list_row(0)
@@ -746,7 +746,7 @@ class TestScenario4Modify(ControlSuiteBase):
         page.close_modal()
 
         # ── Case I: 웹제한 sub-modal 재진입 + 닫기 + 메인 수정 ──
-        page.open_modify_modal(KEEP_NAME)
+        page.open_modify_modal(TARGET_NAME)
         if len(page.get_item_web_restrict_rows()) >= 1:
             page.click_item_web_restrict_row(0)
             page.web_restrict.close()    # 변경 없이 닫기

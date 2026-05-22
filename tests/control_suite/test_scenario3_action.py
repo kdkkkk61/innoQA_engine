@@ -2,7 +2,7 @@
 
 데이터 명명 규칙: `[AUTO]_sc{N}_step{M}` / `[AUTO_KEEP]_sc{N}_step{M}` (시나리오 N 의 sub-step M).
   - 3b → sc3_step1 (minimal_save)
-  - 3c → sc3_step2 (crud_full_cycle, KEEP — 시나리오 4 가 EDIT)
+  - 3c → sc3_step2 (crud_full_cycle, AUTO — 시나리오 4 가 EDIT 검증에 사용)
   - 3d → sc3_step3 (web_restrict_save)
   - 3e → sc3_step4 (중복 검증용)
   - 3f → sc3_step5 (validation extended)
@@ -73,10 +73,10 @@ class TestScenario3Action(ControlSuiteBase):
         """시나리오 3c — ADD 종합 풍부 (각 영역 입력값 set/get 일치 + 메인 저장 + 등록 확인).
 
         EDIT 재진입/modify 흐름은 시나리오 4 영역. 본 메서드는 ADD 흐름만.
-        시나리오 4 가 사용할 [AUTO_KEEP]_sc3_step2 정책 생성.
+        시나리오 4 가 사용할 [AUTO]_sc3_step2 정책 생성 (KEEP 아닌 일반 AUTO — 같은 세션 안 잔존 충분).
         """
         page = NpouchControlSuitePage(logged_in_page, settings)
-        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
+        TARGET_NAME = "[AUTO]_sc3_step2"
         D = {
             "clipboard_url":  "naver.com;google.com",
             "extensions":     ["txt", "doc", "exe"],
@@ -107,10 +107,10 @@ class TestScenario3Action(ControlSuiteBase):
 
         # ════ 메인 모달 입력 ════
         page.open_add_modal()
-        page.set_csu_name(KEEP_NAME)
-        self._add("pass" if page.get_csu_name() == KEEP_NAME else "fail",
+        page.set_csu_name(TARGET_NAME)
+        self._add("pass" if page.get_csu_name() == TARGET_NAME else "fail",
                   "[입력 확인] 스위트 이름",
-                  f"입력: '{KEEP_NAME}' / 결과: get={page.get_csu_name()!r}", sc=3)
+                  f"입력: '{TARGET_NAME}' / 결과: get={page.get_csu_name()!r}", sc=3)
 
         # 클립보드 공유제한 토글 양방향 검증
         v_init = page.page.locator(page.SEL_CLIPBOARD_RESTRICT).first.is_checked()
@@ -574,14 +574,14 @@ class TestScenario3Action(ControlSuiteBase):
                   "[저장 확인] 스위트 추가 모달 — '추가' 저장",
                   f"입력: '추가' 클릭 / 결과: 메시지={msg!r}", sc=3)
 
-        exists = page.is_policy_exists(KEEP_NAME)
+        exists = page.is_policy_exists(TARGET_NAME)
         self._add("pass" if exists else "fail",
                   "[등록 확인] 정책 목록 — 신규 정책 등록",
-                  f"입력: 저장 완료 후 / 결과: '{KEEP_NAME}' 존재={exists}", sc=3)
+                  f"입력: 저장 완료 후 / 결과: '{TARGET_NAME}' 존재={exists}", sc=3)
 
-        # KEEP 정책 의도적 보존 — 시나리오 4 가 modify/EDIT 검증 수행
-        self._add("pass", "[등록 확인] KEEP 정책 의도적 보존 (시나리오 4 사용 예정)",
-                  f"입력: 삭제 X / 결과: '{KEEP_NAME}' 잔존", sc=3)
+        # 시나리오 4 가 modify/EDIT 검증에 사용 (같은 세션 안 잔존 — KEEP 처리 불필요)
+        self._add("pass", "[등록 확인] sc3c 정책 잔존 (시나리오 4 EDIT 사용 예정)",
+                  f"입력: 삭제 X / 결과: '{TARGET_NAME}' 잔존", sc=3)
 
 
 
