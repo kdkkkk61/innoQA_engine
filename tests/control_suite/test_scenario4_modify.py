@@ -25,7 +25,7 @@ class TestScenario4Modify(ControlSuiteBase):
         TARGET_NAME = "[AUTO]_sc3_step1"      # sc3b 가 만든 minimal 정책
         MOD_CUSTOM  = "sc4b_modified_by_4b"
 
-        page.navigate_to()
+        page.navigate_to_clean()
         if not page.is_policy_exists(TARGET_NAME):
             self._add("skip", "시나리오 4b — sc3 정책 미존재 → skip",
                       f"입력: 진입 / 결과: '{TARGET_NAME}' 없음 (sc3b 먼저 실행 필요)", sc=4)
@@ -88,7 +88,7 @@ class TestScenario4Modify(ControlSuiteBase):
             "new_extension":  "iso",
         }
 
-        page.navigate_to()
+        page.navigate_to_clean()
         if not page.is_policy_exists(TARGET_NAME):
             self._add("skip", "시나리오 4c — sc3 정책 부재 → skip",
                       f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
@@ -165,7 +165,7 @@ class TestScenario4Modify(ControlSuiteBase):
             "desc":    "edit_4d 프로세스 설명",
         }
 
-        page.navigate_to()
+        page.navigate_to_clean()
         if not page.is_policy_exists(TARGET_NAME):
             self._add("skip", "시나리오 4d — sc3 정책 부재 → skip",
                       f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
@@ -291,7 +291,7 @@ class TestScenario4Modify(ControlSuiteBase):
             "desc":    "edit_4e 태그 설명",
         }
 
-        page.navigate_to()
+        page.navigate_to_clean()
         if not page.is_policy_exists(TARGET_NAME):
             self._add("skip", "시나리오 4e — sc3 정책 부재 → skip",
                       f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
@@ -444,7 +444,7 @@ class TestScenario4Modify(ControlSuiteBase):
         MOD_LIMIT  = "2048"
         MOD_DESC   = "edit_4f 종합 수정"
 
-        page.navigate_to()
+        page.navigate_to_clean()
         if not page.is_policy_exists(TARGET_NAME):
             self._add("skip", "시나리오 4f — sc3 정책 부재 → skip",
                       f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
@@ -600,7 +600,7 @@ class TestScenario4Modify(ControlSuiteBase):
         self._page = page.page
         TARGET_NAME = "[AUTO]_sc3_step2"
 
-        page.navigate_to()
+        page.navigate_to_clean()
         if not page.is_policy_exists(TARGET_NAME):
             self._add("skip", "시나리오 4g — sc3 정책 부재 → skip",
                       f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
@@ -695,7 +695,7 @@ class TestScenario4Modify(ControlSuiteBase):
         self._page = page.page
         TARGET_NAME = "[AUTO]_sc3_step2"
 
-        page.navigate_to()
+        page.navigate_to_clean()
         if not page.is_policy_exists(TARGET_NAME):
             self._add("skip", "시나리오 4h — sc3 정책 부재 → skip",
                       f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
@@ -781,7 +781,7 @@ class TestScenario4Modify(ControlSuiteBase):
         SELF_NAME  = "[AUTO]_sc3_step1"     # sc3b minimal
         OTHER_NAME = "[AUTO]_sc3_step3"     # sc3d 웹제한
 
-        page.navigate_to()
+        page.navigate_to_clean()
         if not (page.is_policy_exists(SELF_NAME) and page.is_policy_exists(OTHER_NAME)):
             self._add("skip", "시나리오 4i — sc3 정책 부재 → skip",
                       f"입력: 진입 / 결과: {SELF_NAME!r}/{OTHER_NAME!r} 둘 다 필요", sc=4)
