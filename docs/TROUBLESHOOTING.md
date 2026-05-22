@@ -5,6 +5,60 @@
 
 ---
 
+## [INSIGHT] sc4 멱등 / sc3 데이터 잔존 / timing 검증 (2026-05-22)
+
+### 핵심 원칙 (사용자 통찰)
+
+1. **sc4 는 sc3 정책을 EDIT 검증에 그대로 사용**
+   - sc3 → sc4 사이 cleanup 없음 (같은 페이지 안)
+   - sc4 가 "깨끗한 상태" 가정 X — sc3 데이터 위에 modify
+   - sc4 두번째 run 시 자기가 modify 한 결과 잔존 → 멱등 X
+2. **검증 톨러런트화 필요**
+   - strict `==` 대신 subset (`in`) / 패턴 매칭 / `>= N` 사용
+   - row count: `before + 1` 패턴 (변화량 검증)
+   - 값 비교: "값 존재" / "패턴 포함" 검증
+3. **timing 이슈도 BUG**
+   - yaml verified 알림이 실제로 떴는데 우리 코드가 못 잡으면:
+     - 우리 자동화 timing/selector 문제 → 우리 fix
+     - 또는 빌드 변경으로 알림 timing 불안정 → 제품 결함 (yaml 갱신)
+   - 패턴: `is_confirm_modal_visible(timeout=3000)` 대신 텍스트 기반 5s polling fallback
+     (참고: sc3i Case C tag picker 적용 예시)
+
+### sc3 → sc4 연계 매핑 (확정)
+
+| sc3 정책 | sc4 case | EDIT 검증 |
+|---------|---------|----------|
+| `[AUTO]_sc3_step1` (3b) | 4b | minimal modify |
+| `[AUTO]_sc3_step2` (3c, KEEP 제거) | 4c~4h, 4i | 메인 11 필드 / sub-modal / validation |
+| `[AUTO]_sc3_step3` (3d) | 4i | 다른 정책 이름 (중복 검증용) |
+| `[AUTO]_sc3_step9_drv50` (3j A) | 4j Case A | drv 100자 → server error |
+| `[AUTO]_sc3_step9_port_D` (3j D) | 4j Case B | Port -1 → server error |
+| `[AUTO]_sc3_step16_bp300_ok` (3j N) | 4j Case C | basePath 400 → server error |
+| `[AUTO]_sc3_step17_webname100_ok` (3j O) | 4j Case D | webName 500 → server error |
+| `[AUTO]_sc3_step19_tag_normal` (3j Q) | 4j Case E | 태그 drv 100자 → server error |
+
+### sc6 연계 페이지 AUTO 정상 ✓
+
+- `tests/test_npouch.py` (운용 프로세스): `[AUTO]_np_proc_suite` 생성 + 남김
+- `tests/test_npouch_tag.py` (태그 관리): `[AUTO]_np_tag_suite` 생성 + 남김
+- 제어 스위트 sc6 미구현 — 차후 위 두 정책 활용
+
+### 적용된 fix 패턴 (commit a1f85fc)
+
+- sc4 4d 확장자: `== PROC["ext"]` → `all(e in list for e in PROC["ext"])`
+- sc4 4e 태그 행: `== 0` 제거 / `== 1` → `== before + 1`
+- sc4 4f 웹제한 행: `== 2` → `>= 1`
+- sc4 4e 확장자: `== TAG["ext"]` → subset
+
+### 향후 작업 (TODO)
+
+- [ ] sc4 4c EXPECT 멱등화 (clipboard_url/custom_option/extensions strict 검증 완화)
+- [ ] sc4 alert 검증에 텍스트 fallback polling 일괄 적용 (sc3i Case C 패턴)
+- [ ] sc4 단독 실행 시 4b SKIP (step1 정책 부재) 원인 추적 (이전 run 변경 가능성)
+- [ ] 제어 스위트 sc6 구현 (`[AUTO]_np_proc_suite` / `[AUTO]_np_tag_suite` 활용)
+
+---
+
 ## [RESOLVED] sc3 within-test cascade fail — case 사이 F5 (navigate_to_clean) 적용 (2026-05-20 최종)
 - **날짜**: 2026-05-20 (3차 진단 + 최종 해결)
 - **증상**: sc3i / sc3j 내부에서 2번째+ open_add_modal 시 `Locator.fill: Timeout` cascade fail.
