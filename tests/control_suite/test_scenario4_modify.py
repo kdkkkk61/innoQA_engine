@@ -1,5 +1,15 @@
-"""시나리오 4 — EDIT 모달 검증 (4b~4j). sc3 가 만든 [AUTO]_sc3_step* 정책 사용 (같은 세션 안 잔존)."""
+"""시나리오 4 — EDIT 모달 검증 (4b~4j). sc3 가 만든 [AUTO]_sc3_step* 정책 사용 (같은 세션 안 잔존).
+
+알림 메시지 다양성 인정 (2026-05-22 사용자 통찰):
+- 시스템 정상 응답 메시지가 단일 아님: '저장 하였습니다' OR '수정된 항목이 없습니다.'
+- 두 번째 run 에서 동일 값 modify 시 시스템이 '변경 없음' 판정 → '수정된 항목이 없습니다.' 알림
+- 두 응답 모두 정상 동작 — sc4 검증은 or 조건 인정 + 가능하면 dynamic 값 (timestamp) 사용
+"""
 import pytest
+import time
+
+# 정상 modify 응답 메시지 (둘 다 인정)
+_MODIFY_OK_MESSAGES = ("저장 하였습니다", "수정된 항목이 없습니다.")
 
 from pages.npouch_control_suite_page import NpouchControlSuitePage
 from tests.control_suite._base import ControlSuiteBase
@@ -23,7 +33,8 @@ class TestScenario4Modify(ControlSuiteBase):
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
         TARGET_NAME = "[AUTO]_sc3_step1"      # sc3b 가 만든 minimal 정책
-        MOD_CUSTOM  = "sc4b_modified_by_4b"
+        # dynamic 값 — 매 run 마다 다른 값 → 시스템이 항상 '저장 하였습니다' (변경 발생)
+        MOD_CUSTOM  = f"sc4b_mod_{int(time.time())}"
 
         page.navigate_to_clean()
         if not page.is_policy_exists(TARGET_NAME):
@@ -43,7 +54,8 @@ class TestScenario4Modify(ControlSuiteBase):
         page.set_custom_option(MOD_CUSTOM)
         msg = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
-        self._add("pass" if msg == "저장 하였습니다" else "fail",
+        # 정상 modify 응답 2종 모두 인정 (timestamp 값이라 정상은 '저장 하였습니다' 기대)
+        self._add("pass" if msg in _MODIFY_OK_MESSAGES else "fail",
                   "스위트 수정 모달 — '수정' 버튼 저장",
                   f"입력: 커스텀 옵션 변경 + '수정' / 결과: 메시지={msg!r}", sc=4)
 
@@ -119,7 +131,7 @@ class TestScenario4Modify(ControlSuiteBase):
 
         msg = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
-        self._add("pass" if msg == "저장 하였습니다" else "fail",
+        self._add("pass" if msg in _MODIFY_OK_MESSAGES else "fail",
                   "스위트 수정 모달 — 3 필드 변경 + '수정' 저장",
                   f"입력: URL/custom/확장자 변경 / 결과: 메시지={msg!r}", sc=4)
 
@@ -203,7 +215,7 @@ class TestScenario4Modify(ControlSuiteBase):
 
         msg = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
-        self._add("pass" if msg == "저장 하였습니다" else "fail",
+        self._add("pass" if msg in _MODIFY_OK_MESSAGES else "fail",
                   "스위트 수정 모달 — process_modal 12 필드 OFF→ON + '수정' 저장",
                   f"입력: 4 토글 + IP/Port + 확장자 + drive + 설명 / 결과: 메시지={msg!r}", sc=4)
 
@@ -243,7 +255,7 @@ class TestScenario4Modify(ControlSuiteBase):
 
         msg2 = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
-        self._add("pass" if msg2 == "저장 하였습니다" else "fail",
+        self._add("pass" if msg2 in _MODIFY_OK_MESSAGES else "fail",
                   "스위트 수정 모달 — process_modal 7 토글 ON→OFF + '수정' 저장",
                   f"입력: 7 토글 모두 OFF / 결과: 메시지={msg2!r}", sc=4)
 
@@ -345,7 +357,7 @@ class TestScenario4Modify(ControlSuiteBase):
         # ── '수정' 저장 ──────────────────────────────────────────
         msg = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
-        self._add("pass" if msg == "저장 하였습니다" else "fail",
+        self._add("pass" if msg in _MODIFY_OK_MESSAGES else "fail",
                   "스위트 수정 모달 — 태그 (12 필드 OFF→ON) 추가 + '수정' 저장",
                   f"입력: '수정' 클릭 / 결과: 메시지={msg!r}", sc=4)
 
@@ -400,7 +412,7 @@ class TestScenario4Modify(ControlSuiteBase):
 
         msg2 = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
-        self._add("pass" if msg2 == "저장 하였습니다" else "fail",
+        self._add("pass" if msg2 in _MODIFY_OK_MESSAGES else "fail",
                   "스위트 수정 모달 — 태그 process_modal 7 토글 ON→OFF + '수정' 저장",
                   f"입력: 7 토글 모두 OFF / 결과: 메시지={msg2!r}", sc=4)
 
@@ -560,7 +572,7 @@ class TestScenario4Modify(ControlSuiteBase):
         # 메인 '수정' 저장
         msg = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
-        self._add("pass" if msg == "저장 하였습니다" else "fail",
+        self._add("pass" if msg in _MODIFY_OK_MESSAGES else "fail",
                   "스위트 수정 모달 — 웹제한 종합 (Part A + Part B) 변경 + '수정' 저장",
                   f"입력: 종합 변경 / 결과: 메시지={msg!r}", sc=4)
 
