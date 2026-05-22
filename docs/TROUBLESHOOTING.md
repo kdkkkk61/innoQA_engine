@@ -57,6 +57,27 @@
 - [ ] sc4 단독 실행 시 4b SKIP (step1 정책 부재) 원인 추적 (이전 run 변경 가능성)
 - [ ] 제어 스위트 sc6 구현 (`[AUTO]_np_proc_suite` / `[AUTO]_np_tag_suite` 활용)
 
+### 사용자 통찰 4 (2026-05-22) — "다른 알림이 떠서 안 잡는 것도 사실 버그"
+
+핵심 패턴 (sc4 4b 실측):
+- EDIT 진입 + customOption "sc4b_modified_by_4b" 변경 + '수정' 클릭
+- 기대: `"저장 하였습니다"` / 실제: `"수정된 항목이 없습니다."`
+- 원인: 이전 run 에서 동일 값 modify → 이번 run 도 같은 값 → 시스템 "변화 없음" 판정
+- 잘못된 FAIL — 시스템은 정상 동작
+
+동일 패턴 (확장자/태그/프로세스 중복 알림):
+- 첫 add 시도 → 데이터 이미 있음 → `"이미 등록된 X 입니다"` 알림 (정상 차단)
+- 우리 코드는 첫 add 가 OK 가정 + 두 번째 add 가 중복 알림 가정
+- sc3 데이터 잔존으로 첫 add 부터 중복 → 우리 검증 흐름 어긋남
+
+해결 패턴:
+1. **알림 메시지 다양성 인정** — `"저장 하였습니다" or "수정된 항목이 없습니다"` 모두 정상
+2. **값 동적 변경** — `f"sc4b_mod_{int(time.time())}"` 로 매 run 다른 값 (강제 변화)
+3. **검증 흐름 reset** — 기존 데이터 명시 삭제 후 추가 시작
+4. **텍스트 fallback polling** — yaml verified 알림 timing 안정화 (sc3i Case C 패턴)
+
+차후 sc4 작업 시 위 4가지 중 1-3 조합 적용 권장 — 4 는 일반 안전망.
+
 ---
 
 ## [RESOLVED] sc3 within-test cascade fail — case 사이 F5 (navigate_to_clean) 적용 (2026-05-20 최종)
