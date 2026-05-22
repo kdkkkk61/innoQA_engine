@@ -9,43 +9,55 @@ class TestScenario4Modify(ControlSuiteBase):
     """nPouch 제어 스위트 — 시나리오 4 — EDIT 모달 검증 (4b~4g)"""
 
     # ==================================================================
-    # 시나리오 4b — 3b (minimal save E2E) 의 EDIT 버전 (메인 영역 최소 흐름)
+    # 시나리오 4b — 3b (minimal save) 의 EDIT 버전
+    # 사용 정책: [AUTO]_sc3_step1 (sc3b 가 생성한 minimal 정책)
     # ==================================================================
     def test_scenario4b_edit_minimal_modify(self, logged_in_page, settings):
-        """시나리오 4b — 메인 영역 최소 modify (이름 load + customOption 1 필드 변경 + 저장 + 재진입)."""
+        """시나리오 4b — 메인 영역 최소 modify
+        (이름 load 검증 + customOption 1 필드 변경 + 저장 + 재진입 일치 검증).
+
+        AUTO_KEEP_LIFECYCLE: sc3b 가 만든 [AUTO]_sc3_step1 정책 사용.
+        sc3 단독 실행 후 sc4 만 돌릴 때도 동작 (정책 잔존).
+        """
         print("\n━━ [제어 스위트] 시나리오 4b: minimal modify (메인 영역) ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
-        KEEP_NAME = "[AUTO_KEEP]_sc3_step2"
-        MOD_CUSTOM = "sc4_modified_by_4b"
+        TARGET_NAME = "[AUTO]_sc3_step1"      # sc3b 가 만든 minimal 정책
+        MOD_CUSTOM  = "sc4b_modified_by_4b"
 
         page.navigate_to()
-        if not page.is_policy_exists(KEEP_NAME):
-            self._add("skip", "시나리오 4b — KEEP 정책 미존재 → skip",
-                      f"입력: 진입 / 결과: '{KEEP_NAME}' 없음", sc=4)
-            pytest.skip(f"{KEEP_NAME!r} 미존재")
+        if not page.is_policy_exists(TARGET_NAME):
+            self._add("skip", "시나리오 4b — sc3 정책 미존재 → skip",
+                      f"입력: 진입 / 결과: '{TARGET_NAME}' 없음 (sc3b 먼저 실행 필요)", sc=4)
+            pytest.skip(f"{TARGET_NAME!r} 미존재 — sc3b 먼저 실행 필요")
 
-        page.open_modify_modal(KEEP_NAME)
+        # ── EDIT 진입 + load 정확성 검증 ──
+        # open_modify_modal 내부 verify: csuName == TARGET_NAME (안전망 — 잘못 선택 방지)
+        page.open_modify_modal(TARGET_NAME)
         loaded_name = page.get_csu_name()
-        self._add("pass" if loaded_name == KEEP_NAME else "fail",
-                  "스위트 수정 모달 — 진입 + 스위트 이름 load",
-                  f"입력: 행 클릭 + '수정' / 결과: csuName={loaded_name!r}", sc=4)
+        self._add("pass" if loaded_name == TARGET_NAME else "fail",
+                  "스위트 수정 모달 — 진입 + 스위트 이름 load 정확성",
+                  f"입력: 행 click + '수정' / 결과: csuName={loaded_name!r}", sc=4)
 
+        # ── customOption 1 필드 변경 + 저장 ──
         page.set_custom_option(MOD_CUSTOM)
         msg = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
         self._add("pass" if msg == "저장 하였습니다" else "fail",
-                  "스위트 수정 모달 — '수정' 버튼 (저장)",
+                  "스위트 수정 모달 — '수정' 버튼 저장",
                   f"입력: 커스텀 옵션 변경 + '수정' / 결과: 메시지={msg!r}", sc=4)
 
-        self._add("pass" if page.is_policy_exists(KEEP_NAME) else "fail",
+        # ── 저장 후 정책 잔존 확인 (이름 미변경) ──
+        exists = page.is_policy_exists(TARGET_NAME)
+        self._add("pass" if exists else "fail",
                   "정책 list — 정책 잔존 (이름 미변경)",
-                  f"입력: 저장 완료 후 / 결과: '{KEEP_NAME}' 존재={page.is_policy_exists(KEEP_NAME)}", sc=4)
+                  f"입력: 저장 완료 후 / 결과: '{TARGET_NAME}' 존재={exists}", sc=4)
 
-        page.open_modify_modal(KEEP_NAME)
+        # ── 재진입 → 변경값 일치 검증 ──
+        page.open_modify_modal(TARGET_NAME)
         co = page.get_custom_option()
         self._add("pass" if co == MOD_CUSTOM else "fail",
-                  "스위트 수정 모달 — 변경값 재진입 일치",
+                  "스위트 수정 모달 — 변경값 재진입 일치 (customOption)",
                   f"입력: 재진입 / 결과: 커스텀 옵션={co!r}", sc=4)
         page.close_modal()
 
