@@ -765,3 +765,205 @@ class TestScenario4Modify(ControlSuiteBase):
                       f"입력: itemWebRestrictList 행 클릭 → 닫기 → '수정' / 결과: 메시지={msg_i!r}", sc=4)
         page.close_modal()
 
+    # ==================================================================
+    # 시나리오 4i — 이름 EDIT 중복 검증 (신규)
+    # 자기 자신 이름은 허용, 다른 정책 이름과 충돌 시 차단
+    # ==================================================================
+    def test_scenario4i_edit_name_duplicate(self, logged_in_page, settings):
+        """시나리오 4i — EDIT 시 이름 변경 검증.
+
+        Case A: 자기 자신 이름 그대로 modify → '저장 하였습니다' (정상 저장)
+        Case B: 다른 존재 정책 이름으로 변경 → '이미 등록된 이름 입니다' (정상 차단)
+        """
+        print("\n━━ [제어 스위트] 시나리오 4i: 이름 EDIT 중복 차단 ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+        SELF_NAME  = "[AUTO]_sc3_step1"     # sc3b minimal
+        OTHER_NAME = "[AUTO]_sc3_step3"     # sc3d 웹제한
+
+        page.navigate_to()
+        if not (page.is_policy_exists(SELF_NAME) and page.is_policy_exists(OTHER_NAME)):
+            self._add("skip", "시나리오 4i — sc3 정책 부재 → skip",
+                      f"입력: 진입 / 결과: {SELF_NAME!r}/{OTHER_NAME!r} 둘 다 필요", sc=4)
+            pytest.skip("sc3 정책 (step1 + step3) 모두 필요 — sc3b/3d 먼저 실행")
+
+        # ── Case A: 자기 자신 이름 그대로 modify → 정상 저장 ──
+        page.open_modify_modal(SELF_NAME)
+        # 이름 변경 없이 그대로 저장 (자기 자신 허용 검증)
+        msg_a = page.save_policy(mode="modify")
+        page.dismiss_confirm_modal()
+        self._add("pass" if msg_a == "저장 하였습니다" else "fail",
+                  "스위트 수정 모달 — 자기 자신 이름 그대로 modify (정상 저장 허용)",
+                  f"입력: 이름 변경 X + '수정' / 결과: 메시지={msg_a!r}", sc=4)
+
+        # ── Case B: 다른 정책 이름으로 변경 → 중복 차단 ──
+        page.open_modify_modal(SELF_NAME)
+        page.set_csu_name(OTHER_NAME)
+        msg_b = page.save_policy(mode="modify")
+        # alert 떠있는 상태에서 _add → 스크린샷에 차단 메시지 포함
+        ok_blocked = "이미 등록" in msg_b and "이름" in msg_b
+        self._add("pass" if ok_blocked else "fail",
+                  "스위트 수정 모달 — 다른 정책 이름으로 변경 → 중복 차단 메시지",
+                  f"입력: 이름 '{SELF_NAME}' → '{OTHER_NAME}' / 결과: 메시지={msg_b!r}", sc=4)
+        page.dismiss_confirm_modal()
+        # 원본 이름 복원 후 cancel (정책 보존)
+        page.set_csu_name(SELF_NAME)
+        page.close_modal()
+
+        # ── Case C: 정책 list 에 두 정책 모두 잔존 확인 ──
+        self._add("pass" if (page.is_policy_exists(SELF_NAME) and page.is_policy_exists(OTHER_NAME)) else "fail",
+                  "정책 list — 4i 후 두 정책 모두 잔존 (이름 변경 시도 차단 후)",
+                  f"입력: 검증 후 / 결과: '{SELF_NAME}'={page.is_policy_exists(SELF_NAME)}, '{OTHER_NAME}'={page.is_policy_exists(OTHER_NAME)}", sc=4)
+
+    # ==================================================================
+    # 시나리오 4j — EDIT 모달에서 UX 결함 재현 (신규)
+    # sc3j 패턴 (sub-modal pass + 메인 저장 시 server error) 이 EDIT 에서도 동일한지 검증
+    # ==================================================================
+    def test_scenario4j_edit_ux_defect_reproduce(self, logged_in_page, settings):
+        """시나리오 4j — EDIT 모달에서 UX 결함 재현 검증.
+
+        sc3j 가 ADD 시점에서 발견한 UX 결함 (sub-modal pass + main save server error) 가
+        EDIT 모달에서도 동일한지 회귀 검증 (yaml :104-106 4-4 의도).
+
+        Case A: drv 100자 EDIT → 서버 오류 (sc3j Case B EDIT 버전)
+        Case B: Port -1 EDIT → 서버 오류 (sc3j Case E EDIT 버전)
+        Case C: basePath 400자 EDIT → 서버 오류 (sc3j Case C EDIT 버전)
+        Case D: webName 500자 EDIT → 서버 오류 (sc3j Case H EDIT 버전)
+        Case E: 태그 drv 100자 EDIT → 서버 오류 (sc3j Case L EDIT 버전)
+        """
+        print("\n━━ [제어 스위트] 시나리오 4j: EDIT 모달 UX 결함 재현 (sc3j 패턴) ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+
+        # ── Case A: [AUTO]_sc3_step9_drv50 EDIT → drv 100자 변경 → 서버 오류 ──
+        TARGET_A = "[AUTO]_sc3_step9_drv50"
+        page.navigate_to_clean()
+        if page.is_policy_exists(TARGET_A):
+            page.open_modify_modal(TARGET_A)
+            page.click_individual_process_tab()
+            if len(page.get_item_list_rows()) >= 1:
+                page.click_item_list_row(0)
+                page.process.wait_open()
+                if page.feature_exists(page.process.SEL_TOGGLE_ACCESS_DRIVE, timeout=1000):
+                    page.process.set_drive_letter("a" * 100)
+                    page.process.confirm()
+                    page._click(page.page.locator(page.SEL_SUBMIT_MODIFY).first)
+                    page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                        state="attached", timeout=page._TIMEOUT_MODAL
+                    )
+                    msg = page.get_confirm_message()
+                    defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+                    self._add("warn" if defect_found else "pass",
+                              "[UX 결함 EDIT] 프로세스별 제어 (개별 프로세스) - 드라이브 letter 100자 → 메인 수정 시 서버 오류 (ADD-EDIT 동일 결함)",
+                              f"입력: EDIT '{TARGET_A}' + drv 100자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                    page.dismiss_confirm_modal()
+            page.close_modal()
+        else:
+            self._add("skip", "[UX 결함 EDIT] 드라이브 letter 100자 — sc3 정책 부재", f"'{TARGET_A}' 없음", sc=4)
+
+        # ── Case B: [AUTO]_sc3_step9_port_D EDIT → Port -1 변경 → 서버 오류 ──
+        TARGET_B = "[AUTO]_sc3_step9_port_D"
+        page.navigate_to_clean()
+        if page.is_policy_exists(TARGET_B):
+            page.open_modify_modal(TARGET_B)
+            page.click_individual_process_tab()
+            if len(page.get_item_list_rows()) >= 1:
+                page.click_item_list_row(0)
+                page.process.wait_open()
+                page.process.set_pnetwork(True)
+                # 기존 IP/Port 변경 후 추가 — Port=-1 입력
+                page.process.add_ip_port("192.168.99.9", "-1")
+                if page.is_confirm_modal_visible(timeout=1500):
+                    page.dismiss_confirm_modal()
+                page.process.confirm()
+                page._click(page.page.locator(page.SEL_SUBMIT_MODIFY).first)
+                page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                    state="attached", timeout=page._TIMEOUT_MODAL
+                )
+                msg = page.get_confirm_message()
+                defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+                self._add("warn" if defect_found else "pass",
+                          "[UX 결함 EDIT] 프로세스별 제어 (개별 프로세스) - 허용 IP/Port Port=-1 추가 → 메인 수정 시 서버 오류",
+                          f"입력: EDIT '{TARGET_B}' + Port=-1 추가 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                page.dismiss_confirm_modal()
+            page.close_modal()
+        else:
+            self._add("skip", "[UX 결함 EDIT] Port -1 — sc3 정책 부재", f"'{TARGET_B}' 없음", sc=4)
+
+        # ── Case C: [AUTO]_sc3_step16_bp300_ok EDIT → basePath 400자 변경 → 서버 오류 ──
+        TARGET_C = "[AUTO]_sc3_step16_bp300_ok"
+        page.navigate_to_clean()
+        if page.is_policy_exists(TARGET_C):
+            page.open_modify_modal(TARGET_C)
+            if len(page.get_item_web_restrict_rows()) >= 1:
+                page.click_item_web_restrict_row(0)
+                page.web_restrict.wait_open()
+                if page.feature_exists(page.web_restrict.SEL_BASE_PATH, timeout=1000):
+                    page.web_restrict.set_base_path("a" * 400)
+                    page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+                    page.web_restrict.wait_closed(timeout=3000)
+                    page._click(page.page.locator(page.SEL_SUBMIT_MODIFY).first)
+                    page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                        state="attached", timeout=page._TIMEOUT_MODAL
+                    )
+                    msg = page.get_confirm_message()
+                    defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+                    self._add("warn" if defect_found else "pass",
+                              "[UX 결함 EDIT] 웹제한 기능 - 기본폴더 basePath 400자 → 메인 수정 시 서버 오류 (ADD-EDIT 동일 결함)",
+                              f"입력: EDIT '{TARGET_C}' + basePath 400자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                    page.dismiss_confirm_modal()
+            page.close_modal()
+        else:
+            self._add("skip", "[UX 결함 EDIT] basePath 400자 — sc3 정책 부재", f"'{TARGET_C}' 없음", sc=4)
+
+        # ── Case D: [AUTO]_sc3_step17_webname100_ok EDIT → webName 500자 → 서버 오류 ──
+        TARGET_D = "[AUTO]_sc3_step17_webname100_ok"
+        page.navigate_to_clean()
+        if page.is_policy_exists(TARGET_D):
+            page.open_modify_modal(TARGET_D)
+            if len(page.get_item_web_restrict_rows()) >= 1:
+                page.click_item_web_restrict_row(0)
+                page.web_restrict.wait_open()
+                page.web_restrict.set_name("a" * 500)
+                page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+                page.web_restrict.wait_closed(timeout=3000)
+                page._click(page.page.locator(page.SEL_SUBMIT_MODIFY).first)
+                page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                    state="attached", timeout=page._TIMEOUT_MODAL
+                )
+                msg = page.get_confirm_message()
+                defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+                self._add("warn" if defect_found else "pass",
+                          "[UX 결함 EDIT] 웹제한 기능 - 웹제한 이름 webRestrictName 500자 → 메인 수정 시 서버 오류 (ADD-EDIT 동일 결함)",
+                          f"입력: EDIT '{TARGET_D}' + webName 500자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                page.dismiss_confirm_modal()
+            page.close_modal()
+        else:
+            self._add("skip", "[UX 결함 EDIT] webName 500자 — sc3 정책 부재", f"'{TARGET_D}' 없음", sc=4)
+
+        # ── Case E: [AUTO]_sc3_step19_tag_normal EDIT → tag drv 100자 → 서버 오류 ──
+        TARGET_E = "[AUTO]_sc3_step19_tag_normal"
+        page.navigate_to_clean()
+        if page.is_policy_exists(TARGET_E):
+            page.open_modify_modal(TARGET_E)
+            page.click_tag_tab()
+            if len(page.get_item_tag_list_rows()) >= 1:
+                page.click_item_tag_list_row(0)
+                page.process.wait_open()
+                if page.feature_exists(page.process.SEL_TOGGLE_ACCESS_DRIVE, timeout=1000):
+                    page.process.set_drive_letter("a" * 100)
+                    page.process.confirm()
+                    page._click(page.page.locator(page.SEL_SUBMIT_MODIFY).first)
+                    page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                        state="attached", timeout=page._TIMEOUT_MODAL
+                    )
+                    msg = page.get_confirm_message()
+                    defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+                    self._add("warn" if defect_found else "pass",
+                              "[UX 결함 EDIT] 프로세스별 제어 (태그) - 접근 드라이브 letter 100자 → 메인 수정 시 서버 오류 (ADD-EDIT 동일 결함)",
+                              f"입력: EDIT '{TARGET_E}' + 태그 drv 100자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                    page.dismiss_confirm_modal()
+            page.close_modal()
+        else:
+            self._add("skip", "[UX 결함 EDIT] 태그 drv 100자 — sc3 정책 부재", f"'{TARGET_E}' 없음", sc=4)
+
