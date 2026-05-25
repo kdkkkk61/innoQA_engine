@@ -346,27 +346,25 @@ class TestScenario4Modify(ControlSuiteBase):
                   "태그 — picker tag mode 진입 (제목 확인)",
                   f"입력: '+' + picker / 결과: picker title={picker_title!r}", sc=4)
 
-        # picker.select_first_and_confirm 안전망 — sc3 가 등록한 첫 태그와 중복 시
-        # '이미 등록된 태그' 알림 떠서 picker 자동 닫힘 안 됨 → wait_closed timeout cascade
-        # 해결: timeout 시 알림 dismiss + picker cancel + 두 번째 행 시도
-        try:
-            page.picker.select_first_and_confirm(mode="tag")
-        except Exception as e:
-            # 알림 떴는지 확인 + dismiss
-            if page.is_confirm_modal_visible(timeout=500):
-                page.dismiss_confirm_modal()
-            # picker 가 stuck 이면 cancel
-            try:
-                page.picker.cancel()
-            except Exception:
-                pass
-            self._add("warn", "태그 — picker 첫 행 (sc3 등록 태그) 중복 알림 발생 + dismiss/cancel",
-                      f"입력: select_first / 결과: {str(e)[:80]}", sc=4)
-            # process_modal 도 cancel (clean state 보장)
-            try:
-                page.process.close()
-            except Exception:
-                pass
+        # sc3i 검증된 패턴 적용 (TROUBLESHOOTING [RESOLVED] 2026-05-19):
+        # - select_first_and_confirm 의 wait_closed 가 중복 알림 시 timeout cascade
+        # - picker.cancel() (× 클릭) 도 TargetClosedError 위험 (sc3g Case F 회귀)
+        # - 해결: select_first + confirm 분리 호출 (wait_closed 회피) + ESC 다발 정리
+        page.picker.select_first(mode="tag")
+        page.picker.confirm()
+        # sc3 등록 태그와 중복 시 '이미 등록된 태그' 알림 dismiss
+        if page.is_confirm_modal_visible(timeout=2000):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            # picker + process_modal 정리 — ESC 다발 (cancel/× 안 씀: TargetClosedError 회피)
+            for _ in range(5):
+                try:
+                    page.page.keyboard.press("Escape")
+                    page.page.wait_for_timeout(200)
+                except Exception:
+                    break
+            self._add("warn", "태그 — sc3 등록 태그 중복 알림 발생 → ESC 정리 (sc3i 패턴)",
+                      f"입력: select_first(mode=tag) / 결과: 메시지={msg!r}", sc=4)
             page.close_modal()
             return
 
