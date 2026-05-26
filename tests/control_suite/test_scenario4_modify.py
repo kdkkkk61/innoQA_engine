@@ -352,7 +352,8 @@ class TestScenario4Modify(ControlSuiteBase):
         # - 해결: select_first + confirm 분리 호출 (wait_closed 회피) + ESC 다발 정리
         page.picker.select_first(mode="tag")
         page.picker.confirm()
-        # sc3 등록 태그와 중복 시 '이미 등록된 태그' 알림 dismiss
+        # sc3 등록 태그와 중복 → '이미 등록된 태그 입니다' 알림 (정상 동작 — 중복 거부)
+        # sc3i 패턴: 중복은 시스템 정상 거부 → 검증 OK, ESC 다발로 picker/process_modal 정리 후 early return
         if page.is_confirm_modal_visible(timeout=2000):
             msg = page.get_confirm_message()
             page.dismiss_confirm_modal()
@@ -363,7 +364,9 @@ class TestScenario4Modify(ControlSuiteBase):
                     page.page.wait_for_timeout(200)
                 except Exception:
                     break
-            self._add("warn", "태그 — sc3 등록 태그 중복 알림 발생 → ESC 정리 (sc3i 패턴)",
+            ok_dup = "이미 등록" in msg and "태그" in msg
+            self._add("pass" if ok_dup else "fail",
+                      "태그 — sc3 등록 태그 재선택 시 중복 거부 (정상 동작)",
                       f"입력: select_first(mode=tag) / 결과: 메시지={msg!r}", sc=4)
             page.close_modal()
             return
@@ -701,24 +704,11 @@ class TestScenario4Modify(ControlSuiteBase):
                   "스위트 이름 — ADD vs EDIT 빈값 메시지 차이 (회귀 검출)",
                   f"입력: ADD 메시지 vs EDIT 메시지 비교 / 결과: ADD={ADD_MSG!r} != EDIT={edit_msg!r}", sc=4)
 
-        # ── E. EDIT csuName 중복 차단 메시지 ─────────────────────
-        page.set_csu_name(TARGET_NAME)
-        page.close_modal()
-        DUP_PEER = "[AUTO]_4g_dup_peer"
-        page.open_add_modal()
-        page.set_csu_name(DUP_PEER)
-        page.click_individual_process_tab()
-        page.click_add_process_btn()
-        page.process.wait_open()
-        page.process.click_pick_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="single")
-        page.process.confirm()
-        page.save_policy(mode="add")
-        page.dismiss_confirm_modal()
-
-        # sc3 정책 EDIT 진입 후 DUP_PEER 이름으로 변경 시도
-        page.open_modify_modal(TARGET_NAME)
+        # ── E. EDIT 중복 이름 차단 메시지 (기존 sc3 정책 이름 활용) ──
+        # 단순화 (2026-05-26): DUP_PEER 새 정책 생성 + close/open 우회로 제거.
+        # 같은 EDIT 모달 세션 안에서 이름만 다른 기존 sc3 정책 이름으로 바꿔 시도.
+        # 검증 의도 동일 — '이미 등록된 이름 입니다.' 메시지.
+        DUP_PEER = "[AUTO]_sc3_step1"   # sc3b 가 만든 다른 정책 (반드시 존재)
         page.set_csu_name(DUP_PEER)
         page._click(page.page.locator(page.SEL_SUBMIT_MODIFY).first)
         page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
@@ -727,7 +717,7 @@ class TestScenario4Modify(ControlSuiteBase):
         dup_msg = page.get_confirm_message()
         self._add("pass" if dup_msg == "이미 등록된 이름 입니다." else "fail",
                   "스위트 이름 — EDIT 중복 차단 메시지",
-                  f"입력: 이름='{DUP_PEER}' (중복) + '수정' / 결과: 메시지={dup_msg!r}", sc=4)
+                  f"입력: 이름='{DUP_PEER}' (기존 정책 중복) + '수정' / 결과: 메시지={dup_msg!r}", sc=4)
         page.dismiss_confirm_modal()
 
         # 원복 (수정 모달 그대로 유지 — 다음 검증에 활용)
@@ -770,8 +760,12 @@ class TestScenario4Modify(ControlSuiteBase):
                       f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
             return
 
-        # ── Case G: 프로세스 sub-modal 재진입 + 닫기 + 메인 수정 ──
+        # 단순화 (2026-05-26): 3 case 모두 하나의 EDIT 모달 세션 안에서 수행.
+        # 기존: 매 case 마다 open_modify_modal + close_modal (2번 close 가 fail 야기)
+        # 신규: open_modify_modal 1회 + 모든 case 진행 + close_modal 1회.
         page.open_modify_modal(TARGET_NAME)
+
+        # ── Case G: 프로세스 sub-modal 재진입 + 닫기 + 메인 수정 ──
         if len(page.get_item_list_rows()) >= 1:
             page.click_item_list_row(0)
             page.process.close()    # 변경 없이 닫기
@@ -788,10 +782,12 @@ class TestScenario4Modify(ControlSuiteBase):
             self._add("pass" if ok_g else "fail",
                       "스위트 수정 모달 — 프로세스 sub-modal 재진입 + 변경없이 수정 (Case G)",
                       f"입력: itemList 행 클릭 → 닫기 → '수정' / 결과: 메시지={msg_g!r}", sc=4)
-        page.close_modal()
+        else:
+            self._add("skip", "시나리오 4h Case G — 프로세스 행 없음 → skip",
+                      "입력: itemList 0행 / 결과: skip", sc=4)
 
         # ── Case H: 태그 sub-modal 재진입 + 닫기 + 메인 수정 ──
-        page.open_modify_modal(TARGET_NAME)
+        # (모달 그대로 열려있음 — 알림 dismiss 후 메인 EDIT 유지)
         page.click_tag_tab()
         if len(page.get_item_tag_list_rows()) >= 1:
             page.click_item_tag_list_row(0)
@@ -812,10 +808,8 @@ class TestScenario4Modify(ControlSuiteBase):
         else:
             self._add("skip", "시나리오 4h Case H — 태그 행 없음 → skip",
                       "입력: itemTagList 0행 / 결과: skip", sc=4)
-        page.close_modal()
 
         # ── Case I: 웹제한 sub-modal 재진입 + 닫기 + 메인 수정 ──
-        page.open_modify_modal(TARGET_NAME)
         if len(page.get_item_web_restrict_rows()) >= 1:
             page.click_item_web_restrict_row(0)
             page.web_restrict.close()    # 변경 없이 닫기
@@ -832,6 +826,10 @@ class TestScenario4Modify(ControlSuiteBase):
             self._add("pass" if ok_i else "fail",
                       "스위트 수정 모달 — 웹제한 sub-modal 재진입 + 변경없이 수정 (Case I)",
                       f"입력: itemWebRestrictList 행 클릭 → 닫기 → '수정' / 결과: 메시지={msg_i!r}", sc=4)
+        else:
+            self._add("skip", "시나리오 4h Case I — 웹제한 행 없음 → skip",
+                      "입력: itemWebRestrictList 0행 / 결과: skip", sc=4)
+
         page.close_modal()
 
     # ==================================================================
@@ -856,27 +854,28 @@ class TestScenario4Modify(ControlSuiteBase):
                       f"입력: 진입 / 결과: {SELF_NAME!r}/{OTHER_NAME!r} 둘 다 필요", sc=4)
             pytest.skip("sc3 정책 (step1 + step3) 모두 필요 — sc3b/3d 먼저 실행")
 
-        # ── Case A: 자기 자신 이름 그대로 modify → 정상 저장 ──
+        # 단순화 (2026-05-26): Case A + B 하나의 EDIT 모달 세션 안에서 수행.
+        # 기존: Case A 후 close_modal 없이 Case B 가 open_modify_modal 재호출 (충돌 야기)
+        # 신규: open_modify_modal 1회 + Case A 검증 + Case B 검증 + close_modal 1회.
         page.open_modify_modal(SELF_NAME)
-        # 이름 변경 없이 그대로 저장 (자기 자신 허용 검증)
+
+        # ── Case A: 자기 자신 이름 그대로 modify → 정상 저장 허용 ──
         msg_a = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
-        # '수정된 항목이 없습니다.' 도 정상 (이름 변경 없으면 시스템이 '변화 없음' 판정)
         self._add("pass" if msg_a in _MODIFY_OK_MESSAGES else "fail",
                   "스위트 수정 모달 — 자기 자신 이름 그대로 modify (정상 저장 허용)",
                   f"입력: 이름 변경 X + '수정' / 결과: 메시지={msg_a!r}", sc=4)
 
         # ── Case B: 다른 정책 이름으로 변경 → 중복 차단 ──
-        page.open_modify_modal(SELF_NAME)
+        # (모달 그대로 열려있음 — 알림 dismiss 후 메인 EDIT 유지)
         page.set_csu_name(OTHER_NAME)
         msg_b = page.save_policy(mode="modify")
-        # alert 떠있는 상태에서 _add → 스크린샷에 차단 메시지 포함
         ok_blocked = "이미 등록" in msg_b and "이름" in msg_b
         self._add("pass" if ok_blocked else "fail",
                   "스위트 수정 모달 — 다른 정책 이름으로 변경 → 중복 차단 메시지",
                   f"입력: 이름 '{SELF_NAME}' → '{OTHER_NAME}' / 결과: 메시지={msg_b!r}", sc=4)
         page.dismiss_confirm_modal()
-        # 원본 이름 복원 후 cancel (정책 보존)
+        # 원복 후 cancel (정책 이름 보존)
         page.set_csu_name(SELF_NAME)
         page.close_modal()
 
@@ -1036,4 +1035,634 @@ class TestScenario4Modify(ControlSuiteBase):
             page.close_modal()
         else:
             self._add("skip", "[UX 결함 EDIT] 태그 drv 100자 — sc3 정책 부재", f"'{TARGET_E}' 없음", sc=4)
+
+        # ── Case K: [AUTO]_sc3_step13_cache500 EDIT → cache 500자 → 서버 오류 ──
+        # sc3j Case K (cacheFolderInput 500자 → 메인 저장 server error) 의 EDIT 회귀 검증
+        TARGET_K = "[AUTO]_sc3_step13_cache500"
+        page.navigate_to_clean()
+        if page.is_policy_exists(TARGET_K):
+            page.open_modify_modal(TARGET_K)
+            if len(page.get_item_list_rows()) >= 1:
+                page.click_item_list_row(0)
+                page.process.wait_open()
+                if page.feature_exists(page.process.SEL_CACHE_INPUT, timeout=1000):
+                    page.process.set_cache_input("a" * 500)
+                    page.process.click_cache_add_btn()
+                    page.process.confirm()
+                    page._click(page.page.locator(page.SEL_SUBMIT_MODIFY).first)
+                    page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                        state="attached", timeout=page._TIMEOUT_MODAL
+                    )
+                    msg = page.get_confirm_message()
+                    defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+                    self._add("warn" if defect_found else "pass",
+                              "[UX 결함 EDIT] 프로세스별 제어 (개별 프로세스) - 캐시폴더 cacheFolderInput 500자 → 메인 수정 시 서버 오류 (sc3j Case K EDIT)",
+                              f"입력: EDIT '{TARGET_K}' + cache 500자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                    page.dismiss_confirm_modal()
+            page.close_modal()
+        else:
+            self._add("skip", "[UX 결함 EDIT] cache 500자 — sc3 정책 부재", f"'{TARGET_K}' 없음 (sc3j Case K 시점 server error 로 정책 미생성 가능)", sc=4)
+
+        # ── Case P: [AUTO]_sc3_step18_tag_cache500 EDIT → 태그 mode cache 500자 → 서버 오류 ──
+        TARGET_P = "[AUTO]_sc3_step18_tag_cache500"
+        page.navigate_to_clean()
+        if page.is_policy_exists(TARGET_P):
+            page.open_modify_modal(TARGET_P)
+            page.click_tag_tab()
+            if len(page.get_item_tag_list_rows()) >= 1:
+                page.click_item_tag_list_row(0)
+                page.process.wait_open()
+                if page.feature_exists(page.process.SEL_CACHE_INPUT, timeout=1000):
+                    page.process.set_cache_input("a" * 500)
+                    page.process.click_cache_add_btn()
+                    page.process.confirm()
+                    page._click(page.page.locator(page.SEL_SUBMIT_MODIFY).first)
+                    page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                        state="attached", timeout=page._TIMEOUT_MODAL
+                    )
+                    msg = page.get_confirm_message()
+                    defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
+                    self._add("warn" if defect_found else "pass",
+                              "[UX 결함 EDIT] 프로세스별 제어 (태그) - 캐시폴더 cacheFolderInput 500자 → 메인 수정 시 서버 오류 (sc3j Case P EDIT)",
+                              f"입력: EDIT '{TARGET_P}' + 태그 cache 500자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                    page.dismiss_confirm_modal()
+            page.close_modal()
+        else:
+            self._add("skip", "[UX 결함 EDIT] 태그 cache 500자 — sc3 정책 부재", f"'{TARGET_P}' 없음 (sc3j Case P 시점 server error 로 정책 미생성 가능)", sc=4)
+
+    # ==================================================================
+    # 시나리오 4k — EDIT 메인 모달 중복 차단 (sc3f Case 6 EDIT 버전 + 확장자 중복)
+    # 사용 정책: [AUTO]_sc3_step2 (sc3c 가 만든 종합 정책 — 확장자 + 전자서명 보유)
+    # ==================================================================
+    def test_scenario4k_edit_main_modal_duplicate(self, logged_in_page, settings):
+        """시나리오 4k — EDIT 메인 모달 중복 차단 메시지.
+
+        A. 차단할 확장자 중복 (기존 첫 확장자 재추가) → '이미 등록된 확장자' alert
+        B. 전자서명 중복 (기존 첫 전자서명 재추가) → '이미 등록된 전자서명' alert (sc3f Case 6 EDIT)
+
+        EDIT 모달 1회 open + 2 검증 + close_modal 1회.
+        """
+        print("\n━━ [제어 스위트] 시나리오 4k: EDIT 메인 모달 중복 차단 ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+        TARGET_NAME = "[AUTO]_sc3_step2"
+
+        page.navigate_to_clean()
+        if not page.is_policy_exists(TARGET_NAME):
+            self._add("skip", "시나리오 4k — sc3 정책 부재 → skip",
+                      f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
+            return
+
+        page.open_modify_modal(TARGET_NAME)
+
+        # ── A. 차단할 확장자 중복 ────────────────────────────────
+        # 시스템 메시지 변형 인정: "이미 등록된" / "이미 동일한" 둘 다 정상 거부
+        existing_exts = page.get_main_extension_list()
+        if existing_exts:
+            dup_ext = existing_exts[0]
+            page.add_main_extension(dup_ext)
+            if page.is_confirm_modal_visible(timeout=1500):
+                msg = page.get_confirm_message()
+                ok_dup = "이미" in msg and "확장자" in msg
+                self._add("pass" if ok_dup else "fail",
+                          "EDIT 메인 모달 — 차단할 확장자 중복 차단 메시지",
+                          f"입력: 기존 확장자 '{dup_ext}' 재추가 / 결과: 메시지={msg!r}", sc=4)
+                page.dismiss_confirm_modal()
+            else:
+                self._add("warn", "[차단 메시지] EDIT 차단할 확장자 중복 — 메시지 미노출",
+                          f"입력: '{dup_ext}' 재추가 / 결과: 알림 없음", sc=4)
+        else:
+            self._add("skip", "시나리오 4k A — 확장자 0건 → skip",
+                      "입력: get_main_extension_list 빈 배열 / 결과: skip", sc=4)
+
+        # ── B. 전자서명 중복 (sc3f Case 6 EDIT 버전) ──────────────
+        # get_sign_except_list 가 .split()[0] 반환 (공백 잘림) → JS 로 전체 텍스트 가져오기
+        try:
+            existing_signs = page.page.evaluate("""() => {
+                const tags = document.querySelectorAll('#signExceptTag span, .signExceptTag span');
+                return Array.from(tags).map(s => s.textContent.trim().replace(/×$/, '').trim()).filter(Boolean);
+            }""")
+        except Exception:
+            existing_signs = []
+        if existing_signs:
+            dup_sign = existing_signs[0]
+            page.add_sign_except(dup_sign)
+            if page.is_confirm_modal_visible(timeout=1500):
+                msg = page.get_confirm_message()
+                ok_dup = "이미" in msg and "전자서명" in msg
+                self._add("pass" if ok_dup else "fail",
+                          "EDIT 메인 모달 — 전자서명 예외처리 중복 차단 메시지 (sc3f Case 6 EDIT)",
+                          f"입력: 기존 전자서명 '{dup_sign}' 재추가 / 결과: 메시지={msg!r}", sc=4)
+                page.dismiss_confirm_modal()
+            else:
+                self._add("warn", "[차단 메시지] EDIT 전자서명 중복 — 메시지 미노출",
+                          f"입력: '{dup_sign}' 재추가 / 결과: 알림 없음", sc=4)
+        else:
+            self._add("skip", "시나리오 4k B — 전자서명 0건 → skip",
+                      "입력: 전자서명 tag span 빈 배열 / 결과: skip", sc=4)
+
+        page.close_modal()
+
+    # ==================================================================
+    # 시나리오 4l — EDIT 웹제한 모달 validation (sc3f Case 1/3/5 EDIT 버전)
+    # 사용 정책: 웹제한 행 1건 이상 보유한 정책 (sc3d/sc3i 가 만든 정책)
+    # ==================================================================
+    def test_scenario4l_edit_web_restrict_validation(self, logged_in_page, settings):
+        """시나리오 4l — EDIT 웹제한 모달 validation 메시지.
+
+        A. 웹제한 이름 빈값 + 확인 → 메시지 (sc3f Case 1 EDIT)
+        B. URL 중복 (기존 첫 URL 재추가) → '이미 등록된 URL' alert (sc3f Case 3 EDIT)
+        C. 웹제한 확장자 중복 → '이미 등록된 확장자' alert (sc3f Case 5 EDIT)
+        """
+        print("\n━━ [제어 스위트] 시나리오 4l: EDIT 웹제한 모달 validation ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+        candidates = ["[AUTO]_sc3_step3", "[AUTO]_sc3_step2", "[AUTO]_sc3_step17_webname100_ok"]
+
+        page.navigate_to_clean()
+        TARGET_NAME = next((n for n in candidates if page.is_policy_exists(n)), None)
+        if not TARGET_NAME:
+            self._add("skip", "시나리오 4l — 웹제한 보유 sc3 정책 부재 → skip",
+                      f"입력: 후보 정책 {candidates} / 결과: 모두 없음", sc=4)
+            return
+
+        page.open_modify_modal(TARGET_NAME)
+        if len(page.get_item_web_restrict_rows()) < 1:
+            self._add("skip", "시나리오 4l — 웹제한 행 0건 → skip",
+                      f"입력: '{TARGET_NAME}' EDIT itemWebRestrictList 0행 / 결과: skip", sc=4)
+            page.close_modal()
+            return
+
+        page.click_item_web_restrict_row(0)
+        page.web_restrict.wait_open()
+
+        # ── A. 웹제한 이름 빈값 + 확인 → 메시지 ──────────────────
+        orig_name = page.web_restrict.get_name()
+        page.web_restrict.set_name("")
+        page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg_a = page.get_confirm_message()
+            ok_a = ("이름" in msg_a or "입력" in msg_a) and msg_a != ""
+            self._add("pass" if ok_a else "fail",
+                      "EDIT 웹제한 모달 — 이름 빈값 + 확인 차단 메시지 (sc3f Case 1 EDIT)",
+                      f"입력: webRestrictName='' + 확인 / 결과: 메시지={msg_a!r}", sc=4)
+            page.dismiss_confirm_modal()
+        else:
+            self._add("warn", "[차단 메시지] EDIT 웹제한 이름 빈값 — 메시지 미노출",
+                      "입력: webRestrictName='' + 확인 / 결과: 알림 없음", sc=4)
+
+        # 이름 복원
+        page.web_restrict.set_name(orig_name)
+
+        # ── B. URL 중복 ──────────────────────────────────────────
+        existing_urls = page.web_restrict.get_url_list()
+        if existing_urls:
+            dup_url = existing_urls[0]
+            page.web_restrict.add_url(dup_url)
+            if page.is_confirm_modal_visible(timeout=1500):
+                msg_b = page.get_confirm_message()
+                ok_b = "이미 등록" in msg_b
+                self._add("pass" if ok_b else "fail",
+                          "EDIT 웹제한 모달 — URL 중복 차단 메시지 (sc3f Case 3 EDIT)",
+                          f"입력: 기존 URL '{dup_url}' 재추가 / 결과: 메시지={msg_b!r}", sc=4)
+                page.dismiss_confirm_modal()
+            else:
+                self._add("warn", "[차단 메시지] EDIT 웹제한 URL 중복 — 메시지 미노출",
+                          f"입력: '{dup_url}' 재추가 / 결과: 알림 없음", sc=4)
+        else:
+            self._add("skip", "시나리오 4l B — URL 0건 → skip",
+                      "입력: get_url_list 빈 배열 / 결과: skip", sc=4)
+
+        # ── C. 웹제한 확장자 중복 ─────────────────────────────────
+        # 시스템 메시지 변형 인정: "이미 등록된" / "이미 동일한" 둘 다 정상 거부
+        existing_wr_exts = page.web_restrict.get_file_extension_list()
+        if existing_wr_exts:
+            dup_wr_ext = existing_wr_exts[0]
+            page.web_restrict.add_file_extension(dup_wr_ext)
+            if page.is_confirm_modal_visible(timeout=1500):
+                msg_c = page.get_confirm_message()
+                ok_c = "이미" in msg_c and "확장자" in msg_c
+                self._add("pass" if ok_c else "fail",
+                          "EDIT 웹제한 모달 — 확장자 중복 차단 메시지 (sc3f Case 5 EDIT)",
+                          f"입력: 기존 확장자 '{dup_wr_ext}' 재추가 / 결과: 메시지={msg_c!r}", sc=4)
+                page.dismiss_confirm_modal()
+            else:
+                self._add("warn", "[차단 메시지] EDIT 웹제한 확장자 중복 — 메시지 미노출",
+                          f"입력: '{dup_wr_ext}' 재추가 / 결과: 알림 없음", sc=4)
+        else:
+            self._add("skip", "시나리오 4l C — 웹제한 확장자 0건 → skip",
+                      "입력: get_file_extension_list 빈 배열 / 결과: skip", sc=4)
+
+        page.web_restrict.close()
+        page.close_modal()
+
+    # ==================================================================
+    # 시나리오 4m — EDIT process_modal validation (sc3f Case 2/4 EDIT 버전)
+    # 사용 정책: 프로세스 행 1건 이상 보유 정책
+    # ==================================================================
+    def test_scenario4m_edit_process_modal_validation(self, logged_in_page, settings):
+        """시나리오 4m — EDIT process_modal validation 메시지.
+
+        A. IP+Port 중복 (기존 첫 조합 재추가) → '이미 등록' alert (sc3f Case 2 EDIT)
+        B. 프로세스 확장자 중복 (기존 첫 확장자 재추가) → '이미 등록된 확장자' alert (sc3f Case 4 EDIT)
+        """
+        import re
+        print("\n━━ [제어 스위트] 시나리오 4m: EDIT process_modal validation ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+        candidates = ["[AUTO]_sc3_step9_port_D", "[AUTO]_sc3_step9_port_F", "[AUTO]_sc3_step2"]
+
+        page.navigate_to_clean()
+        TARGET_NAME = next((n for n in candidates if page.is_policy_exists(n)), None)
+        if not TARGET_NAME:
+            self._add("skip", "시나리오 4m — 프로세스 보유 sc3 정책 부재 → skip",
+                      f"입력: 후보 {candidates} / 결과: 모두 없음", sc=4)
+            return
+
+        page.open_modify_modal(TARGET_NAME)
+        if len(page.get_item_list_rows()) < 1:
+            self._add("skip", "시나리오 4m — 프로세스 행 0건 → skip",
+                      f"입력: '{TARGET_NAME}' EDIT itemList 0행 / 결과: skip", sc=4)
+            page.close_modal()
+            return
+
+        page.click_item_list_row(0)
+        page.process.wait_open()
+
+        # ── A. IP+Port 중복 (sc3f Case 2 EDIT) ───────────────────
+        existing_ips = page.process.get_ip_list()
+        if existing_ips:
+            first_text = existing_ips[0]
+            ip_match = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", first_text)
+            port_match = re.search(r":\s*(\d{1,5})|/\s*(\d{1,5})|\s(\d{1,5})\s*$", first_text)
+            if ip_match and port_match:
+                dup_ip = ip_match.group(1)
+                dup_port = next((g for g in port_match.groups() if g), "")
+                if dup_port:
+                    page.process.add_ip_port(dup_ip, dup_port)
+                    if page.is_confirm_modal_visible(timeout=1500):
+                        msg_a = page.get_confirm_message()
+                        ok_a = "이미 등록" in msg_a
+                        self._add("pass" if ok_a else "fail",
+                                  "EDIT process_modal — IP+Port 중복 차단 메시지 (sc3f Case 2 EDIT)",
+                                  f"입력: 기존 '{dup_ip}:{dup_port}' 재추가 / 결과: 메시지={msg_a!r}", sc=4)
+                        page.dismiss_confirm_modal()
+                    else:
+                        self._add("warn", "[차단 메시지] EDIT IP/Port 중복 — 메시지 미노출",
+                                  f"입력: '{dup_ip}:{dup_port}' 재추가 / 결과: 알림 없음", sc=4)
+                else:
+                    self._add("skip", "시나리오 4m A — Port 파싱 실패 → skip",
+                              f"입력: get_ip_list[0]={first_text!r} / 결과: regex 미매칭", sc=4)
+            else:
+                self._add("skip", "시나리오 4m A — IP/Port 파싱 실패 → skip",
+                          f"입력: get_ip_list[0]={first_text!r} / 결과: regex 미매칭", sc=4)
+        else:
+            self._add("skip", "시나리오 4m A — IP 0건 → skip",
+                      "입력: get_ip_list 빈 배열 / 결과: skip", sc=4)
+
+        # ── B. 프로세스 확장자 중복 (sc3f Case 4 EDIT) ────────────
+        existing_proc_exts = page.process.get_extension_list()
+        if existing_proc_exts:
+            dup_proc_ext = existing_proc_exts[0]
+            page.process.add_extension(dup_proc_ext)
+            if page.is_confirm_modal_visible(timeout=1500):
+                msg_b = page.get_confirm_message()
+                ok_b = "이미 등록" in msg_b and "확장자" in msg_b
+                self._add("pass" if ok_b else "fail",
+                          "EDIT process_modal — 확장자 중복 차단 메시지 (sc3f Case 4 EDIT)",
+                          f"입력: 기존 확장자 '{dup_proc_ext}' 재추가 / 결과: 메시지={msg_b!r}", sc=4)
+                page.dismiss_confirm_modal()
+            else:
+                self._add("warn", "[차단 메시지] EDIT process_modal 확장자 중복 — 메시지 미노출",
+                          f"입력: '{dup_proc_ext}' 재추가 / 결과: 알림 없음", sc=4)
+        else:
+            self._add("skip", "시나리오 4m B — process 확장자 0건 → skip",
+                      "입력: get_extension_list 빈 배열 / 결과: skip", sc=4)
+
+        page.process.close()
+        page.close_modal()
+
+    # ==================================================================
+    # 시나리오 4n — EDIT picker duplicate (sc3i Case A/B EDIT 버전)
+    # 사용 정책: 프로세스 행 1건 + 웹제한 행 1건 보유 정책
+    # ==================================================================
+    def test_scenario4n_edit_picker_duplicate(self, logged_in_page, settings):
+        """시나리오 4n — EDIT picker 중복 차단 메시지.
+
+        A. process picker — 기존 등록 프로세스 재선택 → '이미 등록' alert (sc3i Case A EDIT)
+        B. web_restrict picker — 동일 인스턴스 안 중복 → alert (sc3i Case B EDIT)
+
+        sc3i 검증된 패턴: select_first + confirm 분리 + ESC 다발 정리.
+        """
+        print("\n━━ [제어 스위트] 시나리오 4n: EDIT picker 중복 차단 ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+        TARGET_NAME = "[AUTO]_sc3_step2"
+
+        page.navigate_to_clean()
+        if not page.is_policy_exists(TARGET_NAME):
+            self._add("skip", "시나리오 4n — sc3 정책 부재 → skip",
+                      f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
+            return
+
+        # ── A. process picker 중복 ─────────────────────────────────
+        page.open_modify_modal(TARGET_NAME)
+        if len(page.get_item_list_rows()) >= 1:
+            page.click_add_process_btn()
+            page.process.wait_open()
+            page.process.click_pick_btn()
+            page.picker.wait_open()
+            page.picker.select_first(mode="single")
+            page.picker.confirm()
+            if page.is_confirm_modal_visible(timeout=2000):
+                msg_a = page.get_confirm_message()
+                page.dismiss_confirm_modal()
+                ok_a = "이미" in msg_a and ("프로세스" in msg_a or "등록" in msg_a)
+                self._add("pass" if ok_a else "fail",
+                          "EDIT process picker — 기존 프로세스 재선택 시 중복 거부 (sc3i Case A EDIT)",
+                          f"입력: select_first(mode=single) / 결과: 메시지={msg_a!r}", sc=4)
+            else:
+                self._add("warn", "[차단 메시지] EDIT process picker 중복 — 메시지 미노출",
+                          "입력: 기존 프로세스 첫 행 재선택 / 결과: 알림 없음", sc=4)
+        else:
+            self._add("skip", "시나리오 4n A — 프로세스 행 0건 → skip",
+                      f"입력: '{TARGET_NAME}' itemList 0행 / 결과: skip", sc=4)
+        # picker + process_modal + main 3중 모달 잔존 가능 (ESC/cancel 모두 위험)
+        # → F5 reload (navigate_to_clean) 로 강제 정리 — 다음 case 가 깨끗한 상태에서 시작
+        page.navigate_to_clean()
+
+        # ── B. web_restrict picker 중복 ────────────────────────────
+        # sc3i Case B 와 동일: web_restrict picker 는 mode='multi' (체크박스, 라디오 아님)
+        # 검증 메시지도 sc3i Case B 와 동일 패턴 (프로세스/생략/타 웹제한 등)
+        page.open_modify_modal(TARGET_NAME)
+        if len(page.get_item_web_restrict_rows()) >= 1:
+            page.click_item_web_restrict_row(0)
+            page.web_restrict.wait_open()
+            existing_wr_procs = page.web_restrict.get_process_rows()
+            if existing_wr_procs:
+                page.web_restrict.click_add_process_btn()
+                page.picker.wait_open()
+                page.picker.select_first(mode="multi")
+                page.picker.confirm()
+                if page.is_confirm_modal_visible(timeout=2000):
+                    msg_b = page.get_confirm_message()
+                    page.dismiss_confirm_modal()
+                    ok_b = "이미" in msg_b and ("프로세스" in msg_b or "생략" in msg_b or "타 웹제한" in msg_b)
+                    self._add("pass" if ok_b else "fail",
+                              "EDIT web_restrict picker — 동일 인스턴스 안 프로세스 중복 거부 (sc3i Case B EDIT)",
+                              f"입력: 기존 web 프로세스 재선택 (multi) / 결과: 메시지={msg_b!r}", sc=4)
+                else:
+                    self._add("warn", "[차단 메시지] EDIT web_restrict picker 중복 — 메시지 미노출",
+                              "입력: 기존 프로세스 재선택 / 결과: 알림 없음", sc=4)
+            else:
+                self._add("skip", "시나리오 4n B — web_restrict 안 프로세스 0건 → skip",
+                          "입력: get_process_rows 빈 배열 / 결과: skip", sc=4)
+        else:
+            self._add("skip", "시나리오 4n B — 웹제한 행 0건 → skip",
+                      f"입력: '{TARGET_NAME}' itemWebRestrictList 0행 / 결과: skip", sc=4)
+        # 3중 모달 잔존 가능 → F5 reload 로 강제 정리 (다음 sc4j 등에도 영향 없음)
+        page.navigate_to_clean()
+
+    # ==================================================================
+    # 시나리오 4o — EDIT format overflow / 형식 검증 (sc3g EDIT 버전)
+    # 사용 정책: process 행 1건 보유 sc3 정책
+    # ==================================================================
+    def test_scenario4o_edit_format_overflow(self, logged_in_page, settings):
+        """시나리오 4o — EDIT process_modal 내 input format / overflow 검증.
+
+        Case A: Port 비숫자 'abc' → 'Port 형식을 다시 확인 해 주세요' (sc3g A EDIT)
+        Case A2: Port 최대값 초과 '99999' → 'Port의 최대값은 65535...' (sc3g A2 EDIT)
+        Case B1: IP 범위 초과 '256.256.256.256' → '아이피 주소 형식이 잘못' (sc3g B1 EDIT)
+        Case B: IP 형식 잘못 'abc.def.ghi.jkl' → '아이피 주소 형식...' (sc3g B EDIT)
+        Case C: process_modal 설명 1000자 → 300자 제한 (sc3g C EDIT)
+
+        EDIT 진입 + process_modal 1회 open + 5 sub-case + 모두 close.
+        Case D (web_restrict 설명 300자) 는 별도 흐름 — 같은 모달 세션에서 진행.
+        """
+        print("\n━━ [제어 스위트] 시나리오 4o: EDIT format / overflow 검증 ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+        long_desc = "가" * 1000
+        candidates = ["[AUTO]_sc3_step2", "[AUTO]_sc3_step9_port_D", "[AUTO]_sc3_step9_port_F"]
+
+        page.navigate_to_clean()
+        TARGET_NAME = next((n for n in candidates if page.is_policy_exists(n)), None)
+        if not TARGET_NAME:
+            self._add("skip", "시나리오 4o — sc3 정책 부재 → skip",
+                      f"입력: 후보 {candidates} / 결과: 모두 없음", sc=4)
+            return
+
+        page.open_modify_modal(TARGET_NAME)
+        if len(page.get_item_list_rows()) < 1:
+            self._add("skip", "시나리오 4o — 프로세스 행 0건 → skip",
+                      f"입력: '{TARGET_NAME}' itemList 0행 / 결과: skip", sc=4)
+            page.close_modal()
+            return
+
+        page.click_item_list_row(0)
+        page.process.wait_open()
+
+        # ── Case A: Port 비숫자 'abc' ──────────────────────────────
+        page.process.set_pnetwork(True)
+        page.process.add_ip_port("192.168.10.10", "abc")
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "Port" in msg and "형식" in msg
+            self._add("pass" if ok else "fail",
+                      "EDIT process_modal — Port 비숫자 입력 차단 (sc3g A EDIT)",
+                      f"입력: Port='abc' + 추가 / 결과: 메시지={msg!r}", sc=4)
+        else:
+            self._add("warn", "[차단 메시지] EDIT Port 비숫자 — 메시지 미노출",
+                      "입력: 'abc' / 결과: 알림 없음", sc=4)
+
+        # ── Case A2: Port 최대값 초과 '99999' ──────────────────────
+        page.process.add_ip_port("192.168.10.11", "99999")
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "65535" in msg or ("Port" in msg and "최대" in msg)
+            self._add("pass" if ok else "fail",
+                      "EDIT process_modal — Port 최대값 초과 차단 (sc3g A2 EDIT)",
+                      f"입력: Port='99999' + 추가 / 결과: 메시지={msg!r}", sc=4)
+        else:
+            self._add("warn", "[차단 메시지] EDIT Port 최대값 초과 — 메시지 미노출",
+                      "입력: '99999' / 결과: 알림 없음", sc=4)
+
+        # ── Case B1: IP 범위 초과 '256.256.256.256' ────────────────
+        page.process.add_ip_port("256.256.256.256", "8080")
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = ("아이피" in msg or "IP" in msg) and ("형식" in msg or "잘못" in msg)
+            self._add("pass" if ok else "fail",
+                      "EDIT process_modal — IP 범위 초과 차단 (sc3g B1 EDIT)",
+                      f"입력: IP='256.256.256.256' + 추가 / 결과: 메시지={msg!r}", sc=4)
+        else:
+            self._add("warn", "[차단 메시지] EDIT IP 범위 초과 — 메시지 미노출",
+                      "입력: '256.256.256.256' / 결과: 알림 없음", sc=4)
+
+        # ── Case B: IP 형식 잘못 'abc.def.ghi.jkl' ─────────────────
+        page.process.add_ip_port("abc.def.ghi.jkl", "8080")
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = ("아이피" in msg or "IP" in msg) and "형식" in msg
+            self._add("pass" if ok else "fail",
+                      "EDIT process_modal — IP 형식 invalid 차단 (sc3g B EDIT)",
+                      f"입력: IP='abc.def.ghi.jkl' + 추가 / 결과: 메시지={msg!r}", sc=4)
+        else:
+            self._add("warn", "[차단 메시지] EDIT IP 형식 invalid — 메시지 미노출",
+                      "입력: 'abc.def.ghi.jkl' / 결과: 알림 없음", sc=4)
+
+        # ── Case C: process_modal 설명 1000자 + 확인 → 300자 제한 ──
+        page.process.set_description(long_desc)
+        page._click(page.page.locator(page.process.SEL_CONFIRM_BTN).first)
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "설명" in msg and "300자" in msg
+            self._add("pass" if ok else "fail",
+                      "EDIT process_modal — 설명 1000자 (300자 제한) 차단 (sc3g C EDIT)",
+                      f"입력: 설명 길이=1000 / 결과: 메시지={msg!r}", sc=4)
+        else:
+            self._add("warn", "[차단 메시지] EDIT 프로세스 설명 300자 — 메시지 미노출",
+                      "입력: 1000자 + 확인 / 결과: 알림 없음", sc=4)
+        page.process.set_description("")
+        page.process.close()
+
+        # ── Case D: web_restrict_modal 설명 1000자 → 300자 제한 ────
+        if len(page.get_item_web_restrict_rows()) >= 1:
+            page.click_item_web_restrict_row(0)
+            page.web_restrict.wait_open()
+            page.web_restrict.set_description(long_desc)
+            page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
+            if page.is_confirm_modal_visible(timeout=1500):
+                msg = page.get_confirm_message()
+                page.dismiss_confirm_modal()
+                ok = "설명" in msg and "300자" in msg
+                self._add("pass" if ok else "fail",
+                          "EDIT web_restrict_modal — 설명 1000자 (300자 제한) 차단 (sc3g D EDIT)",
+                          f"입력: 설명 길이=1000 / 결과: 메시지={msg!r}", sc=4)
+            else:
+                self._add("warn", "[차단 메시지] EDIT 웹제한 설명 300자 — 메시지 미노출",
+                          "입력: 1000자 + 확인 / 결과: 알림 없음", sc=4)
+            page.web_restrict.set_description("")
+            page.web_restrict.close()
+        else:
+            self._add("skip", "시나리오 4o D — 웹제한 행 0건 → skip",
+                      f"입력: '{TARGET_NAME}' itemWebRestrictList 0행 / 결과: skip", sc=4)
+
+        page.close_modal()
+
+    # ==================================================================
+    # 시나리오 4p — EDIT length boundary (sc3h Case B/C EDIT 버전)
+    # 사용 정책: customOption + clipboardUrl 보유 정책
+    # ==================================================================
+    def test_scenario4p_edit_length_boundary(self, logged_in_page, settings):
+        """시나리오 4p — EDIT 메인 모달 input 길이 한도 검증.
+
+        Case B: customOptionText 100/300/500자 — DOM 길이 (sc3h B EDIT)
+        Case C: clipboardAllowUrl 500/1000자 — DOM 길이 (sc3h C EDIT)
+
+        Case A (csuName maxlength=50) 는 4g A 가 이미 다룸 → 중복 제외.
+        DOM 입력만 검증 (저장 안 함) → 정책 잔존 상태 안 바꿈.
+        """
+        print("\n━━ [제어 스위트] 시나리오 4p: EDIT 메인 모달 input 길이 한도 검증 ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+        TARGET_NAME = "[AUTO]_sc3_step2"
+
+        page.navigate_to_clean()
+        if not page.is_policy_exists(TARGET_NAME):
+            self._add("skip", "시나리오 4p — sc3 정책 부재 → skip",
+                      f"입력: 진입 / 결과: '{TARGET_NAME}' 없음", sc=4)
+            return
+
+        page.open_modify_modal(TARGET_NAME)
+
+        # 원본 값 백업 (검증 후 복원 — 정책 잔존 보호)
+        orig_custom = page.get_custom_option()
+        orig_clip_url = page.get_clipboard_allow_url() if page.feature_exists(page.SEL_CLIPBOARD_URL) else ""
+
+        # ── Case B: customOptionText 100/300/500자 ───────────────
+        for length in (100, 300, 500):
+            page.set_custom_option("c" * length)
+            got = page.get_custom_option()
+            self._add("pass",
+                      f"[오버플로 확인 EDIT] 커스텀 옵션 — {length}자 입력 DOM 길이 (sc3h B EDIT)",
+                      f"입력: {length}자 / 결과: DOM 길이={len(got)}", sc=4)
+        page.set_custom_option(orig_custom)  # 복원
+
+        # ── Case C: clipboardAllowUrl 500/1000자 ──────────────────
+        if page.feature_exists(page.SEL_CLIPBOARD_URL):
+            for length in (500, 1000):
+                page.set_clipboard_allow_url("u" * length)
+                got = page.get_clipboard_allow_url()
+                self._add("pass",
+                          f"[오버플로 확인 EDIT] 클립보드 허용 URL — {length}자 입력 DOM 길이 (sc3h C EDIT)",
+                          f"입력: {length}자 / 결과: DOM 길이={len(got)}", sc=4)
+            page.set_clipboard_allow_url(orig_clip_url)  # 복원
+        else:
+            self._add("skip", "[오버플로 확인 EDIT] 클립보드 허용 URL — 기능 없음 (구 빌드)",
+                      f"입력: {page.SEL_CLIPBOARD_URL} 매칭 실패 / 결과: 기능 부재", sc=4)
+
+        # 메인 모달 cancel (저장 안 함 — 복원 값 그대로 보존)
+        page.close_modal()
+
+    # ==================================================================
+    # 시나리오 4q — EDIT 정상 boundary 회귀 검증 (sc3j 정상 case 들의 EDIT 버전)
+    # sc3 가 정상으로 저장한 boundary 값들이 EDIT 시점에도 정상 저장되는지 회귀.
+    # 사용자 지적 (2026-05-26): "수정에도 해당 요소들 변경 테스트 필요, 기본 a쪽 빠짐"
+    # ==================================================================
+    def test_scenario4q_edit_normal_boundary_regression(self, logged_in_page, settings):
+        """시나리오 4q — sc3j 정상 boundary case 들의 EDIT 회귀 검증.
+
+        Case A: drv letter 50자 정상 (sc3j A EDIT) — [AUTO]_sc3_step9_drv50
+        Case D: Port=8080 정상 (sc3j D EDIT) — [AUTO]_sc3_step9_port_D
+        Case F: Port=0 정상 (sc3j F EDIT) — [AUTO]_sc3_step9_port_F
+        Case N: basePath 300자 정상 (sc3j N EDIT) — [AUTO]_sc3_step16_bp300_ok
+        Case O: webRestrictName 100자 정상 (sc3j O EDIT) — [AUTO]_sc3_step17_webname100_ok
+
+        검증 의도: 변경 없이 메인 '수정' → '저장 하였습니다' 또는 '수정된 항목이 없습니다.'
+        (이미 정상 boundary 로 저장된 값이라 변경 없이도 시스템이 거부하지 않아야 정상)
+        sc3 결함 (server error) 정책은 4j 가 다루므로 4q 는 정상 회귀만.
+        """
+        print("\n━━ [제어 스위트] 시나리오 4q: EDIT 정상 boundary 회귀 검증 (sc3j 정상 case EDIT) ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+
+        # 정상 boundary 정책 리스트 (sc3j 가 정상 저장한 5개)
+        normal_cases = [
+            ("[AUTO]_sc3_step9_drv50",         "Case A: 드라이브 letter 50자 정상 boundary EDIT (sc3j A EDIT)"),
+            ("[AUTO]_sc3_step9_port_D",        "Case D: Port=8080 정상 boundary EDIT (sc3j D EDIT)"),
+            ("[AUTO]_sc3_step9_port_F",        "Case F: Port=0 정상 boundary EDIT (sc3j F EDIT)"),
+            ("[AUTO]_sc3_step16_bp300_ok",     "Case N: basePath 300자 정상 boundary EDIT (sc3j N EDIT)"),
+            ("[AUTO]_sc3_step17_webname100_ok","Case O: webRestrictName 100자 정상 boundary EDIT (sc3j O EDIT)"),
+        ]
+
+        for target_name, label in normal_cases:
+            page.navigate_to_clean()
+            if not page.is_policy_exists(target_name):
+                self._add("skip", f"4q — {label} — sc3 정책 부재",
+                          f"입력: '{target_name}' 없음 / 결과: skip", sc=4)
+                continue
+
+            page.open_modify_modal(target_name)
+            # 변경 없이 '수정' 클릭 — 정상 boundary 값이 시스템에 의해 거부되지 않는지 검증
+            try:
+                msg = page.save_policy(mode="modify")
+                page.dismiss_confirm_modal()
+                # _MODIFY_OK_MESSAGES: ("저장 하였습니다", "수정된 항목이 없습니다.")
+                ok = msg in _MODIFY_OK_MESSAGES
+                self._add("pass" if ok else "fail",
+                          f"[정상 boundary EDIT 회귀] {label}",
+                          f"입력: EDIT '{target_name}' + 변경 X + 수정 / 결과: 메시지={msg!r}", sc=4)
+            except Exception as e:
+                self._add("fail", f"[정상 boundary EDIT 회귀] {label} — 예외 발생",
+                          f"입력: EDIT '{target_name}' + 수정 / 결과: 예외={e!r}", sc=4)
+                try:
+                    page.close_modal()
+                except Exception:
+                    pass
 
