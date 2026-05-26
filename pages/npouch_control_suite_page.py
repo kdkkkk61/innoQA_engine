@@ -328,9 +328,33 @@ class NpouchControlSuitePage(BasePage):
         self._cleanup_modal_residue()
 
     def _dismiss_alert_if_any(self) -> None:
-        """5개 alert ID 중 하나라도 떠 있으면 dismiss. timeout 짧게 (race 회피)."""
+        """alert 떠 있으면 dismiss. timeout 짧게 (race 회피).
+
+        주의 (허점 #4 보완 2026-05-26): close_modal context 에서는 cancel-click 이
+        '변경 내용을 저장하시겠습니까?' confirm 을 트리거할 가능성. dismiss_confirm_modal 의
+        '확인' 클릭은 "저장 진행" 을 의미하므로 EDIT 의도 (취소) 와 정반대.
+        → 메시지에 '저장' 단어 있으면 ESC 로 회피 (저장도 닫기도 아닌 중립적 dismiss).
+        """
         try:
-            if self.is_confirm_modal_visible(timeout=300):
+            if not self.is_confirm_modal_visible(timeout=300):
+                return
+            msg = ""
+            try:
+                msg = self.get_confirm_message()
+            except Exception:
+                pass
+            # '저장하시겠습니까?' 류 위험 confirm — ESC 로 cancel
+            if "저장" in msg and ("하시겠" in msg or "할까요" in msg):
+                for _ in range(2):
+                    try:
+                        self.page.keyboard.press("Escape")
+                        self.page.wait_for_timeout(150)
+                        if not self.is_confirm_modal_visible(timeout=100):
+                            break
+                    except Exception:
+                        break
+            else:
+                # 단순 alert / '정말 닫으시겠습니까?' — '확인' 클릭 = 의도 부합
                 self.dismiss_confirm_modal()
         except Exception:
             pass
