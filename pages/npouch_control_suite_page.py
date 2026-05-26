@@ -289,60 +289,84 @@ class NpouchControlSuitePage(BasePage):
     def close_modal(self) -> None:
         """취소 버튼 클릭 → 메인 모달 detached 대기 + 잔해 정리.
 
-        EDIT 모달 close 진단 (2026-05-26 MCP 검증):
-        - SEL_MODAL_OPEN ('.in') detach 잡혀도 .modal-backdrop / body.modal-open / padding 잔존
-        - 다음 click 의 actionability check 실패 (5s timeout cascade)
-        - 이전 시도 (navigate_to 진입 시 cleanup) 는 race 야기 — 모달 열려있을 때 cleanup
-        - 이번 fix = close cancel 직후 → 모달 이미 .in detach 상태 → race 없는 surgical cleanup
+        EDIT 모달 close 진단 (2026-05-26 4g/4h/4i fail 스크린샷 검증):
+        - 4g E 섹션: set_csu_name('') → 수정 → 알림 dismiss → set_csu_name(원복) → close_modal
+        - close_modal 시점: AngularJS form dirty (csuName 왕복 변경) → cancel 클릭이 confirm 트리거 가능성
+        - 기존 _click(locator).click() 은 actionability check (5s) 또는 alert intercept 로 silent 실패
+        - 기존 ESC fallback 은 Bootstrap data-keyboard='false' 환경에서 무력
+        - fix: JS native click 으로 cancel 직접 트리거 → 그래도 안 닫히면 alert dismiss 후 재시도 → 최종 force JS close
         """
-        # 잔존 alert 먼저 dismiss (메인 저장 실패 후 알림이 cancel 클릭 가리는 케이스)
+        # 잔존 alert 먼저 dismiss (이전 단계에서 떠 있던 알림)
+        self._dismiss_alert_if_any()
+        if not self.is_visible(self.SEL_MODAL_OPEN):
+            self._cleanup_modal_residue()
+            return
+
+        # 1차: native JS click on cancel (Playwright actionability check 우회)
+        self._js_click_cancel()
+        if self._wait_modal_closed(timeout=1500):
+            self._cleanup_modal_residue()
+            return
+
+        # 2차: cancel-click 후 confirm alert 가 떴을 수 있음 → dismiss 후 한 번 더 JS click
+        self._dismiss_alert_if_any()
+        self._js_click_cancel()
+        if self._wait_modal_closed(timeout=1500):
+            self._cleanup_modal_residue()
+            return
+
+        # 3차: 그래도 안 닫힘 → JS force-close (AngularJS modal-wrap.in 제거)
         try:
-            if self.is_confirm_modal_visible(timeout=500):
+            self.page.evaluate("""() => {
+                document.querySelectorAll('div.modal-wrap.in, div.modal.in').forEach(m => {
+                    m.classList.remove('in');
+                    m.style.display = 'none';
+                });
+            }""")
+        except Exception:
+            pass
+        self._cleanup_modal_residue()
+
+    def _dismiss_alert_if_any(self) -> None:
+        """5개 alert ID 중 하나라도 떠 있으면 dismiss. timeout 짧게 (race 회피)."""
+        try:
+            if self.is_confirm_modal_visible(timeout=300):
                 self.dismiss_confirm_modal()
         except Exception:
             pass
-        if not self.is_visible(self.SEL_MODAL_OPEN):
-            # 이미 닫혀있어도 잔해 정리 (no-op safe)
-            self._cleanup_modal_residue()
-            return
+
+    def _js_click_cancel(self) -> None:
+        """cancel 버튼 native JS click — actionability check / overlay intercept 우회."""
         try:
-            self._click(self.page.locator(self.SEL_CANCEL_BTN).first)
-            self.page.locator(self.SEL_MODAL_OPEN).wait_for(
-                state="detached", timeout=self._TIMEOUT_MODAL
-            )
+            self.page.evaluate(f"""() => {{
+                const btn = document.querySelector("{self.SEL_CANCEL_BTN}");
+                if (btn) btn.click();
+            }}""")
         except Exception:
-            # ESC fallback (cancel 버튼 click 실패 시)
-            for _ in range(3):
-                try:
-                    self.page.keyboard.press("Escape")
-                    self.page.wait_for_timeout(200)
-                    if not self.is_visible(self.SEL_MODAL_OPEN):
-                        break
-                except Exception:
-                    break
-        # ★ 모달 .in detach 직후 잔해 정리 (race 없음 — 모달 이미 닫힘)
-        self._cleanup_modal_residue()
+            pass
+
+    def _wait_modal_closed(self, timeout: int) -> bool:
+        """SEL_MODAL_OPEN (#controlSuite.in) detach 대기 — 성공 시 True."""
+        try:
+            self.page.locator(self.SEL_MODAL_OPEN).wait_for(state="detached", timeout=timeout)
+            return True
+        except Exception:
+            return False
 
     def _cleanup_modal_residue(self) -> None:
         """모달 close 직후 잔해 정리 — backdrop / body.modal-open / padding-right.
 
-        조건부 cleanup: 만약 modal-wrap.in 잔존이면 skip (열려있는 모달 보호).
-        wait 가 아닌 즉시 정리 (50ms 미만) — actionability check 다음 단계 보장.
+        2026-05-26 수정: skip 조건 제거. modal-wrap.in 잔존 시 force-close 는
+        close_modal 의 3차 fallback 에서 이미 수행됨 → 여기서는 backdrop/body 정리만 책임.
         """
         try:
             self.page.evaluate("""() => {
-                // 열린 모달이 있으면 skip (race 방지)
-                if (document.querySelectorAll('div.modal-wrap.in, div.modal.in').length > 0) return;
                 document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
                 document.body.classList.remove('modal-open');
                 document.body.style.paddingRight = '';
             }""")
         except Exception:
             pass
-        # 모달 닫힘 직후 backdrop 잔해 정리 (2026-05-20 fix — 모든 close 경로)
-        # _cleanup_modal_backdrop() 호출 제거 — 사용자 평가: 추가 cleanup 이 cascade 트리거 가능성.
-        # F5 reload (teardown) 만으로 깨끗한 상태 유지. (2026-05-20 진단 결과)
-        # self._cleanup_modal_backdrop()
 
     # ==================================================================
     # 3. 메인 모달 단독 필드 (Step 2)
