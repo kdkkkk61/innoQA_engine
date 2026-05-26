@@ -287,9 +287,13 @@ class NpouchControlSuitePage(BasePage):
         return self.page.locator(self.SEL_MODAL_TITLE).first.inner_text().strip()
 
     def close_modal(self) -> None:
-        """취소 버튼 클릭 → 메인 모달 detached 대기.
-        alert 잔존 시 먼저 dismiss (alert backdrop 이 cancel 버튼 click 차단 방지).
-        모달이 이미 닫혀있으면 no-op (정상 저장 후 자동 닫힘 케이스 안전).
+        """취소 버튼 클릭 → 메인 모달 detached 대기 + 잔해 정리.
+
+        EDIT 모달 close 진단 (2026-05-26 MCP 검증):
+        - SEL_MODAL_OPEN ('.in') detach 잡혀도 .modal-backdrop / body.modal-open / padding 잔존
+        - 다음 click 의 actionability check 실패 (5s timeout cascade)
+        - 이전 시도 (navigate_to 진입 시 cleanup) 는 race 야기 — 모달 열려있을 때 cleanup
+        - 이번 fix = close cancel 직후 → 모달 이미 .in detach 상태 → race 없는 surgical cleanup
         """
         # 잔존 alert 먼저 dismiss (메인 저장 실패 후 알림이 cancel 클릭 가리는 케이스)
         try:
@@ -298,9 +302,8 @@ class NpouchControlSuitePage(BasePage):
         except Exception:
             pass
         if not self.is_visible(self.SEL_MODAL_OPEN):
-            # _cleanup_modal_backdrop() 호출 제거 — 사용자 평가: 추가 cleanup 이 cascade 트리거 가능성.
-        # F5 reload (teardown) 만으로 깨끗한 상태 유지. (2026-05-20 진단 결과)
-        # self._cleanup_modal_backdrop()  # 이미 닫혀있어도 잔해 정리
+            # 이미 닫혀있어도 잔해 정리 (no-op safe)
+            self._cleanup_modal_residue()
             return
         try:
             self._click(self.page.locator(self.SEL_CANCEL_BTN).first)
@@ -317,6 +320,25 @@ class NpouchControlSuitePage(BasePage):
                         break
                 except Exception:
                     break
+        # ★ 모달 .in detach 직후 잔해 정리 (race 없음 — 모달 이미 닫힘)
+        self._cleanup_modal_residue()
+
+    def _cleanup_modal_residue(self) -> None:
+        """모달 close 직후 잔해 정리 — backdrop / body.modal-open / padding-right.
+
+        조건부 cleanup: 만약 modal-wrap.in 잔존이면 skip (열려있는 모달 보호).
+        wait 가 아닌 즉시 정리 (50ms 미만) — actionability check 다음 단계 보장.
+        """
+        try:
+            self.page.evaluate("""() => {
+                // 열린 모달이 있으면 skip (race 방지)
+                if (document.querySelectorAll('div.modal-wrap.in, div.modal.in').length > 0) return;
+                document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+                document.body.classList.remove('modal-open');
+                document.body.style.paddingRight = '';
+            }""")
+        except Exception:
+            pass
         # 모달 닫힘 직후 backdrop 잔해 정리 (2026-05-20 fix — 모든 close 경로)
         # _cleanup_modal_backdrop() 호출 제거 — 사용자 평가: 추가 cleanup 이 cascade 트리거 가능성.
         # F5 reload (teardown) 만으로 깨끗한 상태 유지. (2026-05-20 진단 결과)
