@@ -5,6 +5,73 @@
 
 ---
 
+## [RESOLVED] sc4 4g/4h/4i cascade fail — close_modal + open_*_modal 우회로 (2026-05-26)
+
+### 증상
+- `close_modal()` 직후 `open_add_modal()` 또는 `open_modify_modal()` 호출 시
+  `Locator.click: Timeout 5000ms exceeded` (button#addItemBtn 또는 modifyItemBtn 클릭 실패)
+- Playwright stack: `<div id="controlSuite" class="modal-wrap in"> subtree intercepts pointer events`
+- fail 진단 (5s 후 + teardown 후): backdrops=0, body clean — fail 시점과 다른 state (혼동 source)
+- 4b/4c/4d/4e/4f 는 통과 (이들은 submit 성공으로 모달이 **자동 닫힘** — cancel close 경로 안 탐)
+- 4g/4h/4i 만 fail (close cancel 경로 필요)
+
+### Chrome MCP 단계별 DOM 진단 (192.168.13.141, 같은 서버 / 다른 주소)
+
+| 단계 | `#controlSuite` | csuName | alert | backdrops |
+|------|-----------------|---------|-------|-----------|
+| 모달 열기 | `modal-wrap in` | "[AUTO]_sc3_step2" | - | 1 |
+| csuName="" | `modal-wrap in` | "" | - | 1 |
+| 수정 클릭 (빈 이름) | `modal-wrap in` | "" | `in` | **2 (스택)** |
+| 알림 dismiss | `modal-wrap in` | "" | gone | 1 |
+| csuName 원복 | `modal-wrap in` | "[AUTO]_sc3_step2" | - | 1 |
+| **JS native cancel-click** | **gone** | gone | - | **0** |
+
+**JS native click 단독으론 모달이 깨끗하게 닫힌다** — 메커니즘은 검증됨. 하지만 실제 테스트 환경에선 race / timing 으로 실패 발생.
+
+### 진짜 원인 (구조적)
+
+기존 4g E section 흐름:
+1. EDIT 모달 안에서 빈값 + submit + dismiss
+2. `set_csu_name(원복)` + `close_modal()`  ← cancel 클릭
+3. `open_add_modal()` → 새 정책 DUP_PEER 생성 (프로세스 1개 포함)
+4. 다시 `open_modify_modal()` → 이름을 DUP_PEER 로 변경 시도 → "이미 등록된 이름"
+
+→ **검증 의도** ("EDIT 시 다른 정책 이름과 충돌 차단") 를 위해 굳이 **새 정책 생성 우회로** 사용
+→ close_modal + open_add_modal cycle 이 race / timing 문제로 fail 야기
+
+4h 도 동일: 3 case 각각 open_modify + close_modal cycle (close 2번)
+4i 도 동일: Case A 후 close 없이 Case B 가 open_modify 재호출 (모달 충돌)
+
+### 조치 — 구조적 단순화 (사용자 의도 반영)
+
+**원칙**: "하나의 EDIT 모달 세션 안에서 모든 검증 + 끝에 close_modal 한 번만"
+
+| 시나리오 | 기존 | 신규 |
+|---------|------|------|
+| 4g E | DUP_PEER 새 정책 생성 → close → 재오픈 → 중복 시도 | 같은 모달에서 `[AUTO]_sc3_step1` 로 이름 변경 시도 (기존 sc3 정책 활용) |
+| 4h | 3 case × (open_modify + close_modal) | open_modify 1회 + 3 case 연속 + close_modal 1회 |
+| 4i | Case A + Case B 각각 open_modify | open_modify 1회 + Case A + Case B + close_modal 1회 |
+
+### 결과
+- **18 passed in 258.29s** (sc3 9 + sc4 9 모두 통과)
+- 검증 의도 100% 유지 (메시지: "이미 등록된 이름 입니다.", "수정된 항목이 없습니다.")
+- 새 정책 동적 생성 제거 → cleanup 부담 ↓ + 테스트 안정성 ↑
+
+### 부수 fix (방어선)
+`pages/npouch_control_suite_page.py` `close_modal()` 도 더 robust 하게 강화:
+- 1차 JS native click on cancel (Playwright actionability check 우회)
+- 2차 alert dismiss + JS click 재시도
+- 3차 JS force-remove `.in` 클래스
+- `_cleanup_modal_residue` 의 skip 조건 제거 — backdrop/body 정리는 항상 안전
+
+### 교훈 (Karpathy 원칙 적용)
+- **추측 fix 대신 구조 단순화**: 같은 검증을 더 단순한 흐름으로 만들 수 있다면 그게 진짜 fix
+- **새 정책 생성 우회로** = 우회로 자체가 race condition source. 가능하면 **존재하는 데이터 활용**
+- **Test simplicity = test reliability**: 한 세션 안에서 처리 가능한 검증을 분리하면 cycle race 만 늘어남
+- **추측 stop, 사용자에게 manual reproduction 요청**: 코드 의도와 실제 화면 흐름 차이가 root cause 단서
+
+---
+
 ## [RESOLVED] sc4 4e/4g/4h/4i cascade fail — 5번째 알림 ID `registeredTagExtentionWarning` 누락 (2026-05-26)
 
 ### Chrome MCP 직접 진단 결과 (사용자 지시 '구글 크롬 켜서 직접 확인')
