@@ -5,6 +5,60 @@
 
 ---
 
+## [RESOLVED] sc4 4e/4g/4h/4i cascade fail — 5번째 알림 ID `registeredTagExtentionWarning` 누락 (2026-05-26)
+
+### Chrome MCP 직접 진단 결과 (사용자 지시 '구글 크롬 켜서 직접 확인')
+
+**재현 흐름**:
+1. `[AUTO]_sc3_step2` EDIT 진입 → 태그 tab → `+` 버튼 → process_modal
+2. `태그 선택` picker 열기
+3. 첫 행 (`공용 프로세스 묶음`) 재선택 + 확인 (sc3c 가 이미 등록한 태그)
+4. 알림 노출 — **"이미 등록된 태그 입니다"**
+
+**진단**:
+- 알림 DOM id: **`registeredTagExtentionWarning`** (5번째 ID)
+- 기존 SEL_CONFIRM_MODAL 4개만 등록 (`__globalMessageModal` / `registeredFolderWarning` / `nullEnteredWarning` / `registeredProcessExtentionWarning`)
+- 태그용 5번째 ID 누락 → `is_confirm_modal_visible` False 반환
+- → `picker.wait_closed()` timeout (picker 가 알림 떠서 닫힘 못 함)
+- → sc4 4e 의 `select_first_and_confirm` 실패
+- → 4g/4h/4i cascade fail (모달 잔존)
+
+**조치 (commit ceedac0)**:
+- `SEL_CONFIRM_MODAL` / `SEL_CONFIRM_MODAL_OPEN` / `SEL_CONFIRM_BTN` / `SEL_CONFIRM_BODY` 모두에
+  `registeredTagExtentionWarning` 추가
+- 알림 5종 통합 처리 (`__globalMessageModal` 메인 + 4종 sub-modal warning)
+
+### sc4 테스트 환경 누적 상태 인지
+
+**sc4 매 run 마다 sc3 baseline 위에 modify 누적**:
+```
+1st run: sc3 baseline 위에 sc4 4b/4c/4d/4e/4f modify
+2nd run: 1st 변형 위에 또 같은 modify 시도 → 일부 중복 알림
+3rd run: 2nd 변형 위에 또 → 더 깊은 누적
+```
+
+**현재 [AUTO]_sc3_step2 누적 상태** (MCP 확인 2026-05-26):
+- customOption: `sc3_step2_init` → `edit_4c_modified` (4c 변경)
+- clipboardUrl: `naver.com;google.com` → `edit4c.com` (4c 변경)
+- mainExts: `[txt,doc,exe]` → `[txt,exe,doc,iso]` (4c 가 iso 추가)
+- web_rows: 1 → 2 (4f 가 `[AUTO]_web_4f_second` 추가)
+
+**대응 fix 매핑**:
+- 4b customOption: dynamic timestamp 값 → 매 run 강제 변화
+- 4c load 검증: strict == → 존재/subset 검증
+- 4d/4e/4f add: timestamp unique 값 + dismiss 안전망
+- 4i 자기 자신 modify: `_MODIFY_OK_MESSAGES` (수정된 항목 없음 인정)
+- 4e picker: 5번째 SEL ID + select_first/confirm 분리 + ESC 정리
+
+### 교훈
+
+1. **Chrome MCP 직접 진단이 정확** — 로그만으로 못 잡는 ID 누락 발견
+2. **알림 ID 5종 인지** — 메인 1 + sub-modal 4 (Folder/null/Process/Tag)
+3. **누적 환경 대응** — strict == / 단일 응답 메시지 가정 X
+4. **sc3 의 검증된 패턴 우선 참조** — sc3i 의 ESC 다발 / dismiss + cancel 회피
+
+---
+
 ## [INSIGHT] sc4 멱등 / sc3 데이터 잔존 / timing 검증 (2026-05-22)
 
 ### 핵심 원칙 (사용자 통찰)
