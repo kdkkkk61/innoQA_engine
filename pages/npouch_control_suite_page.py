@@ -88,29 +88,37 @@ class NpouchControlSuitePage(BasePage):
     SEL_SUBMIT_MODIFY       = "div#controlSuite .btn.btn-primary:has-text('수정')"
 
     # ── 확인 모달 (stale dismiss) ─────────────────────────────────
-    # 알림(확인) 모달 — 2 종류 동시 지원:
+    # 알림(확인) 모달 — 5 종류 동시 지원:
     #   1) __globalMessageModal : 메인 모달 confirm (스위트 이름 빈값/중복, 저장 메시지 등)
     #   2) registeredFolderWarning : sub-modal 내부 중복 알림 (IP/Port/확장자/URL 중복 등)
     #   3) nullEnteredWarning : input 빈값 또는 invalid 입력 자동 reset 알림 (Chrome MCP 2026-05-19 본서버 발견)
     #      예: "허용할 IP를 입력해주세요" — invalid IP 입력 시 input reset → 빈값 알림
     #   4) registeredProcessExtentionWarning : process picker 중복 / 확장자 중복 알림 (Chrome MCP 2026-05-19 본서버 발견)
     #      예: "이미 등록된 프로세스 입니다" — yaml :1234 의 modal_id 가 잘못 기록 (실제 ID 는 별도)
+    #   5) registeredTagExtentionWarning : tag picker 중복 알림 (Chrome MCP 2026-05-26 sc4 4e fail 진단)
+    #      예: "이미 등록된 태그 입니다" — sc3c 가 이미 첫 태그 등록한 정책에 sc4 가 같은 picker 첫 행 재선택 시
+    #      → 이 ID 가 우리 SEL 에 없어서 sc4 가 알림 못 잡음 → picker stuck → wait_closed timeout cascade
     SEL_CONFIRM_MODAL       = ("div#__globalMessageModal, div#registeredFolderWarning, "
-                                "div#nullEnteredWarning, div#registeredProcessExtentionWarning")
+                                "div#nullEnteredWarning, div#registeredProcessExtentionWarning, "
+                                "div#registeredTagExtentionWarning")
     SEL_CONFIRM_MODAL_OPEN  = ("div#__globalMessageModal.in, "
                                "div#registeredFolderWarning.in, "
                                "div#nullEnteredWarning.in, "
-                               "div#registeredProcessExtentionWarning.in")
+                               "div#registeredProcessExtentionWarning.in, "
+                               "div#registeredTagExtentionWarning.in")
     SEL_CONFIRM_BTN         = ("div#__globalMessageModal.in button:has-text('확인'), "
                                "div#registeredFolderWarning.in button.btn-default, "
                                "div#nullEnteredWarning.in button.btn-default, "
-                               "div#registeredProcessExtentionWarning.in button.btn-default")
+                               "div#registeredProcessExtentionWarning.in button.btn-default, "
+                               "div#registeredTagExtentionWarning.in button.btn-default")
     SEL_CONFIRM_BODY        = ("div#__globalMessageModal .modal-body, "
                                "div#registeredFolderWarning .modal-body-text, "
                                "div#nullEnteredWarning .modal-body-text, "
                                "div#nullEnteredWarning .modal-body, "
                                "div#registeredProcessExtentionWarning .modal-body-text, "
-                               "div#registeredProcessExtentionWarning .modal-body")
+                               "div#registeredProcessExtentionWarning .modal-body, "
+                               "div#registeredTagExtentionWarning .modal-body-text, "
+                               "div#registeredTagExtentionWarning .modal-body")
 
     # ── 타임아웃 ──────────────────────────────────────────────────
     _TIMEOUT_TABLE = 5000
