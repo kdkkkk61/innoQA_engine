@@ -80,6 +80,16 @@ class NpouchControlSuitePage(BasePage):
     #   tag prefix 없이 #id > tr 직접 매칭 필요.
     SEL_ITEM_WEB_LIST_ROW   = "#csuWebRestrictListTb tr"
 
+    # ── itemList 행 전체 삭제 (헤더 체크박스 전체선택 + 삭제 버튼) — Chrome MCP 2026-05-27 검증 ──
+    # ⚠ 모달 스코프 (div#controlSuite) 필수 — list 페이지의 button#removeItemBtn (정책 삭제) 과
+    #   ID 충돌 회피. 모달 안 삭제 버튼은 removeCsuProcessBtn (프로세스/태그 공용) / removeCsuWebRestrictBtn.
+    SEL_ITEM_LIST_HEADER_CHK = "div#controlSuite input#listHeaderCheckBox"
+    SEL_ITEM_TAG_HEADER_CHK  = "div#controlSuite input#listTagHeaderCheckBox"
+    SEL_ITEM_WEB_HEADER_CHK  = "div#controlSuite input#listWebRestrictHeaderCheckBox"
+    SEL_REMOVE_ITEM_BTN      = "div#controlSuite button#removeCsuProcessBtn"      # 개별 프로세스 삭제 (모달 안)
+    SEL_REMOVE_TAG_BTN       = "div#controlSuite button#removeCsuProcessBtn"      # 태그 삭제 (탭 전환 후 동일 버튼)
+    SEL_REMOVE_WEB_BTN       = "div#controlSuite button#removeCsuWebRestrictBtn"  # 웹제한 삭제 (모달 안)
+
     # ── 웹 제한기능 + 버튼 (Step 4a) ──────────────────────────────
     SEL_ADD_WEB_RESTRICT_BTN = "button#addCsuWebRestrictBtn"
 
@@ -477,6 +487,24 @@ class NpouchControlSuitePage(BasePage):
         self.page.locator(self.SEL_SIGN_EXCEPT_INPUT).first.fill(text)
         self._click(self.page.locator(self.SEL_SIGN_EXCEPT_BTN).first)
 
+    def remove_all_sign_except(self) -> int:
+        """전자서명 예외 list 전부 삭제. 삭제된 개수 반환.
+
+        전자서명 tag 의 삭제 버튼 = i.extentionDeleteBtn (확장자와 동일 class — Chrome MCP 2026-05-27 검증).
+        ⚠ 전자서명 토글 ON 상태에서만 list 노출 → OFF 면 삭제 불가 (호출 전 토글 ON 보장 필요).
+        """
+        removed = 0
+        while removed < 50:  # 안전장치
+            tags = self.page.locator(self.SEL_SIGN_EXCEPT_TAG)
+            if tags.count() == 0:
+                break
+            sub = tags.first.locator("i.extentionDeleteBtn")
+            if sub.count() == 0:
+                break
+            sub.first.evaluate("el => el.click()")
+            removed += 1
+        return removed
+
     def get_sign_except_list(self) -> list[str]:
         items = self.page.locator(self.SEL_SIGN_EXCEPT_TAG + " span")
         return [
@@ -601,6 +629,63 @@ class NpouchControlSuitePage(BasePage):
             if txt and "없습니다" not in txt:
                 out.append(txt)
         return out
+
+    # ── itemList 행 전체 삭제 (헤더 체크박스 전체선택 + 삭제 버튼) ──
+    def _remove_all_rows(self, header_chk_sel: str, remove_btn_sel: str,
+                         row_sel: str, tab_switch=None) -> int:
+        """sub-tab 의 등록 행 전체 삭제. 삭제된 행 수 반환.
+
+        흐름: (탭 전환) → 행 0건이면 no-op → 헤더 체크박스 전체선택 →
+              삭제 버튼 → 확인 alert dismiss → 행 0 확인.
+        체크박스/버튼 disabled 또는 미존재 시 안전 no-op.
+        """
+        if tab_switch:
+            try:
+                tab_switch()
+            except Exception:
+                pass
+        before = self.page.locator(row_sel).count()
+        if before == 0:
+            return 0
+        # 헤더 체크박스 전체선택 (JS click — hidden checkbox 대응)
+        try:
+            chk = self.page.locator(header_chk_sel).first
+            if chk.count() == 0:
+                return 0
+            chk.evaluate("el => { if (!el.checked) el.click(); }")
+        except Exception:
+            return 0
+        # 삭제 버튼 클릭
+        try:
+            self._click(self.page.locator(remove_btn_sel).first)
+        except Exception:
+            return 0
+        # 삭제 확인 alert dismiss (있으면)
+        try:
+            if self.is_confirm_modal_visible(timeout=1000):
+                self.dismiss_confirm_modal()
+        except Exception:
+            pass
+        after = self.page.locator(row_sel).count()
+        return max(0, before - after)
+
+    def remove_all_process_items(self) -> int:
+        """개별 프로세스 itemList 행 전체 삭제."""
+        return self._remove_all_rows(
+            self.SEL_ITEM_LIST_HEADER_CHK, self.SEL_REMOVE_ITEM_BTN,
+            self.SEL_ITEM_LIST_ROW, tab_switch=self.click_individual_process_tab)
+
+    def remove_all_tag_items(self) -> int:
+        """태그 itemTagList 행 전체 삭제."""
+        return self._remove_all_rows(
+            self.SEL_ITEM_TAG_HEADER_CHK, self.SEL_REMOVE_TAG_BTN,
+            self.SEL_ITEM_TAG_LIST_ROW, tab_switch=self.click_tag_tab)
+
+    def remove_all_web_restrict_items(self) -> int:
+        """웹제한 itemWebRestrictList 행 전체 삭제."""
+        return self._remove_all_rows(
+            self.SEL_ITEM_WEB_HEADER_CHK, self.SEL_REMOVE_WEB_BTN,
+            self.SEL_ITEM_WEB_LIST_ROW, tab_switch=None)
 
     def diag_web_restrict_state(self) -> dict:
         """web_restrict.confirm() 직후 진단용 상태 dump."""

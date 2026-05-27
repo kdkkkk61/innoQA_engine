@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import html
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -48,7 +49,24 @@ _SCENARIO_LABELS: dict[int, str] = {
     3: "시나리오 3: 동작 검증",
     4: "시나리오 4: 수정 시나리오",
     5: "시나리오 5: 케이스 검증",
+    # sc5 lifecycle 세분 (51/52/53) — 라벨 '시나리오 5a/5b/5c' 로 추출.
+    # 모두 scenario=5 면 영역정렬에 lifecycle 시간순(a→b→c)이 파괴되어 세분 필요.
+    51: "시나리오 5a: lifecycle 생성 + 재오픈 일치",
+    52: "시나리오 5b: 요소(내용) 제거 + 재오픈 비움",
+    53: "시나리오 5c: 토글 전부 OFF + 빈 정책 확인",
 }
+
+
+def _scenario_num_of(r) -> int:
+    """extra['scenario'] 우선, 없으면 phase, 없으면 0.
+    sc5 lifecycle 은 라벨 '시나리오 5a/5b/5c' 로 51/52/53 세분 (시간순 보존).
+    """
+    base = (r.extra or {}).get("scenario") or r.phase or 0
+    if base == 5:
+        m = re.search(r"시나리오\s*5([abc])", r.label or "")
+        if m:
+            return 50 + {"a": 1, "b": 2, "c": 3}[m.group(1)]
+    return base
 
 # ── list_page order 임계값 (extra["scenario"] 없을 때 폴백용) ────────
 _LIST_SCENARIO_THRESHOLDS = [
@@ -157,7 +175,9 @@ def _scenario_label(r: ScanResult, is_list_page: bool) -> str:
     # ① extra["scenario"] 명시 태깅 우선 — qa_runner / list_page_runner가 부여
     scenario_num = (r.extra or {}).get("scenario")
     if scenario_num is not None:
-        return _SCENARIO_LABELS.get(scenario_num, f"시나리오 {scenario_num}")
+        # sc5 lifecycle 은 51/52/53 세분 라벨 우선 (5a/5b/5c 헤더 구분)
+        num = _scenario_num_of(r)
+        return _SCENARIO_LABELS.get(num) or _SCENARIO_LABELS.get(scenario_num, f"시나리오 {scenario_num}")
 
     # ② 폴백: order 임계값 (구버전 호환 / 태깅 없는 결과)
     if is_list_page:
@@ -211,21 +231,33 @@ def _label_area_priority(r: ScanResult) -> tuple:
     if lbl.startswith("[") and "]" in lbl:
         lbl = lbl.split("]", 1)[1].strip()
 
+    # 0: sc5 lifecycle 액션 (저장/제거) — 재오픈 검증보다 먼저 표시 (생성→재오픈 흐름)
+    #    '재오픈' 미포함 + ('저장' or '제거') → 단계 액션으로 최상위 배치
+    if "시나리오 5" in lbl and "재오픈" not in lbl and ("저장" in lbl or "제거" in lbl):
+        return (0, "0차 (lifecycle 액션)")
+
     # 1: 1차 (메인 스위트 모달) — 추가/수정 양쪽 + 메인 영역 직접 input
+    #    sc5 라벨 추가: '메인 필드'(5a) / '빈 정책'(5c) / '차단할 확장자'·'제어할 확장자'(메인 확장자)
+    #    / '전자서명'(예외 토글·list). 프로세스의 '제어 확장자'/'확장자 제어' 와 구분됨.
     main_kw = ["스위트 추가 모달", "스위트 수정 모달", "스위트 이름", "메인 모달",
+               "메인 필드", "빈 정책",
                "클립보드", "네트워크 허용", "헤더 체크",
-               "전자서명 예외처리", "커스텀 옵션", "메인 확장자",
+               "전자서명", "커스텀 옵션",
+               "메인 확장자", "차단할 확장자", "제어할 확장자",
                "정책 list"]  # sc4 정책 list 검증도 1차 영역
     if any(kw in lbl for kw in main_kw):
         return (1, "1차 (메인 모달)")
 
-    # 2: 프로세스별 제어 (개별 프로세스) — 명시 prefix 또는 'process_modal'/'프로세스 등록 모달'
-    if "(개별 프로세스)" in lbl or "프로세스 등록 모달" in lbl:
-        return (2, "2차 (프로세스별 제어 (개별 프로세스))")
-
-    # 3: 프로세스별 제어 (태그) — 명시 prefix 또는 'tag picker'/'태그 모달'
-    if "(태그)" in lbl or "태그 picker" in lbl or "tag picker" in lbl.lower():
+    # 3: 프로세스별 제어 (태그) — 프로세스보다 먼저 체크 (itemTagList ⊃ itemList 혼동 방지)
+    #    sc5 라벨 추가: '태그 등록 모달' / 'itemTagList'
+    if ("(태그)" in lbl or "태그 등록 모달" in lbl or "itemTagList" in lbl
+            or "태그 picker" in lbl or "tag picker" in lbl.lower()):
         return (3, "2차 (프로세스별 제어 (태그))")
+
+    # 2: 프로세스별 제어 (개별 프로세스) — sc5 라벨 추가: '개별 프로세스' / 'itemList'
+    if ("(개별 프로세스)" in lbl or "프로세스 등록 모달" in lbl
+            or "개별 프로세스" in lbl or "itemList" in lbl):
+        return (2, "2차 (프로세스별 제어 (개별 프로세스))")
 
     # 4: 웹제한 기능 — 명시 prefix 또는 '웹제한 모달'/'web_restrict'
     if "웹제한" in lbl or "web_restrict" in lbl.lower():
@@ -243,14 +275,18 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
                            page_id: str = "") -> str:
     rows = []
     prev_scenario = None
-
-    def _scenario_num(r: ScanResult) -> int:
-        """extra["scenario"] 우선, 없으면 phase, 없으면 0."""
-        return (r.extra or {}).get("scenario") or r.phase or 0
+    _scenario_num = _scenario_num_of  # sc5 lifecycle 세분 포함 모듈 헬퍼
 
     # page_id 조건부 sort — 영역 우선순위 (1차 → 2차 프로세스 → 태그 → 웹제한) 적용
     if page_id in _PAGE_IDS_USE_LABEL_GROUP_SORT:
-        sort_key = lambda x: (_scenario_num(x), _label_area_priority(x), x.order or 9999)
+        def sort_key(x):
+            sn = _scenario_num(x)
+            # sc5 lifecycle (51/52/53): area 정렬 제외 → 코드 실행 순서 유지.
+            #   5a/5b/5c 는 시간순(저장→메인→프로세스→태그→웹제한)이 곧 올바른 순서이며,
+            #   results 가 append(실행) 순이라 stable sort 로 그대로 보존됨.
+            if sn >= 51:
+                return (sn, (0, ""), 0)
+            return (sn, _label_area_priority(x), x.order or 9999)
     else:
         # 기존 동작 (시나리오 → order) — RansomCruncher 등 영향 없음
         sort_key = lambda x: (_scenario_num(x), x.order or 9999)
@@ -259,6 +295,8 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
         badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
         scenario   = _scenario_label(r, is_list_page)
         expected, actual = _expected_vs_actual(r)
+        # 항목 라벨에서 '시나리오 Nx — ' prefix 제거 (헤더가 이미 시나리오 표시 → 중복/장황 방지)
+        disp_label = re.sub(r"^시나리오\s*\d+[a-z]?\s*[—–\-]\s*", "", r.label or "")
 
         # 시나리오 구분 헤더 행 (4컬럼 전체 span)
         if scenario != prev_scenario:
@@ -270,7 +308,7 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
 
         rows.append(f"""
         <tr class="row-{css}">
-          <td class="col-label">{html.escape(r.label)}</td>
+          <td class="col-label">{html.escape(disp_label)}</td>
           <td class="col-status">{badge}</td>
           <td class="col-expected">{html.escape(expected)}</td>
           <td class="col-actual">{html.escape(actual)}</td>
@@ -298,9 +336,11 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
         is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
         bug_items  = [r for r in report.results if r.status in ("fail", "warn", "known_bug", "error")]
         # page_id 조건부 sort — 영역 우선순위 (1차 → 2차) (RansomCruncher 등 무관)
+        #   sc5 lifecycle (>=51) 은 area 제외 — 실행 순서 유지 (table sort 와 일관)
         if page_id in _PAGE_IDS_USE_LABEL_GROUP_SORT:
-            sc_num = lambda r: (r.extra or {}).get("scenario") or r.phase or 0
-            bug_items.sort(key=lambda r: (sc_num(r), _label_area_priority(r), r.order or 9999))
+            bug_items.sort(key=lambda r: (
+                (_scenario_num_of(r), (0, ""), 0) if _scenario_num_of(r) >= 51
+                else (_scenario_num_of(r), _label_area_priority(r), r.order or 9999)))
         for r in bug_items:
             issue_num += 1
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))

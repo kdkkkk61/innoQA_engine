@@ -152,23 +152,30 @@ class TestScenario5Lifecycle(ControlSuiteBase):
 
         # ── 6. 재오픈 → 모든 값 일치 ──────────────────────────
         page.open_modify_modal(NAME)
-        # 메인 11 필드
+        # 메인 11 필드 — (일치여부, 실제값) 튜플로 실제 들어있는 값 표시
+        _cb = "ON" if page.page.locator(page.SEL_CLIPBOARD_RESTRICT).first.is_checked() else "OFF"
+        _nw = "ON" if page.is_network_checked() else "OFF"
+        _hd = "ON" if page.page.locator(page.SEL_HEADER_CHECK).first.is_checked() else "OFF"
+        _sg = "ON" if page.page.locator(page.SEL_SIGN_EXCEPT_TOGGLE).first.is_checked() else "OFF"
+        _url = page.get_clipboard_allow_url()
+        _ext = page.get_main_extension_list()
+        _sign = page.get_sign_except_list()
         checks_main = {
-            "csu_name":          page.get_csu_name() == NAME,
-            "clipboard_toggle":  page.page.locator(page.SEL_CLIPBOARD_RESTRICT).first.is_checked(),
-            "clipboard_url":     DATA["clipboard_url"] in page.get_clipboard_allow_url(),
-            "network":           page.is_network_checked(),
-            "radio_label":       page.get_radio_react_text() == "차단할 확장자",
-            "ext_list":          page.get_main_extension_list() == DATA["ext_list"],
-            "header_check":      page.page.locator(page.SEL_HEADER_CHECK).first.is_checked(),
-            "sign_toggle":       page.page.locator(page.SEL_SIGN_EXCEPT_TOGGLE).first.is_checked(),
-            "sign_count":        len(page.get_sign_except_list()) == len(DATA["sign_excepts"]),
-            "custom_option":     page.get_custom_option() == DATA["custom_option"],
+            "스위트 이름":          (page.get_csu_name() == NAME, page.get_csu_name()),
+            "클립보드 공유제한":    (_cb == "ON", _cb),
+            "클립보드 허용 URL":    (DATA["clipboard_url"] in _url, _url),
+            "네트워크 허용":        (page.is_network_checked(), _nw),
+            "제어할 확장자 라디오": (page.get_radio_react_text() == "차단할 확장자", page.get_radio_react_text()),
+            "차단할 확장자 list":   (_ext == DATA["ext_list"], ", ".join(_ext)),
+            "헤더 체크":            (_hd == "ON", _hd),
+            "전자서명 예외 토글":   (_sg == "ON", _sg),
+            "전자서명 예외 list":   (len(_sign) == len(DATA["sign_excepts"]), ", ".join(_sign)),
+            "커스텀 옵션":          (page.get_custom_option() == DATA["custom_option"], page.get_custom_option()),
         }
-        for k, ok in checks_main.items():
+        for k, (ok, val) in checks_main.items():
             self._add("pass" if ok else "fail",
-                      f"시나리오 5a — 메인 필드 재오픈 일치: {k}",
-                      f"입력: 수정 모달 재오픈 / 결과: 일치={ok}", sc=5)
+                      f"시나리오 5a — 메인 필드 재오픈: {k}",
+                      f"입력: 재오픈 / 결과: 실제값={val!r}", sc=5)
 
         # ── 개별 프로세스 itemList → process_modal 재진입 + 안 데이터 일치 ──
         page.click_individual_process_tab()
@@ -180,24 +187,28 @@ class TestScenario5Lifecycle(ControlSuiteBase):
         if proc_rows >= 1:
             page.click_item_list_row(0)
             # process_modal 재진입 후 안 데이터 일치 검증
+            _p_ip = page.process.get_ip_list()
+            _p_ext = page.process.get_extension_list()
+            _p_drv = page.process.get_drive_letter()
+            _p_desc = page.process.get_description()
+            _b = lambda sel: "ON" if page.process.is_toggle_checked(sel) else "OFF"
             checks_proc = {
-                "isProcessExcept_ON":       page.process.is_toggle_checked(page.process.SEL_TOGGLE_PROC_EXCEPT),
-                "isPClipboardRestrict_ON":  page.process.is_toggle_checked(page.process.SEL_TOGGLE_PCLIPBOARD),
-                "isSandbox_ON":             page.process.is_toggle_checked(page.process.SEL_TOGGLE_SANDBOX),
-                "isDenyExceptDrive_ON":     page.process.is_toggle_checked(page.process.SEL_TOGGLE_DENY_EXCEPT_DRIVE),
-                "isPNetwork_ON":            page.process.is_toggle_checked(page.process.SEL_TOGGLE_PNETWORK),
-                "ip_port_registered":       any(DATA["proc_ip"] in x and DATA["proc_port"] in x
-                                                for x in page.process.get_ip_list()),
-                "isPControlExtension_ON":   page.process.is_toggle_checked(page.process.SEL_TOGGLE_PCONTROL_EXT),
-                "proc_ext_list":            page.process.get_extension_list() == DATA["proc_ext"],
-                "isAccessDrive_ON":         page.process.is_toggle_checked(page.process.SEL_TOGGLE_ACCESS_DRIVE),
-                "drive_letter":             page.process.get_drive_letter() == DATA["proc_drive"],
-                "description":              DATA["proc_desc"] in page.process.get_description(),
+                "프로세스 제외 토글":   (page.process.is_toggle_checked(page.process.SEL_TOGGLE_PROC_EXCEPT), _b(page.process.SEL_TOGGLE_PROC_EXCEPT)),
+                "클립보드 제어 토글":   (page.process.is_toggle_checked(page.process.SEL_TOGGLE_PCLIPBOARD), _b(page.process.SEL_TOGGLE_PCLIPBOARD)),
+                "샌드박스 토글":        (page.process.is_toggle_checked(page.process.SEL_TOGGLE_SANDBOX), _b(page.process.SEL_TOGGLE_SANDBOX)),
+                "예외드라이브차단 토글":(page.process.is_toggle_checked(page.process.SEL_TOGGLE_DENY_EXCEPT_DRIVE), _b(page.process.SEL_TOGGLE_DENY_EXCEPT_DRIVE)),
+                "네트워크 토글":        (page.process.is_toggle_checked(page.process.SEL_TOGGLE_PNETWORK), _b(page.process.SEL_TOGGLE_PNETWORK)),
+                "허용 IP/Port":         (any(DATA["proc_ip"] in x and DATA["proc_port"] in x for x in _p_ip), ", ".join(_p_ip)),
+                "확장자 제어 토글":     (page.process.is_toggle_checked(page.process.SEL_TOGGLE_PCONTROL_EXT), _b(page.process.SEL_TOGGLE_PCONTROL_EXT)),
+                "제어 확장자 list":     (_p_ext == DATA["proc_ext"], ", ".join(_p_ext)),
+                "접근 드라이브 토글":   (page.process.is_toggle_checked(page.process.SEL_TOGGLE_ACCESS_DRIVE), _b(page.process.SEL_TOGGLE_ACCESS_DRIVE)),
+                "드라이브 letter":      (_p_drv == DATA["proc_drive"], _p_drv),
+                "설명":                 (DATA["proc_desc"] in _p_desc, _p_desc),
             }
-            for k, ok in checks_proc.items():
+            for k, (ok, val) in checks_proc.items():
                 self._add("pass" if ok else "fail",
-                          f"시나리오 5a — 프로세스 등록 모달 재진입 일치: {k}",
-                          f"입력: itemList 행 클릭 (재진입) / 결과: 일치={ok}", sc=5)
+                          f"시나리오 5a — 프로세스 등록 모달 재진입: {k}",
+                          f"입력: itemList 행 클릭 (재진입) / 결과: 실제값={val!r}", sc=5)
             page.process.close()
 
         # ── 태그 itemTagList → process_modal 재진입 ──
@@ -215,24 +226,28 @@ class TestScenario5Lifecycle(ControlSuiteBase):
                       f"입력: itemTagList 행 클릭 / 결과: display={tag_disp!r}", sc=5)
 
             # ── 태그 process_modal 12 필드 일치 (프로세스와 동일 깊이) ──
+            _t_ip = page.process.get_ip_list()
+            _t_ext = page.process.get_extension_list()
+            _t_drv = page.process.get_drive_letter()
+            _t_desc = page.process.get_description()
+            _tb = lambda sel: "ON" if page.process.is_toggle_checked(sel) else "OFF"
             checks_tag = {
-                "isProcessExcept_ON":       page.process.is_toggle_checked(page.process.SEL_TOGGLE_PROC_EXCEPT),
-                "isPClipboardRestrict_ON":  page.process.is_toggle_checked(page.process.SEL_TOGGLE_PCLIPBOARD),
-                "isSandbox_ON":             page.process.is_toggle_checked(page.process.SEL_TOGGLE_SANDBOX),
-                "isDenyExceptDrive_ON":     page.process.is_toggle_checked(page.process.SEL_TOGGLE_DENY_EXCEPT_DRIVE),
-                "isPNetwork_ON":            page.process.is_toggle_checked(page.process.SEL_TOGGLE_PNETWORK),
-                "tag_ip_port_registered":   any(DATA["tag_ip"] in x and DATA["tag_port"] in x
-                                                for x in page.process.get_ip_list()),
-                "isPControlExtension_ON":   page.process.is_toggle_checked(page.process.SEL_TOGGLE_PCONTROL_EXT),
-                "tag_ext_list":             page.process.get_extension_list() == DATA["tag_ext"],
-                "isAccessDrive_ON":         page.process.is_toggle_checked(page.process.SEL_TOGGLE_ACCESS_DRIVE),
-                "tag_drive_letter":         page.process.get_drive_letter() == DATA["tag_drive"],
-                "tag_description":          DATA["tag_desc"] in page.process.get_description(),
+                "프로세스 제외 토글":   (page.process.is_toggle_checked(page.process.SEL_TOGGLE_PROC_EXCEPT), _tb(page.process.SEL_TOGGLE_PROC_EXCEPT)),
+                "클립보드 제어 토글":   (page.process.is_toggle_checked(page.process.SEL_TOGGLE_PCLIPBOARD), _tb(page.process.SEL_TOGGLE_PCLIPBOARD)),
+                "샌드박스 토글":        (page.process.is_toggle_checked(page.process.SEL_TOGGLE_SANDBOX), _tb(page.process.SEL_TOGGLE_SANDBOX)),
+                "예외드라이브차단 토글":(page.process.is_toggle_checked(page.process.SEL_TOGGLE_DENY_EXCEPT_DRIVE), _tb(page.process.SEL_TOGGLE_DENY_EXCEPT_DRIVE)),
+                "네트워크 토글":        (page.process.is_toggle_checked(page.process.SEL_TOGGLE_PNETWORK), _tb(page.process.SEL_TOGGLE_PNETWORK)),
+                "허용 IP/Port":         (any(DATA["tag_ip"] in x and DATA["tag_port"] in x for x in _t_ip), ", ".join(_t_ip)),
+                "확장자 제어 토글":     (page.process.is_toggle_checked(page.process.SEL_TOGGLE_PCONTROL_EXT), _tb(page.process.SEL_TOGGLE_PCONTROL_EXT)),
+                "제어 확장자 list":     (_t_ext == DATA["tag_ext"], ", ".join(_t_ext)),
+                "접근 드라이브 토글":   (page.process.is_toggle_checked(page.process.SEL_TOGGLE_ACCESS_DRIVE), _tb(page.process.SEL_TOGGLE_ACCESS_DRIVE)),
+                "드라이브 letter":      (_t_drv == DATA["tag_drive"], _t_drv),
+                "설명":                 (DATA["tag_desc"] in _t_desc, _t_desc),
             }
-            for k, ok in checks_tag.items():
+            for k, (ok, val) in checks_tag.items():
                 self._add("pass" if ok else "fail",
-                          f"시나리오 5a — 태그 등록 모달 재진입 일치: {k}",
-                          f"입력: itemTagList 행 클릭 (재진입) / 결과: 일치={ok}", sc=5)
+                          f"시나리오 5a — 태그 등록 모달 재진입: {k}",
+                          f"입력: itemTagList 행 클릭 (재진입) / 결과: 실제값={val!r}", sc=5)
             page.process.close()
 
         # ── 웹제한 itemWebRestrictList → web_restrict 재진입 ──
@@ -247,17 +262,24 @@ class TestScenario5Lifecycle(ControlSuiteBase):
             wr_limit = page.web_restrict.get_upload_limit()
             wr_desc = page.web_restrict.get_description()
             wr_isurl = page.web_restrict.is_url_checked()
+            # web_ext "doc;xls" → list ["doc","xls"] 기대 (세미콜론 다중 등록)
+            expected_web_exts = [e for e in DATA["web_ext"].split(";") if e]
+            wr_ext_list = page.web_restrict.get_file_extension_list()
+            wr_procs = page.web_restrict.get_process_rows()
+            wr_urls = page.web_restrict.get_url_list()
             checks_web = {
-                "name":          wr_name == DATA["web_name"],
-                "isUrl_ON":      wr_isurl is True,
-                "url_in_list":   any(DATA["web_url"] in u for u in page.web_restrict.get_url_list()),
-                "upload_limit":  wr_limit == DATA["web_limit"],
-                "description":   DATA["web_desc"] in wr_desc,
+                "웹제한 이름":      (wr_name == DATA["web_name"], wr_name),
+                "프로세스 (multi)": (len(wr_procs) >= 1, ", ".join(wr_procs)),
+                "URL 사용 토글":    (wr_isurl is True, "ON" if wr_isurl else "OFF"),
+                "적용 URL":         (any(DATA["web_url"] in u for u in wr_urls), ", ".join(wr_urls)),
+                "업로드 확장자":    (all(e in wr_ext_list for e in expected_web_exts), ", ".join(wr_ext_list)),
+                "업로드 제한용량":  (wr_limit == DATA["web_limit"], wr_limit),
+                "설명":             (DATA["web_desc"] in wr_desc, wr_desc),
             }
-            for k, ok in checks_web.items():
+            for k, (ok, val) in checks_web.items():
                 self._add("pass" if ok else "fail",
-                          f"시나리오 5a — 웹제한 모달 재진입 일치: {k}",
-                          f"입력: itemWebRestrictList 행 클릭 / 결과: 일치={ok}", sc=5)
+                          f"시나리오 5a — 웹제한 모달 재진입: {k}",
+                          f"입력: itemWebRestrictList 행 클릭 / 결과: 실제값={val!r}", sc=5)
             page.web_restrict.close()
 
         page.close_modal()
@@ -271,15 +293,33 @@ class TestScenario5Lifecycle(ControlSuiteBase):
     # 시나리오 5b — 한 정책 lifecycle: 5a 정책 EDIT → 입력값 변경 → 저장
     # ==================================================================
     def test_scenario5b_lifecycle_modify(self, logged_in_page, settings):
-        """시나리오 5b — 5a 가 남긴 [AUTO_KEEP]_sc5_step1 정책의 EDIT 진입 → 메인 필드 변경 → 저장.
+        """시나리오 5b — 5a 정책 EDIT → 전체 OFF (메인 + sub-modal 토글) → 재오픈 OFF 확인.
 
-        5a 정책이 list 에 없으면 (5a 미실행/실패) skip — 5a 의존성 명시.
+        사용자 lifecycle 흐름 (2026-05-27): 생성 ON → 전체 OFF 확인 → (5c) 요소 제거
+          - 메인 토글 4개 OFF
+          - 프로세스/태그 행 재진입 → 안의 토글(7개) OFF → 저장 (행/list 는 유지)
+          - 웹제한 행 재진입 → is_url 토글 OFF
+          → 재오픈 시 메인 + sub-modal 토글 전부 OFF 확인 (sub-modal OFF 검증이 핵심 — 기존 누락분)
+
+        5a 정책이 list 에 없으면 skip.
         """
-        print("\n━━ [제어 스위트] 시나리오 5b: 한 정책 lifecycle — EDIT 변경 + 저장 ━━━")
+        print("\n━━ [제어 스위트] 시나리오 5b: 한 정책 lifecycle — 전체 OFF (메인+sub-modal) + 재오픈 OFF 확인 ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
         NAME = self.LIFECYCLE_NAME
-        MOD = self.LIFECYCLE_MOD
+        P = page.process
+        PROC_TOGGLES = [P.SEL_TOGGLE_PROC_EXCEPT, P.SEL_TOGGLE_PCLIPBOARD, P.SEL_TOGGLE_SANDBOX,
+                        P.SEL_TOGGLE_DENY_EXCEPT_DRIVE, P.SEL_TOGGLE_PNETWORK,
+                        P.SEL_TOGGLE_PCONTROL_EXT, P.SEL_TOGGLE_ACCESS_DRIVE]
+
+        def _proc_all_off():
+            page.process.set_process_except(False)
+            page.process.set_pclipboard_restrict(False)
+            page.process.set_sandbox(False)
+            page.process.set_deny_except_drive(False)
+            page.process.set_pnetwork(False)
+            page.process.set_pcontrol_extension(False)
+            page.process.set_access_drive(False)
 
         page.navigate_to()
         if not page.is_policy_exists(NAME):
@@ -288,27 +328,81 @@ class TestScenario5Lifecycle(ControlSuiteBase):
                       "입력: 5a 미실행/실패 / 결과: skip", sc=5)
             return
 
-        # ── EDIT 진입 → 메인 필드 변경 ────────────────────────
+        # ── 전체 OFF — 메인 토글 + sub-modal 재진입 토글 OFF (행/list 유지) ──
         page.open_modify_modal(NAME)
-        # 클립보드 토글 OFF + URL 변경
+        # 1. 메인 토글 4개 OFF
         page.set_clipboard_restrict_toggle(False)
-        page.set_clipboard_restrict_toggle(True)  # 토글 재오픈 (URL 입력란 노출 유지)
-        page.set_clipboard_allow_url(MOD["clipboard_url"])
-        # 네트워크 OFF
         page.set_network_toggle(False)
-        # 라디오 라벨 토글 (5a 의 click_radio_allow → 5b 에서 click_radio_block 으로 변경)
-        page.click_radio_block()
-        # 헤더 OFF, 전자서명 OFF
         page.set_header_check(False)
         page.set_sign_except_toggle(False)
-        # 커스텀 변경
-        page.set_custom_option(MOD["custom_option"])
-
+        # 2. 개별 프로세스 재진입 → 7토글 OFF
+        page.click_individual_process_tab()
+        if len(page.get_item_list_rows()) >= 1:
+            page.click_item_list_row(0)
+            page.process.wait_open()
+            _proc_all_off()
+            page.process.confirm()
+        # 3. 태그 재진입 → 7토글 OFF
+        page.click_tag_tab()
+        if len(page.get_item_tag_list_rows()) >= 1:
+            page.click_item_tag_list_row(0)
+            page.process.wait_open()
+            _proc_all_off()
+            page.process.confirm()
+        # 4. 웹제한 재진입 → is_url 토글 OFF
+        page.click_individual_process_tab()
+        if len(page.get_item_web_restrict_rows()) >= 1:
+            page.click_item_web_restrict_row(0)
+            page.web_restrict.wait_open()
+            page.web_restrict.set_is_url(False)
+            page.web_restrict.confirm()
+        # 5. 메인 저장
+        page.click_individual_process_tab()
         msg = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
-        self._add("pass" if msg == "저장 하였습니다" else "fail",
-                  "시나리오 5b — lifecycle 정책 EDIT 변경 + 저장",
-                  f"입력: 클립보드URL/네트워크/라디오/헤더/전자서명/커스텀 / 결과: 메시지={msg!r}", sc=5)
+        self._add("pass" if msg in ("저장 하였습니다", "수정된 항목이 없습니다.") else "fail",
+                  "시나리오 5b — 전체 OFF 수정 저장",
+                  f"입력: 메인4토글 + 프로세스/태그 7토글 + 웹제한 is_url OFF / 결과: 메시지={msg!r}", sc=5)
+        page.close_modal()
+
+        # ── 재오픈 → 메인 + sub-modal 토글 전부 OFF 확인 ──────
+        page.navigate_to()
+        page.open_modify_modal(NAME)
+        # 메인 4토글
+        _mb = lambda sel: "ON" if page.page.locator(sel).first.is_checked() else "OFF"
+        main_off = {
+            "클립보드 공유제한": _mb(page.SEL_CLIPBOARD_RESTRICT),
+            "네트워크 허용":     _mb(page.SEL_NETWORK) if hasattr(page, "SEL_NETWORK") else ("ON" if page.is_network_checked() else "OFF"),
+            "헤더 체크":         _mb(page.SEL_HEADER_CHECK),
+            "전자서명 예외":     _mb(page.SEL_SIGN_EXCEPT_TOGGLE),
+        }
+        for k, v in main_off.items():
+            self._add("pass" if v == "OFF" else "fail",
+                      f"시나리오 5b — 재오픈 메인 토글 OFF: {k}",
+                      f"입력: 재오픈 / 결과: 실제값={v!r}", sc=5)
+        # 프로세스 재진입 7토글 OFF
+        page.click_individual_process_tab()
+        if len(page.get_item_list_rows()) >= 1:
+            page.click_item_list_row(0)
+            page.process.wait_open()
+            for sel in PROC_TOGGLES:
+                off = not page.process.is_toggle_checked(sel)
+                self._add("pass" if off else "fail",
+                          f"시나리오 5b — 재오픈 프로세스 토글 OFF: {sel.split('#')[-1]}",
+                          f"입력: itemList 재진입 / 결과: 실제값={'OFF' if off else 'ON'}", sc=5)
+            page.process.close()
+        # 태그 재진입 7토글 OFF
+        page.click_tag_tab()
+        if len(page.get_item_tag_list_rows()) >= 1:
+            page.click_item_tag_list_row(0)
+            page.process.wait_open()
+            for sel in PROC_TOGGLES:
+                off = not page.process.is_toggle_checked(sel)
+                self._add("pass" if off else "fail",
+                          f"시나리오 5b — 재오픈 태그 토글 OFF: {sel.split('#')[-1]}",
+                          f"입력: itemTagList 재진입 / 결과: 실제값={'OFF' if off else 'ON'}", sc=5)
+            page.process.close()
+        page.close_modal()
 
     # ==================================================================
     # 시나리오 5c — 한 정책 lifecycle: 5b 변경값 재오픈 일치 확인 + cleanup
@@ -318,16 +412,21 @@ class TestScenario5Lifecycle(ControlSuiteBase):
     # 시나리오 5c — 한 정책 lifecycle: 5b 변경값 재오픈 일치 확인 + cleanup
     # ==================================================================
     def test_scenario5c_lifecycle_verify(self, logged_in_page, settings):
-        """시나리오 5c — 5b 변경 후 lifecycle 정책 재오픈 → 변경값 정상 적용 확인 → cleanup.
+        """시나리오 5c — 5b(전체 OFF) 후 모든 요소(내용/행) 제거 → 재오픈 이름만 확인 → cleanup.
+
+        사용자 lifecycle 흐름 (2026-05-27): 생성 ON → 전체 OFF(5b) → 요소 제거(5c)
+          - 5b 가 토글을 OFF 해서 클립보드 URL / 전자서명 list 가 숨겨진 상태
+          - 제거하려면 해당 토글 ON 복귀 → list/URL 노출 → 제거 → 다시 OFF
+            ("다시 ON 하고 지우고 다시 OFF" — 사용자 표현)
+          - 확장자 list (라디오 영역, 토글 무관) / 커스텀 / 프로세스·태그·웹제한 행 삭제
+          → 재오픈 시 이름만 + 전부 OFF + 전부 비움
 
         5b 정책이 list 에 없으면 skip.
         """
-        print("\n━━ [제어 스위트] 시나리오 5c: 한 정책 lifecycle — 변경값 재오픈 일치 확인 ━━━")
+        print("\n━━ [제어 스위트] 시나리오 5c: 한 정책 lifecycle — 모든 요소 제거 + 이름만 확인 ━━━")
         page = NpouchControlSuitePage(logged_in_page, settings)
         self._page = page.page
         NAME = self.LIFECYCLE_NAME
-        MOD = self.LIFECYCLE_MOD
-        ADD = self.LIFECYCLE_ADD
 
         page.navigate_to()
         if not page.is_policy_exists(NAME):
@@ -336,23 +435,82 @@ class TestScenario5Lifecycle(ControlSuiteBase):
                       "입력: 5b 미실행/실패 / 결과: skip", sc=5)
             return
 
+        # ── 요소 제거 — 토글 ON 복귀 → 숨겨진 list/URL 제거 → 다시 OFF ──
         page.open_modify_modal(NAME)
+        # 1. 클립보드 토글 ON 복귀 → URL 제거 (5b 에서 OFF 되어 숨겨진 상태)
+        page.set_clipboard_restrict_toggle(True)
+        page.set_clipboard_allow_url("")
+        # 2. 전자서명 토글 ON 복귀 → list 제거
+        page.set_sign_except_toggle(True)
+        removed_sign = page.remove_all_sign_except()
+        # 3. 차단할 확장자 list 제거 (라디오 영역 — 토글 무관, 항상 노출)
+        for ext in list(page.get_main_extension_list()):
+            try:
+                page.remove_main_extension(ext)
+            except Exception:
+                pass
+        # 4. 커스텀 옵션 빈값
+        page.set_custom_option("")
+        # 5. 프로세스/태그/웹제한 행 전부 삭제
+        removed_proc = page.remove_all_process_items()
+        removed_tag  = page.remove_all_tag_items()
+        removed_web  = page.remove_all_web_restrict_items()
+        page.click_individual_process_tab()
+        self._add("pass" if (removed_proc + removed_tag + removed_web) >= 1 else "fail",
+                  "시나리오 5c — 요소(행) 제거 (프로세스/태그/웹제한)",
+                  f"입력: 전체선택+삭제 / 결과: 프로세스={removed_proc} 태그={removed_tag} 웹제한={removed_web} (전자서명={removed_sign})", sc=5)
+        # 6. 다시 OFF — 빈 정책 = 전부 OFF (제거 위해 ON 복귀했던 토글 원복)
+        page.set_clipboard_restrict_toggle(False)
+        page.set_network_toggle(False)
+        page.set_header_check(False)
+        page.set_sign_except_toggle(False)
+        # 7. 저장 → 빈 정책 결과 판별
+        msg = page.save_policy(mode="modify")
+        page.dismiss_confirm_modal()
+        if msg in ("저장 하였습니다", "수정된 항목이 없습니다."):
+            self._add("pass", "시나리오 5c — 모든 요소 제거 + 전부 OFF 저장 (빈 정책 = 이름만)",
+                      f"입력: list/행 제거 + 토글 OFF + 수정 / 결과: 메시지={msg!r}", sc=5)
+        elif ("서버" in msg and "오류" in msg) or "발생" in msg:
+            self._add("warn", "[UX 결함] 빈 정책 (이름만) 저장 시 서버 오류 (sub-modal 단계에서 안내되어야 정상)",
+                      f"입력: 모든 요소 제거 + 수정 / 결과: 메시지={msg!r}", sc=5)
+        else:
+            self._add("pass", "시나리오 5c — 빈 정책 저장 차단 메시지 (정상 가드)",
+                      f"입력: 모든 요소 제거 + 수정 / 결과: 메시지={msg!r}", sc=5)
+        page.close_modal()
+
+        # ── 재오픈 → 이름만 + 전부 OFF + 전부 비움 확인 ────────
+        page.navigate_to()
+        page.open_modify_modal(NAME)
+        _c_cb = "ON" if page.page.locator(page.SEL_CLIPBOARD_RESTRICT).first.is_checked() else "OFF"
+        _c_nw = "ON" if page.is_network_checked() else "OFF"
+        _c_hd = "ON" if page.page.locator(page.SEL_HEADER_CHECK).first.is_checked() else "OFF"
+        _c_sg = "ON" if page.page.locator(page.SEL_SIGN_EXCEPT_TOGGLE).first.is_checked() else "OFF"
+        _c_url = page.get_clipboard_allow_url().strip()
+        _c_ext = page.get_main_extension_list()
+        _c_sign = page.get_sign_except_list()
+        _c_custom = page.get_custom_option()
         verify_checks = {
-            "클립보드 허용 URL 변경 반영":   MOD["clipboard_url"] in page.get_clipboard_allow_url(),
-            "네트워크 접근 토글 (ON→OFF)":   page.is_network_checked() is False,
-            "헤더 체크 토글 (ON→OFF)":       page.page.locator(page.SEL_HEADER_CHECK).first.is_checked() is False,
-            "전자서명 예외 토글 (ON→OFF)":   page.page.locator(page.SEL_SIGN_EXCEPT_TOGGLE).first.is_checked() is False,
-            "커스텀 옵션 변경 반영":         page.get_custom_option() == MOD["custom_option"],
-            # 미변경 필드 보존
-            "스위트 이름 보존":              page.get_csu_name() == NAME,
-            "확장자 목록 보존":              page.get_main_extension_list() == ADD["ext_list"],
+            "필수 — 스위트 이름 유지":  (page.get_csu_name() == NAME, page.get_csu_name()),
+            "클립보드 공유제한 OFF":    (_c_cb == "OFF", _c_cb),
+            "네트워크 허용 OFF":        (_c_nw == "OFF", _c_nw),
+            "헤더 체크 OFF":            (_c_hd == "OFF", _c_hd),
+            "전자서명 예외 OFF":        (_c_sg == "OFF", _c_sg),
+            "클립보드 허용 URL 비움":   (_c_url == "", _c_url or "(빈값)"),
+            "차단할 확장자 list 비움":  (len(_c_ext) == 0, ", ".join(_c_ext) or "(0건)"),
+            "전자서명 예외 list 비움":  (len(_c_sign) == 0, ", ".join(_c_sign) or "(0건)"),
+            "커스텀 옵션 빈값":         (_c_custom == "", _c_custom or "(빈값)"),
+            "개별 프로세스 행 비움":    (len(page.get_item_list_rows()) == 0, f"{len(page.get_item_list_rows())}행"),
+            "태그 행 비움":             (len(page.get_item_tag_list_rows()) == 0, f"{len(page.get_item_tag_list_rows())}행"),
+            "웹제한 행 비움":           (len(page.get_item_web_restrict_rows()) == 0, f"{len(page.get_item_web_restrict_rows())}행"),
         }
-        for k, ok in verify_checks.items():
+        for k, (ok, val) in verify_checks.items():
             self._add("pass" if ok else "fail",
-                      f"시나리오 5c — lifecycle 변경값 재오픈 일치: {k}",
-                      f"입력: 수정 모달 재오픈 / 결과: 일치={ok}", sc=5)
+                      f"시나리오 5c — 빈 정책 (이름만) 재오픈 일치: {k}",
+                      f"입력: 재오픈 / 결과: 실제값={val!r}", sc=5)
 
         page.close_modal()
         # 시나리오 5 종료 — 시나리오 6 가 새 KEEP 을 만들 예정이므로 전체 정리.
+        # ⚠ close_modal 직후 list 의 삭제 버튼 click 잔해 timeout 방지 → navigate_to (F5) 로 list 안정화
+        page.navigate_to()
         page.delete_all_test_data()
 
