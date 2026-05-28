@@ -103,13 +103,34 @@ fields:
 # 시나리오 책임 분담 (제어스위트 패턴 참고 — 사용자 결정 시 확정)
 # ──────────────────────────────────────────────────────────────────────
 scenario_plan:
-  sc1: "UI 구조 — 목록·버튼·모달 진입/탈출 (clean slate cleanup 포함)"
-  sc2: "입력 구조 — 26 필드 존재·default·maxlength·필수 1차 검증"
-  sc3: "ADD 동작 — 정상 ADD + 형식/중복/오버 입력 검증 + 메시지 패턴"
-  sc4: "EDIT 동작 — list 행 → EDIT 모달 + 저장값 일치 + sc3 회귀"
+  # ⚠ 원본보호 정책의 결정적 특수성 (사용자 통찰 2026-05-28):
+  #   ADD 모달은 '기본 설정' 탭만 접근 가능 (tab_access_restriction).
+  #   허용/예외처리/실행차단 프로세스 탭의 UI 구조는 EDIT 진입 후에만 검증 가능.
+  #   → sc1/sc2 가 control_suite 처럼 모든 탭을 ADD 모달에서 한 번에 검증 불가.
+  #   → "임시 정책 1건 생성 → EDIT 진입 → 4탭 UI 검증 → cleanup" 흐름 필요.
+
+  sc1: "UI 구조 — 목록·버튼·ADD 모달 기본설정 탭 진입/탈출"
+  sc1_extra:
+    sc1c: |
+      [AUTO]_sc1_probe 정책 1건 임시 생성 → 목록 → EDIT 진입 →
+      4탭 모두 active 가능 확인 → 각 탭 UI 요소 존재 확인 → cleanup.
+      (ADD 에서 검증 불가능한 비기본 3탭 UI 를 EDIT 에서 확정)
+
+  sc2: "입력 구조 (기본설정 탭) — default·maxlength·* 필수 mark·존재 확인"
+  sc2_extra:
+    sc2c: "EDIT 진입 후 비기본 3탭의 input 구조 (default·maxlength·존재) — sc1c 와 같은 임시 정책 활용 가능"
+
+  sc3: "ADD 동작 — 기본설정 탭 입력 + 필수 빈값 차단 + driveLetter 마스킹 + CSU picker + 정상 저장"
+  sc4: "EDIT 동작 — list 행 → EDIT 모달 + 4탭 저장값 일치 + sc3 회귀 + 비기본 3탭 입력/저장"
   sc5: "lifecycle — 생성 ON → 전체 OFF → 요소 제거 → 재채움 (AUTO_KEEP 보존)"
-  sc6: "연계 데이터 핸드오프 확인 (다음 페이지 = ?)"
+  sc6: "연계 데이터 핸드오프 확인 (다음 페이지 = nPouch 정책?)"
   zz:  "최종 cleanup — AUTO 만 정리, KEEP 보존"
+
+  # 시나리오 별 ADD vs EDIT 영역 분리 정리 (1축 인벤토리 수집 시 표시)
+  field_visibility_in_add_vs_edit:
+    add_modal_visible_tabs: ["기본 설정 (idx=0)"]
+    edit_modal_visible_tabs: ["기본 설정", "허용 프로세스", "예외처리 프로세스", "실행차단 프로세스"]
+    add_locked_tab_message: "정책 정보를 먼저 등록 하셔야 합니다."   # __globalMessageModal
 
 # ──────────────────────────────────────────────────────────────────────
 # 사용자 직접 검증 사실 — ADD 모달 (2026-05-28)
@@ -131,13 +152,34 @@ scenario_3_must_test_add:
     verified_by: "Chrome MCP 직접 검증 2026-05-28 + 사용자 스크린샷"
 
   required_fields:
-    description: "정책 추가 모달 빨간 * 표시 필수 필드 — 빈값 저장 시 차단"
-    fields:
-      - {id: "originProtectPolicyName", label: "정책 이름",            note: "* 필수"}
-      - {id: "originProtectDriveQuota_section", label: "원본보호 드라이브 설정", note: "* 필수 (driveLetter/Label/Quota 묶음)"}
-      - {id: "controlSuiteId",          label: "제어 스위트 선택",       note: "* 필수 — CSU picker 로 선택"}
+    description: |
+      ADD 모달 필수 필드 — 진짜 마커는 라벨 안 * 가 아니라 별도 <span class="star">*</span>.
+      Chrome MCP 직접 검증 2026-05-28: span.star 정확히 3개 존재 (사용자 스크린샷 3개 별표와 일치).
+      라벨 안에 잡힌 일부 * 는 findLabel 매칭 노이즈 — 신뢰도 낮음.
+    required_marker_selector: "span.star"
+    required_marker_count: 3
+    items:
+      - {section: "정책 이름",            target: "input#originProtectPolicyName", required: true,  note: "단일 필드"}
+      - {section: "원본보호 드라이브 설정", target: "묶음 (driveLetter/driveLabel/originProtectDriveQuota)", required: true,
+         note: "섹션 헤더 * — 묶음 단위 필수. 어디까지 빈값 시 차단되는지 분리 검증 pending"}
+      - {section: "제어 스위트 선택",      target: "span#controlSuiteId (CSU picker 결과)", required: true,
+         note: "picker (selectCommonPolicyItemModal) 로 선택"}
     severity: "must_test"
-    verified_by: "사용자 스크린샷 2026-05-28"
+    verified_by: "Chrome MCP 직접 검증 2026-05-28 (span.star 3개 확정)"
+
+  default_values:
+    description: "ADD 모달 close → re-open 시 모든 필드 초기화 — 진짜 default 확인 (prefill 아님)"
+    verified_by: "Chrome MCP 직접 검증 2026-05-28"
+    fields:
+      all_text_inputs: ""
+      all_checkboxes: false   # isAllowProcess 포함 — 사용자 ADD 스크린샷에서도 unchecked
+    reset_behavior: "close → re-open 동작 시 메모리 잔존 없이 빈/false 로 리셋"
+
+  maxlength_inventory:
+    description: "ADD 모달 모든 input 의 DOM maxlength 속성 = null. 서버 측 검증 의존."
+    verified_by: "Chrome MCP 직접 검증 2026-05-28"
+    maxlen_null_inputs: "all (34 inputs visible+hidden)"
+    note: "control_suite uploadLimitSize 12자 같은 DOM 한도 없음 → 길이 한도는 서버 응답으로만 확인 가능"
 
   drive_letter_format:
     description: |
