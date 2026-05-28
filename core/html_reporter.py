@@ -248,6 +248,15 @@ def _expected_vs_actual(r: ScanResult) -> tuple[str, str]:
 
 # ── 시나리오 레이블 결정 ───────────────────────────────────────────
 
+def _strip_scenario_prefix(label: str) -> str:
+    """라벨에서 시나리오 prefix 제거 — 헤더가 이미 시나리오 표시하므로 중복/장황 방지.
+    두 패턴: '시나리오 Nx — ' (한글) / 'scNx — ' (영어, 사용자 지적 2026-05-29).
+    """
+    s = re.sub(r"^시나리오\s*\d+[a-z]?\s*[—–\-]\s*", "", label)
+    s = re.sub(r"^sc\d+[a-z]?\s*[—–\-]\s*", "", s, flags=re.IGNORECASE)
+    return s
+
+
 def _scenario_label(r: ScanResult, is_list_page: bool, page_id: str = "") -> str:
     # ① extra["scenario"] 명시 태깅 우선 — qa_runner / list_page_runner가 부여
     scenario_num = (r.extra or {}).get("scenario")
@@ -383,8 +392,8 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
         badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
         scenario   = _scenario_label(r, is_list_page, page_id)
         expected, actual = _expected_vs_actual(r)
-        # 항목 라벨에서 '시나리오 Nx — ' prefix 제거 (헤더가 이미 시나리오 표시 → 중복/장황 방지)
-        disp_label = re.sub(r"^시나리오\s*\d+[a-z]?\s*[—–\-]\s*", "", r.label or "")
+        # 항목 라벨에서 시나리오 prefix 제거 — helper 일관 사용
+        disp_label = _strip_scenario_prefix(r.label or "")
 
         # 시나리오 구분 헤더 — 2단 계층:
         #   parent (sn < 100 단독, 또는 sub-num 의 base): 큰 헤더 (시나리오 1 / 2 / ...)
@@ -486,7 +495,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             <span class="defect-scenario">{html.escape(scenario)}</span>
             <span class="defect-severity severity-{severity}">심각도: {severity}</span>
           </div>
-          <div class="defect-title">{html.escape(r.label)}</div>
+          <div class="defect-title">{html.escape(_strip_scenario_prefix(r.label or ''))}</div>
           <table class="defect-detail">
             <tr><th>재현 방법</th><td>{steps}</td></tr>
             <tr><th>입력 / 조건</th><td>{html.escape(expected)}</td></tr>
