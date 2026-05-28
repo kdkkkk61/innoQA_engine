@@ -547,7 +547,7 @@ def generate_html_report(
         <div class="page-result-section" data-page-key="{html.escape(label)}">
           <div class="page-label">{html.escape(label)}
             <span style="font-weight:400;font-size:13px;color:#666;margin-left:10px;">
-              &#x2705; {p}  &#x274C; {f}  &#x26A0;&#xFE0F; {k}  &#x1F534; {e}
+              &#x2705; {p}  &#x1F534; {f}  &#x26A0;&#xFE0F; {k}  &#x26D4; {e}
             </span>
           </div>
           {table_html}
@@ -596,8 +596,11 @@ def generate_html_report(
     <h1>🔍 QA 보고서 — {html.escape(product_name)}</h1>
     <div class="meta">
       생성일시: {now.strftime('%Y년 %m월 %d일 %H:%M')} &nbsp;|&nbsp;
-      전체 결과: &#x2705; {total_p}  &#x274C; {total_f}  &#x26A0;&#xFE0F; {total_k}  &#x1F534; {total_e} &nbsp;|&nbsp;
+      전체 결과: &#x2705; {total_p}  &#x1F534; {total_f}  &#x26A0;&#xFE0F; {total_k}  &#x26D4; {total_e} &nbsp;|&nbsp;
       {overall}
+    </div>
+    <div class="meta" style="margin-top:6px;font-size:12px;opacity:0.85;">
+      범례: &#x2705; 통과 &nbsp;·&nbsp; &#x1F534; BUG 높음 (fail) &nbsp;·&nbsp; &#x26A0;&#xFE0F; BUG 낮음 (warn) &nbsp;·&nbsp; &#x26D4; 실행 오류 (error)
     </div>
   </div>
 
