@@ -5,6 +5,16 @@
 
 ---
 
+## [RESOLVED] 원본보호 sc1c — 탭 native click 이 qa-block-overlay 에 intercept (2026-05-28)
+- **날짜**: 2026-05-28
+- **증상**: sc1c (비기본 탭 차단 메시지 검증) → `TimeoutError: Locator.click: Timeout 5000ms exceeded` + `<div id="qa-block-overlay"></div> intercepts pointer events`.
+- **원인**: conftest 의 qa-block-overlay (인간 클릭 차단용, z-index 99998) 가 모달 안 `<a>` 탭의 native Playwright click 을 actionability check 단계에서 intercept. (`.fill()` 은 actionability 우회라 sc1d input 입력은 정상 — click 만 차단.)
+- **수정**: `tabs.nth(idx).click()` → `tabs.nth(idx).evaluate("el => el.click()")` — control_suite 의 "버튼/모달 내부: JS 직접 호출" 패턴 적용 (CLAUDE.md memory).
+- **파일**: `tests/origin_protect/test_scenario1_ui.py`
+- **교훈**: 원본보호 후속 시나리오에서도 모달 안 버튼/탭 click 은 native click 대신 JS evaluate 사용해야 안전.
+
+---
+
 ## [RESOLVED] sc5a "이미 등록된 이름" — 이전 run zz 가 보존한 [AUTO_KEEP] 을 sc1 cleanup 이 silent 실패 (2026-05-28)
 - **날짜**: 2026-05-28
 - **증상**: 전체 suite 재실행 시 sc5a save 가 `메시지='이미 등록된 이름 입니다.'` 로 fail. 이전 run 의 zz 가 설계대로 [AUTO_KEEP]_sc5_step1 을 보존했고, 다음 run sc1 의 `_ensure_session_cleanup` 이 그걸 못 지움 → sc5a 가 같은 이름으로 ADD 시도 → 충돌. sc5b 도 sc5a 잔해(모달/backdrop)로 timeout cascade.

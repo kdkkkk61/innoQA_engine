@@ -120,7 +120,9 @@ class TestOriginProtectScenario1Ui(OriginProtectBase):
 
         expected_msg = "정책 정보를 먼저 등록 하셔야 합니다."
         for idx, label in [(1, "허용 프로세스"), (2, "예외처리 프로세스"), (3, "실행차단 프로세스")]:
-            tabs.nth(idx).click()
+            # conftest qa-block-overlay 가 native click 차단 → JS evaluate click 사용
+            # (control_suite 동일 패턴 — 버튼/탭 클릭은 좌표 무관 JS click 으로 overlay 우회)
+            tabs.nth(idx).evaluate("el => el.click()")
             if page.is_confirm_modal_visible(timeout=1500):
                 msg = page.get_confirm_message()
                 # active tab 확인 — 0번으로 강제 유지
