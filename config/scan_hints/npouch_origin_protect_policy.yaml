@@ -195,6 +195,49 @@ scenario_3_must_test_add:
          modal_id: "__globalMessageModal",
          note: "이 메시지는 진짜 폴더 영역에 일관성 있음. control_suite attachAllowUrl 의 같은 메시지는 URL 영역인데 노출 = typo 결함 (yaml :730 일치)"}
 
+  # 숫자/text input 마스킹 동작 (Chrome MCP 직접 검증 2026-05-29) — silent, alert 없음
+  numeric_input_masking:
+    description: |
+      Quota / 워터마크 투명도 / 워터마크 각도 — 숫자 마스킹 패턴. 알림 없이 자동 정정.
+    cases:
+      - field: "originProtectDriveQuota"
+        scope: "원본보호 드라이브 용량"
+        rules:
+          - {input: "abc",          result: "",          note: "문자 전부 제거"}
+          - {input: "-5",           result: "5",         note: "음수 부호 제거"}
+          - {input: "1.5",          result: "15",        note: "소수점 제거 — 숫자만 연결 (control_suite uploadLimit '1.5→0' 과 다름)"}
+          - {input: "12ab34",       result: "1234",      note: "문자만 제거"}
+          - {input: "0100",         result: "100",       note: "leading zero 제거"}
+          - {input: "999999999999", result: "999999999999", note: "12자리 그대로"}
+          - {input: "9999999999999",result: "9999999999999", note: "13자리도 그대로 — DOM 길이 제한 없음"}
+        maxlength_attr: null
+        alert: null
+      - field: "screenWaterMarkOpacity / printWaterMarkOpacity"
+        scope: "워터마크 투명도"
+        rules:
+          - {input: "abc",  result: "",   note: "문자 제거"}
+          - {input: "-50",  result: "50", note: "음수 부호 제거"}
+          - {input: "150",  result: "100", note: "100 초과 → 100 cap"}
+          - {input: "50",   result: "50", note: "0~100 정상"}
+        range: "0~100 (cap)"
+      - field: "screenWaterMarkDegree / printWaterMarkDegree"
+        scope: "워터마크 각도"
+        rules:
+          - {input: "abc",  result: "",   note: "문자 제거"}
+          - {input: "-90",  result: "90", note: "음수 부호 제거"}
+          - {input: "360",  result: "360", note: "정상"}
+          - {input: "361",  result: "360", note: "360 초과 → 360 cap"}
+          - {input: "720",  result: "360", note: "큰 값도 360 cap"}
+        range: "0~360 (cap)"
+
+  free_text_inputs:
+    description: "형식 검증 없는 자유 텍스트 input — alert 없음, 길이 제한 없음"
+    fields:
+      - {id: "driveLabel", scope: "원본보호 드라이브 라벨", note: "한글/특수/숫자/200자 모두 허용"}
+      - {id: "allowProcessShutdownText", scope: "프로세스 종료 알림 textarea", note: "한글 OK, 500자 OK, maxlength=null"}
+      - {id: "screenWaterMarkText / printWaterMarkText", scope: "워터마크 텍스트",
+         note: "free text — 단 PC/Time 체크박스 → 자동 토큰 삽입 동작 별도 (watermark_token_auto_insert)"}
+
   list_input_validation:
     description: |
       list 형식 input (확장자/예외폴더) 의 형식/빈값/다중구분자 검증.
@@ -320,6 +363,19 @@ scenario_3_must_test_add:
   known_bugs_origin_protect:
     description: "ux_bug 결함 후보 — sc3 에서 warn 또는 fail 로 노출"
     items:
+      - id: "drive_letter_no_conflict_check"
+        symptom: |
+          driveLetter 충돌 검증 없음. 다른 정책이 같은 letter 사용 중이어도
+          새 정책에 동일 letter 입력 + 저장 → 차단 메시지 없이 그대로 저장 성공.
+          동일 letter 정책 2건 이상 공존 가능 — 실제 OS 마운트 시 충돌 가능성.
+        verified_by: "Chrome MCP 직접 검증 2026-05-29"
+        transition:
+          - "기존 정책 (예: [AUTO]_sc3b_dup) 가 driveLetter='Z' 로 저장됨"
+          - "새 정책 [AUTO]_sc3_letter_conflict 도 driveLetter='Z' + 저장 → 정상 등록"
+          - "결과: 'Z' 사용 정책 2건 list 공존 — 알림 0건"
+        severity: "warn — 잠재 운영 결함 (마운트 시 충돌 가능)"
+        impact: "UI 단계에서 차단 가능했어야 함 (이름 중복은 차단하면서 letter 중복은 무검증)"
+
       - id: "watermark_token_one_way_sync"
         symptom: |
           워터마크 토큰 [/PCINFO/]·[/TIME/] ADD/EDIT 중 sync 방향 비대칭:
@@ -464,6 +520,10 @@ todo:
     - "✅ watermark edge case: 수동 입력 + 토글 = 수동 텍스트 보존 / 토큰 수동 삭제 = checkbox 자동 해제 안 됨 (단방향 sync)"
     - "✅ watermark 저장+재진입 sync: 저장 시 text 우선, 재진입 시 text 토큰 기준 checkbox 재계산 (단방향 sync 자동 복구)"
     - "✅ 정책 이름 중복 메시지: '정책 이름이 이미 등록되어 있습니다.' (control_suite '이미 등록된 이름 입니다.' 와 다름)"
+    - "✅ Quota 마스킹: 숫자만, 음수/소수점 silent 제거, 13자리 허용, leading zero 제거 (control_suite uploadLimit 과 다른 패턴)"
+    - "✅ 투명도/각도: 0~100 / 0~360 cap, 음수/문자 silent 제거"
+    - "✅ driveLabel/종료알림 textarea: free text — 한글/특수/숫자/긴 입력 다 허용, alert 없음"
+    - "✅ known_bug: driveLetter 충돌 검증 없음 — 같은 letter 정책 2건 공존 가능 (warn)"
   # 미해결 (다음 Chrome 세션)
   pending:
     - "각 input maxlength (DOM 속성 추출) — driveLetter 외 다른 필드"
