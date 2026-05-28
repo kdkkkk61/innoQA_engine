@@ -100,12 +100,16 @@ class ProcessPicker:
     def select_first(self, mode: PickerMode) -> None:
         """모드별 첫 행의 input '선택' (idempotent).
 
-        ⚠ multi(체크박스) 는 click 이 토글이라, picker 재오픈 시 이전 체크 상태가
-        남아있으면 click 으로 언체크됨 → 결과적으로 선택 0건 (sc3f Case7 / sc4l E
-        backdrop fix 후에도 wr#2 적용 프로세스 0건으로 confirm 시 '선택된 프로세스가
-        없습니다.' 메시지 발생 — 2026-05-28 사용자 보고).
-        → multi 모드는 is_checked() 가드: 이미 체크면 no-op, 아니면 click.
-        single/tag(라디오) 는 click 이 토글 아님 → 항상 click.
+        ⚠ multi(체크박스) 함정 (2026-05-28 사용자 보고 #27 BUG):
+          - picker 재오픈 시 DOM checked 와 AngularJS ng-model 가 어긋난 상태일 수 있음
+            (예: DOM 은 체크 잔존, 모델은 reset).
+          - 단순 JS click 은 토글 → 어긋난 상태에서 unchecked 로 빠지거나 모델 미갱신.
+          - 단순 is_checked() 가드 (no-op) 은 모델 동기화 안 됨 → confirm 후 wr#2 적용
+            프로세스 0건 → '선택된 프로세스가 없습니다.' 메시지.
+        → Playwright `check(force=True)` 사용: checkbox 전용 idempotent, 실제 event
+          sequence 로 AngularJS ng-change/ng-model 까지 sync. force=True 로 hidden
+          input 도 actionability 우회.
+        single/tag(라디오) 는 click 이 토글 아님 → 종전대로 JS click 유지.
         """
         sel = {
             "single": self.SEL_RADIO_PROCESS,
@@ -115,10 +119,15 @@ class ProcessPicker:
         loc = self.page.locator(sel).first
         if mode == "multi":
             try:
-                if loc.is_checked():
-                    return
+                loc.check(force=True)
             except Exception:
-                pass
+                # fallback: 강제 checked 설정 + change/click dispatch (AngularJS digest)
+                loc.evaluate(
+                    "el => { el.checked = true; "
+                    "el.dispatchEvent(new Event('change', {bubbles: true})); "
+                    "el.dispatchEvent(new Event('click', {bubbles: true})); }"
+                )
+            return
         self._click_hidden(loc)
 
     # ── 액션 ────────────────────────────────────────────────────────

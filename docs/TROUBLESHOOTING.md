@@ -25,11 +25,13 @@
 
 ---
 
-## [RESOLVED] sc3f Case7 / sc4l E 웹 이름 중복 — picker multi-select 가 토글로 작동해 wr#2 적용 프로세스 0건 (2026-05-28)
+## [RESOLVED] sc3f Case7 / sc4l E 웹 이름 중복 — picker multi-select DOM/AngularJS 모델 동기화 실패 (2026-05-28)
 - **날짜**: 2026-05-28
-- **증상**: 웹 이름 중복 테스트 (#9 BUG 리포트) 의 실제 결과 메시지가 `'선택된 프로세스가 없습니다.'` — 우선순위(프로세스 ≥ 1건 먼저 > 이름 중복) 에 막혀 이름 중복 검증 단계까지 도달 못 함. 스크린샷: wr#2 모달 `[AUTO]_web_3f` 이름인데 `적용 프로세스` 테이블 0행.
-- **원인**: `pages/shared/pickers/process_picker.py select_first(mode="multi")` 가 `_click_hidden(checkbox)` (= JS `el.click()`) 로 체크박스를 클릭. wr#1 confirm 후 picker 의 AngularJS state 가 이전 체크를 보유한 채 재오픈 → 두 번째 호출의 click 이 **토글-off** → wr#2 적용 프로세스 0건 → 우선순위 검증에 막힘. (single/tag 는 라디오라 토글 아님 — multi 만 발생.)
-- **수정**: `select_first` multi 모드에 `is_checked()` 가드 추가 — 이미 체크되어 있으면 no-op, 아니면 click (idempotent). single/tag 는 종전대로 항상 click.
+- **증상**: 웹 이름 중복 테스트 (#9·#27 BUG) 의 실제 결과 메시지가 `'선택된 프로세스가 없습니다.'` — 우선순위(프로세스 ≥ 1건 먼저 > 이름 중복) 에 막혀 이름 중복 검증 단계까지 도달 못 함. wr#2 모달 적용 프로세스 0행.
+- **원인 1차 (단순 JS 토글)**: `select_first(mode="multi")` 가 `_click_hidden` (JS `el.click()`) 으로 체크박스 토글 → 재오픈 시 이전 체크 잔존이면 언체크됨 → 0건.
+- **수정 1차**: `is_checked()` 가드 (이미 체크면 no-op). → 충분치 않음.
+- **원인 2차 (모델 sync 실패)**: 1차 수정 후에도 #27 BUG 재현. picker 재오픈 시 DOM checked 와 AngularJS ng-model 가 어긋난 상태 가능 (DOM 잔존 / 모델 reset). `is_checked()` no-op 는 DOM만 보고 모델은 안 건드림 → confirm 시 모델 기준 0건.
+- **수정 2차 (확정)**: Playwright `loc.check(force=True)` 사용 — checkbox 전용 idempotent + 실제 event sequence 로 AngularJS digest 발화. fallback: `checked = true` 설정 + change/click dispatch.
 - **파일**: `pages/shared/pickers/process_picker.py`
 
 ---
