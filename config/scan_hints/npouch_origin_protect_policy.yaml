@@ -192,6 +192,68 @@ scenario_3_must_test_add:
          modal_id: "__globalMessageModal",
          note: "이 메시지는 진짜 폴더 영역에 일관성 있음. control_suite attachAllowUrl 의 같은 메시지는 URL 영역인데 노출 = typo 결함 (yaml :730 일치)"}
 
+  list_input_validation:
+    description: |
+      list 형식 input (확장자/예외폴더) 의 형식/빈값/다중구분자 검증.
+      Chrome MCP + 스크린샷 직접 확인 2026-05-28.
+    cases:
+      # ── 확장자 (watchFileExtensions) ────────────────────────
+      - {field: "watchFileExtensions", scope: "확장자 list", validation: "형식 검증",
+         input: "$@% (특수문자) 또는 한글",
+         message: ". * ; ? 이외의 특수문자 또는 한글이 포함된 확장자는 제외합니다.",
+         modal_id: "__globalMessageModal",
+         result: "list 추가 차단",
+         note: "control_suite 와 완전 동일 메시지 — 공유 validator 확정"}
+      - {field: "watchFileExtensions", scope: "확장자 list", validation: "빈값 + 추가",
+         input: "'' (빈) + 추가 버튼",
+         message: "확장자를 입력하세요",
+         modal_id: "__globalMessageModal",
+         note: "마침표 없음 — 다른 빈값 메시지(...주세요.)와 패턴 다름"}
+      - {field: "watchFileExtensions", scope: "확장자 list", validation: "다중 구분자",
+         input: "'asd;sdf;dfg' + 추가",
+         result: "3건 일괄 등록 (asd, sdf, dfg) — 알림 없음",
+         note: "control_suite 와 동일 — 공유 처리 로직"}
+
+      # ── 예외 폴더 (watchExceptFolders) ──────────────────────
+      - {field: "watchExceptFolders", scope: "예외 폴더 list", validation: "형식 검증",
+         input: "$@% 특수문자 / 한글",
+         result: "그대로 등록됨 (알림 없음) — 형식 검증 없음 (free text)",
+         note: "control_suite cacheFolderInput 패턴과 유사 — 폴더 경로는 free text"}
+      - {field: "watchExceptFolders", scope: "예외 폴더 list", validation: "빈값 + 추가",
+         input: "'' (빈) + 추가 버튼",
+         message: "확장자를 입력하세요",   # ⚠ 결함!
+         modal_id: "__globalMessageModal",
+         severity: "ux_bug — 메시지 일관성 결함",
+         note: |
+           예외폴더 영역인데 '확장자' 메시지 노출 = 영역 ≠ 메시지 불일치 결함.
+           control_suite 의 URL 영역에 '폴더 경로' 메시지 노출 결함과 동일 카테고리.
+           → 별도 known_bug 섹션 참조.}
+
+  driveLetter_format_validation:
+    description: |
+      driveLetter input — invalid 입력 시 alert + value reset 동시 발화.
+      이전 yaml 명세 'silent 마스킹' 은 부정확 — Chrome MCP 재검증 2026-05-28 정정.
+    field: "driveLetter"
+    selector: "input#driveLetter"
+    masking_behavior: "value 자동 reset 으로 ''으로 정정"
+    expected_invalid_message: "드라이브 문자는 영문자만 입력할 수 있습니다."
+    modal_id: "__globalMessageModal"
+    invalid_inputs_verified: ["숫자 1", "한글 가", "특수문자 @"]
+    valid_inputs_verified:   ["대문자 Z", "소문자 z (→ Z 자동 변환)"]
+    verified_by: "Chrome MCP + 사용자 스크린샷 확인 2026-05-28"
+
+  known_bugs_origin_protect:
+    description: "ux_bug 결함 후보 — sc3 에서 warn 또는 fail 로 노출"
+    items:
+      - id: "watch_except_folder_empty_wrong_message"
+        symptom: |
+          예외 폴더 input (watchExceptFolders) 빈값 + 추가 버튼 클릭 시
+          '확장자를 입력하세요' 메시지 노출 — 예외폴더 영역인데 확장자 메시지.
+        severity: "ux_bug — 메시지 영역 ≠ UI 영역 불일치"
+        category: "control_suite URL→폴더 typo 결함과 동일 카테고리"
+        verified_by: "Chrome MCP + 사용자 스크린샷 직접 확인 (2회 격리) 2026-05-28"
+        expected_correct_message: "(추정) '예외 폴더를 입력하세요' 또는 '폴더 경로를 입력해 주세요'"
+
   required_fields:
     description: |
       ADD 모달 필수 필드 — 진짜 마커는 라벨 안 * 가 아니라 별도 <span class="star">*</span>.
@@ -237,9 +299,11 @@ scenario_3_must_test_add:
         - {input: "@@@",     result: "",   note: "특수문자 → 전부 제거"}
         - {input: "가나",    result: "",   note: "한글 → 전부 제거"}
       verified_rules: "알파벳만 허용, 1자 한도, 대문자 자동 변환, 그 외 silent 제거"
-    expected_invalid_message: null   # silent 마스킹 — 별도 알림 없음
+    expected_invalid_message: "드라이브 문자는 영문자만 입력할 수 있습니다."   # 정정 2026-05-28 — alert + value reset 동시
+    modal_id: "__globalMessageModal"
     severity: "must_test"
-    verified_by: "Chrome MCP 직접 검증 2026-05-28"
+    verified_by: "Chrome MCP 직접 검증 2026-05-28 (재검증 — 이전 'silent 마스킹' 추정 정정)"
+    note: "value 가 '' 으로 reset 되는 동시에 alert 노출 — 둘 다 발화 (silent 아님)"
 
   csu_select_flow:
     description: |
@@ -284,6 +348,10 @@ todo:
     - "✅ required_field_empty_messages 5건 정확 텍스트 (α/β1/β2/β3/γ) — 스크린샷 확인"
     - "✅ validation 발화 순서 1순위 = 정책 이름 (δ case 확인)"
     - "✅ list_duplicate_messages 2건 (확장자/예외폴더) 정확 텍스트"
+    - "✅ list_input_validation 확장자: 형식/빈값/다중구분자 (3건 정확 텍스트)"
+    - "✅ list_input_validation 예외폴더: 형식 없음(free text)/빈값(typo 결함)"
+    - "✅ driveLetter 정확 메시지 — '드라이브 문자는 영문자만 입력할 수 있습니다.' (alert + reset 동시) — silent 마스킹 추정 정정"
+    - "✅ known_bug: watchExceptFolders 빈값 → '확장자를 입력하세요' 메시지 일관성 결함"
   # 미해결 (다음 Chrome 세션)
   pending:
     - "각 input maxlength (DOM 속성 추출) — driveLetter 외 다른 필드"
