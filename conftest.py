@@ -555,6 +555,37 @@ def pytest_runtest_makereport(item, call):
                 _scan_reports.append((page_id, scan_report))
 
     if report.when == "call" and report.failed:
+        # ── 테스트 중단(예외/크래시) 을 HTML 리포트에 기록 ─────────────
+        # _add() 는 검증 블록마다 ScanResult 를 쌓지만, 예외로 abort 되면
+        # 그 크래시는 어떤 ScanResult 도 남기지 않아 리포트에 fail 0 으로 숨는다.
+        # → pytest FAILED 인데 리포트는 정상으로 보이는 불일치 방지 (사용자 지적 2026-05-28).
+        try:
+            from core.models import ScanResult, PageScanReport
+            try:
+                _page_id = item.callspec.params.get("page_id")
+            except AttributeError:
+                _page_id = getattr(item, "_npouch_page_id", None)
+            _crash_msg = ""
+            if call.excinfo is not None:
+                _first = str(call.excinfo.value).splitlines()
+                _crash_msg = f"{call.excinfo.typename}: {(_first[0] if _first else '')[:200]}"
+            _crash_sr = ScanResult(
+                pattern="scenario_test", selector="",
+                label=f"[테스트 중단] {item.name}",
+                status="fail", detail=_crash_msg,
+                extra={"scenario": 0, "crash": True},
+            )
+            _existing = getattr(item, "_scan_report", None)
+            if _existing is not None:
+                _existing.results.append(_crash_sr)   # 이미 _scan_reports 에 수집된 동일 객체 → 변형 반영
+            elif _page_id:
+                _rep = PageScanReport(page_id=_page_id)
+                _rep.results = [_crash_sr]
+                item._scan_report = _rep
+                _scan_reports.append((_page_id, _rep))
+        except Exception as _e:
+            print(f"[크래시 리포트 기록 실패] {_e}")
+
         page = item.funcargs.get("fresh_page") or item.funcargs.get("logged_in_page")
         if page is None:
             return

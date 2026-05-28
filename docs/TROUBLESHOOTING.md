@@ -5,6 +5,24 @@
 
 ---
 
+## [RESOLVED] 테스트 abort(예외)가 HTML 리포트에 안 나옴 — pytest FAILED 인데 리포트는 fail 0 (2026-05-28)
+- **날짜**: 2026-05-28
+- **증상**: pytest 결과 "2 failed, 23 passed" 인데 HTML QA 보고서는 ❌ 0 (실패 0)으로 표시. 테스트가 실패했는데 보고서엔 정상으로 보임 (사용자 지적).
+- **원인**: `_add()` 는 검증 블록마다 ScanResult 를 누적하지만, 테스트가 예외(Playwright TimeoutError 등)로 **중단(abort)** 되면 그 크래시 자체는 어떤 ScanResult 도 남기지 않음. 리포트는 크래시 직전까지 기록된 pass/warn 항목만 표시 → fail 0 으로 숨음. `pytest_runtest_makereport` 의 fail hook 은 스크린샷/진단만 찍고 리포트 항목은 추가 안 했음.
+- **수정**: `conftest.py pytest_runtest_makereport` 의 `report.failed` 블록 최상단에 크래시용 `ScanResult(status="fail", label="[테스트 중단] {name}", detail=예외요약)` 를 `item._scan_report.results` 에 append (page None 이어도 기록되도록 early-return 앞에 배치). 이미 `_scan_reports` 에 수집된 동일 객체를 변형하므로 리포트에 반영됨.
+- **파일**: `conftest.py`
+
+---
+
+## [RESOLVED] sc3f Case7 / sc4l E 웹 이름 중복 — wr#2 확인 클릭 modal-backdrop intercept (2026-05-28)
+- **날짜**: 2026-05-28
+- **증상**: 신규 추가한 웹제한 이름 중복 테스트(sc3f Case7, sc4l E) 2건이 `Locator.click: Timeout 5000ms exceeded` 로 실패. Call log: `<div class="modal-backdrop in"> intercepts pointer events`.
+- **원인**: wr#1 confirm → wr#2 재오픈 → process picker(multi) 닫힘 후 잔여 `modal-backdrop.in` 이 web_restrict 확인 버튼 위에 남아 Playwright `locator.click()` 의 pointer 액션을 가로챔 (3-stack backdrop 누적 — picker.wait_closed 가 1개를 못 줄인 케이스).
+- **수정**: 두 곳의 확인 클릭을 `locator.click()` → `locator.evaluate("el => el.click()")` 로 변경 (좌표 무관 JS click, ng-click 발화 OK — yaml :564 / dismiss_confirm_modal fallback 동일 패턴).
+- **파일**: `tests/control_suite/test_scenario3_action.py` (Case7), `tests/control_suite/test_scenario4_modify.py` (sc4l E)
+
+---
+
 ## [RESOLVED] sc4 4g/4h/4i cascade fail — close_modal + open_*_modal 우회로 (2026-05-26)
 
 ### 증상

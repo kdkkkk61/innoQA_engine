@@ -1265,6 +1265,21 @@ class TestScenario4Modify(ControlSuiteBase):
             self._add("warn", "[차단 메시지] EDIT 차단할 확장자 중복 — 메시지 미노출",
                       f"입력: '{dup_ext}' 재추가 / 결과: 알림 없음", sc=4)
 
+        # ── A2. 차단할 확장자 형식(특수문자) 거부 (sc3 ADD 대칭, yaml :643) ──
+        fmt_before = len(page.get_main_extension_list())
+        page.add_main_extension("$@%")
+        if page.is_confirm_modal_visible(timeout=1500):
+            fmt_msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            fmt_after = len(page.get_main_extension_list())
+            ok = ("특수문자" in fmt_msg or "이외" in fmt_msg) and fmt_after == fmt_before
+            self._add("pass" if ok else "fail",
+                      "EDIT 메인 모달 — 차단할 확장자 형식(특수문자) 거부",
+                      f"입력: '$@%' / 결과: 메시지={fmt_msg!r}, list 불변={fmt_after==fmt_before}", sc=4)
+        else:
+            self._add("fail", "[차단 메시지] EDIT 차단할 확장자 형식(특수문자) — 미노출",
+                      f"입력: '$@%' / 결과: 알림 없음 (yaml :643 기대와 불일치)", sc=4)
+
         # ── B. 전자서명 중복 (sc3f Case 6 EDIT 버전) — self-contained (SKIP 제거) ──
         # 버그 fix (2026-05-27): 기존 selector '#signExceptTag' 오타 → 실제 '#signExceptUl'.
         #   잘못된 selector 로 항상 빈 배열 → 항상 skip 이었음. selector 수정 + 0건이면 직접 추가.
@@ -1402,6 +1417,21 @@ class TestScenario4Modify(ControlSuiteBase):
             self._add("skip", "시나리오 4l C — 웹제한 확장자 0건 → skip",
                       "입력: get_file_extension_list 빈 배열 / 결과: skip", sc=4)
 
+        # ── C2. 웹제한 확장자 형식(특수문자) 거부 (sc3 ADD 대칭, yaml :666) ──
+        fmt_before = len(page.web_restrict.get_file_extension_list())
+        page.web_restrict.add_file_extension("$@%")
+        if page.is_confirm_modal_visible(timeout=1500):
+            fmt_msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            fmt_after = len(page.web_restrict.get_file_extension_list())
+            ok = ("특수문자" in fmt_msg or "이외" in fmt_msg) and fmt_after == fmt_before
+            self._add("pass" if ok else "fail",
+                      "EDIT 웹제한 모달 — 확장자 형식(특수문자) 거부",
+                      f"입력: '$@%' / 결과: 메시지={fmt_msg!r}, list 불변={fmt_after==fmt_before}", sc=4)
+        else:
+            self._add("fail", "[차단 메시지] EDIT 웹제한 확장자 형식(특수문자) — 미노출",
+                      f"입력: '$@%' / 결과: 알림 없음 (yaml :666 기대와 불일치)", sc=4)
+
         # ── D. 복호화/업로드암호화 토글 의존성 (sc2e 역순의 EDIT 대응, #51) ──
         # 정방향: decrypt_target → 암호화 자동 강제 / 역순: 암호화 먼저 ON (decrypt_allow) 막히지 않는지
         try:
@@ -1427,6 +1457,30 @@ class TestScenario4Modify(ControlSuiteBase):
         except Exception as e:
             self._add("skip", "EDIT 웹제한 모달 — 복호화/암호화 토글 검증 skip (기능 부재/예외)",
                       f"입력: decrypt 토글 / 결과: 예외={e!r}", sc=4)
+
+        # ── E. 웹제한 이름 중복 차단 (sc3f Case7 EDIT 대칭 — 2026-05-28 추가) ──
+        # 기존 wr#0 닫고 → 기존 행과 동일 이름으로 신규 wr 추가 → 이름 중복 차단 기대.
+        page.web_restrict.close()
+        page.web_restrict.wait_closed(timeout=3000)
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")
+        page.web_restrict.set_name(orig_name)   # 기존 행과 동일 이름
+        # confirm — picker 닫힘 후 잔여 modal-backdrop 가 pointer 가로채는 3-stack 케이스 →
+        # JS evaluate click (좌표 무관, ng-click 발화 OK — yaml :564). dismiss_confirm_modal fallback 동일 패턴.
+        page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first.evaluate("el => el.click()")
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg_e = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok_e = "이미" in msg_e and ("이름" in msg_e or "등록" in msg_e)
+            self._add("pass" if ok_e else "fail",
+                      "EDIT 웹제한 모달 — 이름 중복 차단 메시지 (sc3f Case7 EDIT)",
+                      f"입력: 기존 이름 '{orig_name}' 신규 wr 재등록 / 결과: 메시지={msg_e!r}", sc=4)
+        else:
+            self._add("fail", "[차단 메시지] EDIT 웹제한 이름 중복 — 미노출",
+                      f"입력: 기존 이름 재등록 / 결과: 알림 없음 (Chrome 확인과 불일치)", sc=4)
 
         page.web_restrict.close()
         page.close_modal()
@@ -1518,6 +1572,21 @@ class TestScenario4Modify(ControlSuiteBase):
         else:
             self._add("warn", "[차단 메시지] EDIT process_modal 확장자 중복 — 메시지 미노출",
                       f"입력: '{dup_proc_ext}' 재추가 / 결과: 알림 없음", sc=4)
+
+        # ── B2. 프로세스 확장자 형식(특수문자) 거부 (sc3 ADD 대칭, yaml :650) ──
+        fmt_before = len(page.process.get_extension_list())
+        page.process.add_extension("$@%")
+        if page.is_confirm_modal_visible(timeout=1500):
+            fmt_msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            fmt_after = len(page.process.get_extension_list())
+            ok = ("특수문자" in fmt_msg or "이외" in fmt_msg) and fmt_after == fmt_before
+            self._add("pass" if ok else "fail",
+                      "EDIT process_modal — 확장자 형식(특수문자) 거부",
+                      f"입력: '$@%' / 결과: 메시지={fmt_msg!r}, list 불변={fmt_after==fmt_before}", sc=4)
+        else:
+            self._add("fail", "[차단 메시지] EDIT process_modal 확장자 형식(특수문자) — 미노출",
+                      f"입력: '$@%' / 결과: 알림 없음 (yaml :650 기대와 불일치)", sc=4)
         page.process.close()
         page.close_modal()
 

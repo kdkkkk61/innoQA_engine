@@ -642,6 +642,7 @@ scenario_3_input_format:
       invalid: ["한글", "$@%", "ext name", ""]
       expected_invalid_message: ". * ; ? 이외의 특수문자 또는 한글이 포함된 확장자는 제외합니다."
       chrome_mcp_verified: 2026-05-12
+      test_coverage: "sc3 '[차단 메시지] 제어할 확장자 형식(특수문자) 거부' + sc4k A2(EDIT). 2026-05-28 추가 — 기존 중복만 assert, 형식 거부 미검증이던 갭 보완."
 
     - id: "allowExtensionInputP"
       scope: "process_modal tag_input (개별)"
@@ -651,6 +652,7 @@ scenario_3_input_format:
       modal_id: "__globalMessageModal"
       chrome_mcp_verified: 2026-05-13
       note: "메인 allowExtensionInput 과 완전 동일 패턴 — 메시지 일치 확정"
+      test_coverage: "sc3 '[차단 메시지] 프로세스 확장자 형식(특수문자) 거부' + sc4m B2(EDIT). 2026-05-28 추가."
       multi_separator:
         delimiter: ";"
         example_input: "txt;doc;exe"
@@ -667,6 +669,8 @@ scenario_3_input_format:
       modal_id: "__globalMessageModal"
       chrome_mcp_verified: 2026-05-13
       note: "메인/process_modal/web_restrict 3개 영역 모두 동일 메시지 — 공통 validator 컴포넌트 추정"
+      test_coverage: "sc3 '[차단 메시지] 웹제한 확장자 형식(특수문자) 거부' + sc4l C2(EDIT). 2026-05-28 추가."
+      chrome_mcp_recheck_needed: "한글 확장자 — 2026-05-28 JS-probe 에서 추가됨(상충). el.value= 주입이 키보드 마스크 우회 가능성 → trusted click 재확인 필요."
 
     - id: "accessAllowIp"
       scope: "process_modal IP 입력"
@@ -725,6 +729,7 @@ scenario_3_duplicate_tags:
     - {field: "allowExtensionInputP",  scope: "process_modal",    expected_message: "이미 동일한 확장자가 존재합니다.", modal_id: "registeredFolderWarning", status: "verified_main_pattern"}
     - {field: "attachAllowUrl",        scope: "web_restrict_modal", expected_message: "이미 등록된 폴더 경로가 존재합니다.", modal_id: "registeredFolderWarning", status: "verified", chrome_mcp_verified: 2026-05-13, note: "메시지 텍스트가 '폴더 경로' 로 표기 — URL 인데 메시지 typo 추정 (제품 코드 공유 추정)"}
     - {field: "allowFileExtention",    scope: "web_restrict_modal", expected_message: "이미 동일한 확장자가 존재합니다.", modal_id: "registeredFolderWarning", status: "verified", chrome_mcp_verified: 2026-05-13}
+    - {field: "webRestrictName (웹제한 이름)", scope: "main_modal web_restrict list", expected_message: "이미 ##### ####. (이름 중복 — 한글)", modal_id: "__globalMessageModal", status: "verified", chrome_mcp_verified: 2026-05-28, test_coverage: "sc3f Case7 + sc4l E (2026-05-28 추가)", note: "동일 정책 안 wr 2건 동일 이름 → 차단(메시지 노출·list 미추가·모달 유지). 기존 sc3f Case1/4l A 는 '빈값'만 검증, 중복은 미검증이던 갭."}
     - {field: "cacheFolderInput",      scope: "process_modal",    expected_message: null, status: "no_duplicate_check", chrome_mcp_verified: 2026-05-13, note: "중복 검증 없음 — 같은 경로 2번 등록 가능 (정책 차이 — IP/Port/확장자는 차단)"}
     - {field: "cacheFolderInput (빈값)", scope: "process_modal",  expected_message: "폴더 이름을 입력해 주세요.", status: "verified", chrome_mcp_verified: 2026-05-13}
     - {field: "selectReservedWord",    scope: "special_folder_picker", expected_message: null, status: "TODO — 다중 체크 중 동일 항목 두 번 체크 가능한지 확인"}

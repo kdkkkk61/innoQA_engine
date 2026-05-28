@@ -200,6 +200,23 @@ class TestScenario3Action(ControlSuiteBase):
             self._add("warn", "[차단 메시지] 제어할 확장자 중복 — 메시지 미노출",
                       f"입력: '{first_ext}' 재추가 / 결과: 알림 없음", sc=3)
 
+        # ── 확장자 형식(특수문자) 거부 메시지 검증 (yaml :643) ──────
+        # ". * ; ?" 외 특수문자/한글 → "...이외의 특수문자 또는 한글이..." 차단.
+        # 거부 시 list 불변 (현 list = [txt, doc, exe]).
+        before_fmt = len(page.get_main_extension_list())
+        page.add_main_extension("$@%")
+        if page.is_confirm_modal_visible():
+            fmt_msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            after_fmt = page.get_main_extension_list()
+            ok = ("특수문자" in fmt_msg or "이외" in fmt_msg) and len(after_fmt) == before_fmt
+            self._add("pass" if ok else "fail",
+                      "[차단 메시지] 제어할 확장자 형식(특수문자) 거부",
+                      f"입력: '$@%' / 결과: 메시지={fmt_msg!r}, list 불변={len(after_fmt)==before_fmt}", sc=3)
+        else:
+            self._add("fail", "[차단 메시지] 제어할 확장자 형식(특수문자) — 거부 메시지 미노출",
+                      f"입력: '$@%' / 결과: 알림 없음 (yaml :643 기대와 불일치)", sc=3)
+
         # ── 확장자 추가 → 삭제 사이클 (1개만 삭제, 잔여 확인) ────
         # 현 list = [txt, doc, exe]. 'doc' 삭제 → [txt, exe] 잔여.
         target_del = D["extensions"][1]   # "doc"
@@ -358,6 +375,21 @@ class TestScenario3Action(ControlSuiteBase):
         else:
             self._add("warn", "[차단 메시지] 프로세스 확장자 중복 — 메시지 미노출",
                       f"입력: '{D['proc_ext'][0]}' 재추가 / 결과: 알림 없음", sc=3)
+
+        # 프로세스 확장자 형식(특수문자) 거부 메시지 검증 (yaml :650)
+        before_fmt = len(page.process.get_extension_list())
+        page.process.add_extension("$@%")
+        if page.is_confirm_modal_visible():
+            fmt_msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            after_fmt = page.process.get_extension_list()
+            ok = ("특수문자" in fmt_msg or "이외" in fmt_msg) and len(after_fmt) == before_fmt
+            self._add("pass" if ok else "fail",
+                      "[차단 메시지] 프로세스 확장자 형식(특수문자) 거부",
+                      f"입력: '$@%' / 결과: 메시지={fmt_msg!r}, list 불변={len(after_fmt)==before_fmt}", sc=3)
+        else:
+            self._add("fail", "[차단 메시지] 프로세스 확장자 형식(특수문자) — 거부 메시지 미노출",
+                      f"입력: '$@%' / 결과: 알림 없음 (yaml :650 기대와 불일치)", sc=3)
 
         # 프로세스 확장자 추가 → 삭제 → 잔여 확인
         # 주의: 확장자 input validation — ". * ; ?" 외 특수문자/한글 거부 (yaml :315).
@@ -539,6 +571,21 @@ class TestScenario3Action(ControlSuiteBase):
         else:
             self._add("warn", "[차단 메시지] 웹제한 확장자 중복 — 메시지 미노출",
                       f"입력: '{D['web_ext']}' 재추가 / 결과: 알림 없음", sc=3)
+
+        # 웹제한 확장자 형식(특수문자) 거부 메시지 검증 (yaml :666)
+        fmt_before = len(page.web_restrict.get_file_extension_list())
+        page.web_restrict.add_file_extension("$@%")
+        if page.is_confirm_modal_visible():
+            fmt_msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            fmt_after = len(page.web_restrict.get_file_extension_list())
+            ok = ("특수문자" in fmt_msg or "이외" in fmt_msg) and fmt_after == fmt_before
+            self._add("pass" if ok else "fail",
+                      "[차단 메시지] 웹제한 확장자 형식(특수문자) 거부",
+                      f"입력: '$@%' / 결과: 메시지={fmt_msg!r}, list 불변={fmt_after==fmt_before}", sc=3)
+        else:
+            self._add("fail", "[차단 메시지] 웹제한 확장자 형식(특수문자) — 거부 메시지 미노출",
+                      f"입력: '$@%' / 결과: 알림 없음 (yaml :666 기대와 불일치)", sc=3)
 
         # 웹제한 확장자 추가 → 삭제 → 잔여 확인
         # 주의: page method 사용 (이전 inline locator 의 [name='ExtentionWebRestrict']
@@ -901,6 +948,31 @@ class TestScenario3Action(ControlSuiteBase):
         else:
             self._add("warn", "[차단 메시지] 웹제한 모달 — URL 중복 — 메시지 미노출",
                       f"입력: 같은 URL 재추가 / 결과: 알림 없음", sc=3)
+
+        # ── Case 7: 웹제한 이름 중복 차단 (2026-05-28 추가 — Chrome 확인 갭 보완) ──
+        # 기존 Case1 은 '이름 빈값'만 검증. '중복'은 미검증이던 갭 (matrix 2차 Chrome 확인).
+        # wr#1 ([AUTO]_web_3f) 를 list 에 확정 → wr#2 동일 이름 → 이름 중복 차단 기대.
+        page.web_restrict.confirm()
+        page.web_restrict.wait_closed(timeout=3000)
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="multi")
+        page.web_restrict.set_name("[AUTO]_web_3f")   # wr#1 과 동일 이름
+        # confirm — picker 닫힘 후 잔여 modal-backdrop 가 pointer 가로채는 3-stack 케이스 →
+        # JS evaluate click (좌표 무관, ng-click 발화 OK — yaml :564). dismiss_confirm_modal fallback 동일 패턴.
+        page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first.evaluate("el => el.click()")
+        if page.is_confirm_modal_visible():
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = "이미" in msg and ("이름" in msg or "등록" in msg)
+            self._add("pass" if ok else "fail",
+                      "웹제한 모달 — 이름 중복 차단 메시지 (Chrome 확인 갭 보완)",
+                      f"입력: '[AUTO]_web_3f' 동일 이름 재등록 / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("fail", "[차단 메시지] 웹제한 이름 중복 — 미노출",
+                      f"입력: 동일 이름 재등록 / 결과: 알림 없음 (Chrome 확인 결과와 불일치)", sc=3)
 
         # 정리
         page.web_restrict.close()
