@@ -119,13 +119,16 @@ scenario_3_must_test_add:
   tab_access_restriction:
     description: |
       정책 생성(ADD) 중에는 '기본 설정' 탭만 사용 가능.
-      허용/예외처리/실행차단 프로세스 탭 접근 시도 시 → 메시지 노출:
-        "정책 정보를 먼저 등록 하셔야 합니다."
-    blocked_tabs: ["허용 프로세스", "예외처리 프로세스", "실행차단 프로세스"]
-    expected_message: "정책 정보를 먼저 등록 하셔야 합니다."
-    modal_id: "(글로벌 알림 — 정확한 id 미확정, Chrome 추가 확인 필요)"
+      허용/예외처리/실행차단 프로세스 탭 클릭 시 → globalMessage 알림 + 강제로 0번 탭(기본 설정) 유지.
+    tab_selector: "div#addItemModal ul.nav-tabs li a, div#addItemModal ul.tab-list li a, div#addItemModal li > a"
+    tab_count: 4
+    tab_order: ["기본 설정 (idx=0)", "허용 프로세스 (idx=1)", "예외처리 프로세스 (idx=2)", "실행차단 프로세스 (idx=3)"]
+    blocked_tabs_idx: [1, 2, 3]
+    expected_message: "정책 정보를 먼저 등록 하셔야 합니다."   # 한글 26자
+    modal_id: "__globalMessageModal"   # Chrome MCP 직접 확정 2026-05-28
+    active_tab_after_block: 0   # 차단 후 강제로 idx=0(기본 설정) 유지
     severity: "must_test"
-    verified_by: "사용자 스크린샷 2026-05-28"
+    verified_by: "Chrome MCP 직접 검증 2026-05-28 + 사용자 스크린샷"
 
   required_fields:
     description: "정책 추가 모달 빨간 * 표시 필수 필드 — 빈값 저장 시 차단"
@@ -138,36 +141,69 @@ scenario_3_must_test_add:
 
   drive_letter_format:
     description: |
-      driveLetter input 에 형식 검증 있음 — 알파벳 1자(또는 제한된 형식)만 허용 추정.
-      잘못된 형식 (숫자/한글/특수문자/장문) 입력 시 차단/마스킹 동작.
+      driveLetter input — DOM 단계 silent 마스킹. 메시지 없이 값 자동 정정.
     field: "driveLetter"
-    expected_invalid_message: "(메시지 정확 텍스트 — Chrome 추가 확인 필요)"
+    selector: "input#driveLetter"
+    masking_rules:   # Chrome MCP 직접 검증 2026-05-28 (입력→DOM value 결과)
+      valid:
+        - {input: "Z",       result: "Z",  note: "대문자 1자 — 그대로 유지"}
+        - {input: "z",       result: "Z",  note: "소문자 → 대문자 자동 변환"}
+        - {input: "ABCDEF",  result: "A",  note: "다중자 → 첫 1자만 유지 + 대문자"}
+      invalid_stripped_to_empty:
+        - {input: "5",       result: "",   note: "숫자 → 전부 제거"}
+        - {input: "@@@",     result: "",   note: "특수문자 → 전부 제거"}
+        - {input: "가나",    result: "",   note: "한글 → 전부 제거"}
+      verified_rules: "알파벳만 허용, 1자 한도, 대문자 자동 변환, 그 외 silent 제거"
+    expected_invalid_message: null   # silent 마스킹 — 별도 알림 없음
     severity: "must_test"
-    verified_by: "사용자 알림 2026-05-28 (정확 동작 추가 검증 필요)"
+    verified_by: "Chrome MCP 직접 검증 2026-05-28"
 
   csu_select_flow:
     description: |
-      '제어 스위트 선택' 버튼 클릭 → CSU picker 모달 열림.
-      picker 안에서 검색/선택:
-        - [AUTO_KEEP]_sc5_step1 존재 시: 검색해서 그것 선택 (sc5 핸드오프)
-        - 없으면: picker 첫 행(맨 위) 선택
-      선택 후 #controlSuiteId span 에 id 바인딩.
+      '제어 스위트 선택' 버튼 클릭 → 별도 picker 모달 열림 (#selectCommonPolicyItemModal).
+      picker 흐름:
+        1. 검색 input (placeholder: '제어 스위트 이름') 에 [AUTO_KEEP]_sc5_step1 입력 + 검색.
+        2. 매칭 행의 radio (name='selectTemplate') 선택.
+        3. .btn-primary (확인) 클릭 → picker 닫힘.
+        4. addItemModal 의 span#controlSuiteId 에 id 바인딩.
+      KEEP 부재 시 fallback: 검색 안 하고 첫 행 radio 선택.
     csu_select_btn: "div#addItemModal button.addBtn.smallBtn.addTemplate"
     csu_id_span: "span#controlSuiteId"
+    # picker 모달 구조 (Chrome MCP 직접 확정 2026-05-28)
+    picker:
+      modal: "div#selectCommonPolicyItemModal"
+      modal_open: "div#selectCommonPolicyItemModal.modal-wrap.in"
+      search_input: "div#selectCommonPolicyItemModal input#searchText"   # placeholder: "제어 스위트 이름"
+      search_button_class: "searchBtn"
+      table_container: "div#selectCommonPolicyItemModal #controlSuiteList"
+      row_selector: "div#selectCommonPolicyItemModal table tbody tr"
+      radio_selector: "div#selectCommonPolicyItemModal input[type='radio'][name='selectTemplate']"
+      mode: "single (radio)"
+      confirm_btn: "div#selectCommonPolicyItemModal .btn-primary"
+      cancel_btn: "div#selectCommonPolicyItemModal .btn-default"
+      close_btn: "div#selectCommonPolicyItemModal .close"
+      row_count_at_scan: 20   # 2026-05-28 스캔 시점
     keep_artifact: "[AUTO_KEEP]_sc5_step1"
-    fallback: "picker 첫 행"
+    fallback: "검색 없이 picker 첫 행 radio"
     severity: "must_test"
-    verified_by: "사용자 결정 2026-05-28"
+    verified_by: "Chrome MCP 직접 검증 2026-05-28 (picker 내부 구조 + 모든 selector 확정)"
 
 # ──────────────────────────────────────────────────────────────────────
 # TODO — 추가 Chrome MCP 조사 (테스트 작성 전)
 # ──────────────────────────────────────────────────────────────────────
 todo:
-  - "탭 4개의 실제 selector (nav-tabs 표준 아님) — 탭별 영역 분리 확인"
-  - "각 input maxlength (DOM 속성 추출)"
-  - "필수 필드 (이름 외) 식별 — 빈값 저장 시 메시지"
-  - "이름 중복 메시지 — '이미 등록된 이름 입니다.' 동일 추정"
-  - "프로세스 토글 ON 시 종속 영역 (허용/예외/차단 list?) UI"
-  - "CSU picker — 실제 picker 모달 ID 확인 + KEEP 선택 흐름"
-  - "워터마크 토글 종속 disabled 동작"
-  - "검증 메시지 사실 수집 (control_suite 패턴 따라)"
+  # ✅ 해결 (2026-05-28 Chrome MCP 직접 검증)
+  resolved_2026_05_28:
+    - "✅ 탭 selector — li > a (id 없음, idx 0-3 / 순서: 기본 설정 > 허용 > 예외처리 > 실행차단)"
+    - "✅ 탭 차단 메시지 정확 텍스트 + modal_id (__globalMessageModal)"
+    - "✅ driveLetter silent 마스킹 규칙 확정 (알파벳 1자, 대문자 변환)"
+    - "✅ CSU picker 모달 ID + 검색 + radio + confirm 모든 selector 확정"
+  # 미해결 (다음 Chrome 세션)
+  pending:
+    - "각 input maxlength (DOM 속성 추출) — driveLetter 외 다른 필드"
+    - "정책 이름 빈값 저장 메시지 정확 텍스트 (control_suite 와 동일 '이름을 입력해 주세요.' 추정)"
+    - "정책 이름 중복 메시지 ('이미 등록된 이름 입니다.' 동일 추정)"
+    - "프로세스 토글 ON 시 다른 탭 활성화 여부 (정책 저장 후 EDIT 진입 시)"
+    - "워터마크 토글 종속 disabled 동작 (isScreenWaterMark OFF 시 종속 필드 disabled?)"
+    - "quota 입력 형식 (숫자 마스킹 등 — uploadLimit 패턴 추정)"
+    - "원본보호 드라이브 설정 필수 묶음 — driveLetter/Label/Quota 중 어디까지 필수인지"

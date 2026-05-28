@@ -246,16 +246,34 @@ class NpouchOriginProtectPolicyPage(BasePage):
 
         return actual_name[0]
 
-    def delete_all_auto_policies(self) -> None:
-        for name in [n for n in self.get_policy_names() if n.startswith("[AUTO]")]:
+    def delete_all_auto_policies(self) -> int:
+        """[AUTO]_ 만 삭제, [AUTO_KEEP]_ 보존 (control_suite 패턴 일치)."""
+        deleted = 0
+        for name in [n for n in self.get_policy_names()
+                     if n.startswith("[AUTO]") and not n.startswith("[AUTO_KEEP]")]:
             try:
                 self.delete_policy(name)
+                deleted += 1
             except Exception:
                 pass
+        return deleted
+
+    def delete_all_test_data(self) -> int:
+        """[AUTO]_ + [AUTO_KEEP]_ 모두 삭제 — session 시작 clean slate 용 (control_suite 패턴)."""
+        deleted = 0
+        for name in [n for n in self.get_policy_names()
+                     if n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]")]:
+            try:
+                self.delete_policy(name)
+                deleted += 1
+            except Exception:
+                pass
+        return deleted
 
     def delete_policy(self, name: str) -> None:
-        if not name.startswith("[AUTO]"):
-            raise Exception("테스트 정책([AUTO] 접두사)만 삭제 가능합니다")
+        # [AUTO]_ 또는 [AUTO_KEEP]_ 접두사만 삭제 허용 (KEEP 도 session cleanup 대상).
+        if not (name.startswith("[AUTO]") or name.startswith("[AUTO_KEEP]")):
+            raise Exception("테스트 정책([AUTO]/[AUTO_KEEP] 접두사)만 삭제 가능합니다")
 
         def _attempt():
             self.check_policy_row(name)
