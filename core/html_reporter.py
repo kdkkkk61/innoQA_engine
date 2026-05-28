@@ -51,34 +51,66 @@ _SCENARIO_LABELS: dict[int, str] = {
     5: "시나리오 5: 케이스 검증",
     # sc5 lifecycle 세분 (51/52/53) — 라벨 '시나리오 5a/5b/5c' 로 추출.
     # 모두 scenario=5 면 영역정렬에 lifecycle 시간순(a→b→c)이 파괴되어 세분 필요.
-    51: "시나리오 5a: lifecycle 생성 + 재오픈 일치",
-    52: "시나리오 5b: 요소(내용) 제거 + 재오픈 비움",
-    53: "시나리오 5c: 토글 전부 OFF + 빈 정책 확인",
     6:  "시나리오 6: 연계 데이터 핸드오프 ([AUTO_KEEP] 확인)",
     7:  "시나리오 7: 최종 cleanup (AUTO 정리·KEEP 보존)",
-    # ── origin_protect sub-numbering (sc1a/1b/.../sc2a/2b/...) ─────
-    # 메서드 단위 sub-header 분리 — base._add 가 메서드 이름에서 자동 매핑.
-    11: "시나리오 1a: navigate + 목록 UI (4 버튼 + 검색)",
-    12: "시나리오 1b: ADD 모달 진입 + 26 필드·CSU·탭",
-    13: "시나리오 1c: ADD 비기본 탭 접근 차단 (3 탭)",
-    14: "시나리오 1d: ADD close → re-open default reset",
-    21: "시나리오 2a: ADD 모달 필드 인벤토리 (26 항목)",
-    22: "시나리오 2b: 필수 marker — span.star 정확 3개",
-    23: "시나리오 2c: default 값 (4 switch ON / 9 checkbox OFF / 13 text 빈값)",
-    24: "시나리오 2d: maxlength = 전부 null (서버 측 검증)",
+
+    # ── sub-numbering 통일 체계 (sn*100 + sub_idx, a=1, b=2, ..., r=18, ...) ────
+    # base._add 가 메서드 이름 'test_scenarioNX_...' 에서 자동 매핑.
+    # 원본보호 sc1/sc2 + control_suite sc3/sc4/sc5 모두 동일.
+
+    # origin_protect sc1
+    101: "시나리오 1a: navigate + 목록 UI (4 버튼 + 검색)",
+    102: "시나리오 1b: ADD 모달 진입 + 26 필드·CSU·탭",
+    103: "시나리오 1c: ADD 비기본 탭 접근 차단 (3 탭)",
+    104: "시나리오 1d: ADD close → re-open default reset",
+    # origin_protect sc2
+    201: "시나리오 2a: ADD 모달 필드 인벤토리 (26 항목)",
+    202: "시나리오 2b: 필수 marker — span.star 정확 3개",
+    203: "시나리오 2c: default 값 (4 switch ON / 9 checkbox OFF / 13 text 빈값)",
+    204: "시나리오 2d: maxlength = 전부 null (서버 측 검증)",
+    # control_suite sc3 (a~k)
+    302: "시나리오 3b: minimal 저장",
+    303: "시나리오 3c: ADD 종합 풍부 (전체 영역)",
+    304: "시나리오 3d: 웹제한 ADD 동작",
+    305: "시나리오 3e: 검증 메시지 (메인 모달)",
+    306: "시나리오 3f: validation 확장 (web/csu)",
+    307: "시나리오 3g: format / overflow",
+    308: "시나리오 3h: length boundary (메인)",
+    309: "시나리오 3i: picker duplicate",
+    310: "시나리오 3j: save cycle errors (서버 오류)",
+    311: "시나리오 3k: yaml audit (process_modal 갭)",
+    # control_suite sc4 (b~r)
+    402: "시나리오 4b: minimal 수정",
+    403: "시나리오 4c: 메인 필드 CRUD (EDIT)",
+    404: "시나리오 4d: process_modal full (EDIT)",
+    405: "시나리오 4e: tag full (EDIT)",
+    406: "시나리오 4f: web_restrict full (EDIT)",
+    407: "시나리오 4g: validation 메시지 (EDIT)",
+    408: "시나리오 4h: sub-modal 재진입 변경 없음",
+    409: "시나리오 4i: 이름 중복 (EDIT)",
+    410: "시나리오 4j: ux defect 재현 (EDIT)",
+    411: "시나리오 4k: 메인 모달 중복 (EDIT)",
+    412: "시나리오 4l: 웹제한 validation (EDIT)",
+    413: "시나리오 4m: process_modal validation (EDIT)",
+    414: "시나리오 4n: picker duplicate (EDIT)",
+    415: "시나리오 4o: format/overflow (EDIT)",
+    416: "시나리오 4p: length boundary (EDIT)",
+    417: "시나리오 4q: normal boundary 회귀",
+    418: "시나리오 4r: yaml audit EDIT (process_modal 갭)",
+    # control_suite sc5 lifecycle (a/b/c)
+    501: "시나리오 5a: lifecycle 생성 + 재오픈 일치",
+    502: "시나리오 5b: 요소(내용) 제거 + 재오픈 비움",
+    503: "시나리오 5c: 토글 전부 OFF + 빈 정책 확인",
 }
 
 
 def _scenario_num_of(r) -> int:
     """extra['scenario'] 우선, 없으면 phase, 없으면 0.
-    sc5 lifecycle 은 라벨 '시나리오 5a/5b/5c' 로 51/52/53 세분 (시간순 보존).
+
+    sub-numbering 은 base._add() 가 메서드 이름에서 자동 매핑 (sn*100 + sub_idx).
+    여기서는 그 값을 그대로 사용 — 추가 분기 없음.
     """
-    base = (r.extra or {}).get("scenario") or r.phase or 0
-    if base == 5:
-        m = re.search(r"시나리오\s*5([abc])", r.label or "")
-        if m:
-            return 50 + {"a": 1, "b": 2, "c": 3}[m.group(1)]
-    return base
+    return (r.extra or {}).get("scenario") or r.phase or 0
 
 # ── list_page order 임계값 (extra["scenario"] 없을 때 폴백용) ────────
 _LIST_SCENARIO_THRESHOLDS = [
@@ -294,10 +326,10 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
     if page_id in _PAGE_IDS_USE_LABEL_GROUP_SORT:
         def sort_key(x):
             sn = _scenario_num(x)
-            # sc5 lifecycle (51/52/53): area 정렬 제외 → 코드 실행 순서 유지.
-            #   5a/5b/5c 는 시간순(저장→메인→프로세스→태그→웹제한)이 곧 올바른 순서이며,
-            #   results 가 append(실행) 순이라 stable sort 로 그대로 보존됨.
-            if sn >= 51:
+            # sub-numbering (sn>=100) : area 정렬 제외 → 코드 실행 순서 유지.
+            # sc5 lifecycle (501/502/503) + sc3a~k (301~311) + sc4b~r (402~418) 등 다 해당.
+            # results 가 append(실행) 순이라 stable sort 로 그대로 보존됨.
+            if sn >= 100:
                 return (sn, (0, ""), 0)
             return (sn, _label_area_priority(x), x.order or 9999)
     else:
@@ -312,11 +344,11 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
         disp_label = re.sub(r"^시나리오\s*\d+[a-z]?\s*[—–\-]\s*", "", r.label or "")
 
         # 시나리오 구분 헤더 — 2단 계층:
-        #   parent (sn < 10 단독, 또는 sub-num 의 base): 큰 헤더 (시나리오 1 / 2 / ...)
-        #   sub (sn >= 10, sn % 10 ≠ 0): 작은 헤더 (시나리오 1a / 1b / 2a / ...)
+        #   parent (sn < 100 단독, 또는 sub-num 의 base): 큰 헤더 (시나리오 1 / 2 / ...)
+        #   sub (sn >= 100, sn % 100 ≠ 0): 작은 헤더 (시나리오 1a / 1b / 3j / 4r ...)
         sn = _scenario_num(r)
-        is_sub = sn >= 10 and (sn % 10) != 0   # 11/12/13/14/21/22/23/24/51/52/53 등
-        parent_num = sn // 10 if is_sub else sn
+        is_sub = sn >= 100 and (sn % 100) != 0   # 101/102/.../301/.../418/501/502/503
+        parent_num = sn // 100 if is_sub else sn
 
         # parent 전환 시 — 큰 헤더 출력
         if parent_num != prev_parent_num:
@@ -369,10 +401,10 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
         is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
         bug_items  = [r for r in report.results if r.status in ("fail", "warn", "known_bug", "error")]
         # page_id 조건부 sort — 영역 우선순위 (1차 → 2차) (RansomCruncher 등 무관)
-        #   sc5 lifecycle (>=51) 은 area 제외 — 실행 순서 유지 (table sort 와 일관)
+        #   sub-numbering (>=100) 은 area 제외 — 실행 순서 유지 (table sort 와 일관)
         if page_id in _PAGE_IDS_USE_LABEL_GROUP_SORT:
             bug_items.sort(key=lambda r: (
-                (_scenario_num_of(r), (0, ""), 0) if _scenario_num_of(r) >= 51
+                (_scenario_num_of(r), (0, ""), 0) if _scenario_num_of(r) >= 100
                 else (_scenario_num_of(r), _label_area_priority(r), r.order or 9999)))
         for r in bug_items:
             issue_num += 1

@@ -158,7 +158,23 @@ class ControlSuiteBase:
             pass
 
     def _add(self, status: str, label: str, detail: str = "", sc: int = 0) -> None:
-        """한 줄로 print + ScanResult 누적. 각 검증 블록 단위 호출."""
+        """한 줄로 print + ScanResult 누적. 각 검증 블록 단위 호출.
+
+        sub-numbering 자동 매핑 (2026-05-29 — 원본보호와 통일):
+          메서드 이름 'test_scenarioNX_...' → sc = N*100 + sub_idx (a=1, b=2, ..., r=18, ...)
+          sc3a → 301 / sc3j → 310 / sc3k → 311 / sc4r → 418 / sc5a → 501 / ...
+          a~z 전부 안전 (sn*10 방식의 j/k 충돌 회피).
+        """
+        try:
+            nm = self._request.node.name
+            m = re.match(r"test_scenario(\d+)([a-z])_", nm)
+            if m:
+                sn = int(m.group(1))
+                sub = ord(m.group(2)) - ord("a") + 1
+                if sc in (0, sn):
+                    sc = sn * 100 + sub
+        except Exception:
+            pass
         t, s = _r(status, label, detail, sc=sc,
                   page=self._page if status in ("fail", "warn") else None)
         print(t)
