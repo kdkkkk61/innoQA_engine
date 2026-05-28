@@ -1982,7 +1982,7 @@ class TestScenario3Action(ControlSuiteBase):
         # ── (b) special_folder 다중 체크 → 1건 병합 등록 (yaml :198/510 must_test) ──
         page.process.click_special_folder_btn()
         page.special_folder.wait_open()
-        page.special_folder.select_codes(["DESKTOP", "FAVORITES"])
+        page.special_folder.select_codes(["[/DESKTOP/]", "[/FAVORITES/]"])
         page.special_folder.confirm()
         page.special_folder.wait_closed()
         # cacheFolderInput 에 inline tag 2개 → 추가 클릭 → cacheFolderList 1건 병합 기대

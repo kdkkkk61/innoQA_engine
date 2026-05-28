@@ -2103,7 +2103,7 @@ class TestScenario4Modify(ControlSuiteBase):
         # ── (b) special_folder 다중 체크 → 1건 병합 (sc3k b EDIT) ──
         page.process.click_special_folder_btn()
         page.special_folder.wait_open()
-        page.special_folder.select_codes(["DESKTOP", "FAVORITES"])
+        page.special_folder.select_codes(["[/DESKTOP/]", "[/FAVORITES/]"])
         page.special_folder.confirm()
         page.special_folder.wait_closed()
         before_b = len(page.process.get_cache_folder_list())
