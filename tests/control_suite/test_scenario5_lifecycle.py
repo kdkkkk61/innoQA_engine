@@ -65,6 +65,16 @@ class TestScenario5Lifecycle(ControlSuiteBase):
         page.navigate_to()
         # 1a 에서 이미 전체 정리됨 — AUTO 잔여만 정리 (시나리오 4 KEEP 보존).
 
+        # 방어적 idempotent — 이전 run zz 가 [AUTO_KEEP] 보존 + sc1 cleanup 실패 시
+        # NAME 이 잔존할 수 있음 → '이미 등록된 이름' 으로 sc5a 실패 (2026-05-28 사용자 보고).
+        # session_cleanup 이 정상 동작했으면 is_policy_exists=False 라 no-op.
+        if page.is_policy_exists(NAME):
+            print(f"[sc5a 방어] NAME='{NAME}' 잔존 → 삭제 후 진행")
+            try:
+                page.delete_policy(NAME)
+            except Exception as e:
+                print(f"[sc5a 방어] 삭제 예외: {e!r}")
+
         # ── 1. 메인 모달 — 11 필드 ─────────────────────────────
         page.open_add_modal()
         page.set_csu_name(NAME)

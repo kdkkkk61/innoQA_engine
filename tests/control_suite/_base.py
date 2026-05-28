@@ -78,13 +78,33 @@ class ControlSuiteBase:
 
         sc1a 가 이미 cleanup 했으면 (delete_all_test_data) idempotent — 추가 정리 없음.
         sc1a 가 안 실행됐으면 (subset run: pytest sc3 만) 여기서 cleanup.
+
+        강화 (2026-05-28): 이전 run 의 zz 가 [AUTO_KEEP] 보존 → 다음 run 시작 시 잔여 있음.
+          - silent + 예외 swallow 였던 기존 구현이 실패를 못 보여 sc5a "이미 등록된 이름" 발생.
+          - 가시성 log + 재시도 + AngularJS 비동기 list 렌더 대기 추가.
         """
         if ControlSuiteBase._SESSION_CLEANUP_DONE:
             return
         try:
-            page.delete_all_test_data()
-        except Exception:
-            pass
+            # AngularJS 비동기 list 렌더 안정화 대기 (navigate_to 직후 row 비어있을 수 있음)
+            page.page.wait_for_timeout(500)
+            before = [n for n in page.get_policy_names()
+                      if n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]")]
+            if before:
+                print(f"[session cleanup] 시작 잔여 {len(before)}건: {before}")
+            deleted = page.delete_all_test_data()
+            after = [n for n in page.get_policy_names()
+                     if n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]")]
+            if after:
+                # 1차 후 잔여 — list 미갱신 / 비동기 race 가능성 → 재시도
+                print(f"[session cleanup] 1차 후 잔여 {len(after)}건 — 재시도: {after}")
+                page.page.wait_for_timeout(500)
+                deleted += page.delete_all_test_data()
+                after = [n for n in page.get_policy_names()
+                         if n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]")]
+            print(f"[session cleanup] 완료: 삭제 {deleted}건, 최종 잔여={after}")
+        except Exception as e:
+            print(f"[session cleanup] 예외: {e!r}")
         ControlSuiteBase._SESSION_CLEANUP_DONE = True
 
     def _attach(self, scan_results: list[ScanResult]) -> None:

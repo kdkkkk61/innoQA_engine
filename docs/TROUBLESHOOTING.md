@@ -5,6 +5,17 @@
 
 ---
 
+## [RESOLVED] sc5a "이미 등록된 이름" — 이전 run zz 가 보존한 [AUTO_KEEP] 을 sc1 cleanup 이 silent 실패 (2026-05-28)
+- **날짜**: 2026-05-28
+- **증상**: 전체 suite 재실행 시 sc5a save 가 `메시지='이미 등록된 이름 입니다.'` 로 fail. 이전 run 의 zz 가 설계대로 [AUTO_KEEP]_sc5_step1 을 보존했고, 다음 run sc1 의 `_ensure_session_cleanup` 이 그걸 못 지움 → sc5a 가 같은 이름으로 ADD 시도 → 충돌. sc5b 도 sc5a 잔해(모달/backdrop)로 timeout cascade.
+- **원인**: `_ensure_session_cleanup` 이 `try/except: pass` 로 모든 예외 swallow + 결과 검증 없음 + AngularJS 비동기 list 렌더 안정화 대기 없음. 1차 cleanup 실패해도 `_SESSION_CLEANUP_DONE=True` 설정되어 재시도 없이 다음 테스트 진행 → sc5a 에서 표면화.
+- **수정** (2단 방어):
+  - `_base.py _ensure_session_cleanup` 강화: 페이지 안정화 대기(500ms) + 시작 잔여 log + 1차 후 검증 + 재시도 + 최종 잔여 log (가시화).
+  - `test_scenario5_lifecycle.py sc5a` 방어 가드: NAME(LIFECYCLE_NAME) 잔존 시 사전 삭제 → idempotent. session_cleanup 정상이면 no-op.
+- **파일**: `tests/control_suite/_base.py`, `tests/control_suite/test_scenario5_lifecycle.py`
+
+---
+
 ## [RESOLVED] HTML 리포트에 시나리오 6 헤더 미표시 — sc6/sc7 라벨 dict 누락 (2026-05-28)
 - **날짜**: 2026-05-28
 - **증상**: 전체 suite 41 passed 정상 실행됐고 pytest 로그에 sc6 3건(pass/pass/skip) 다 기록됐으나, HTML 리포트에 "시나리오 6" 섹션 헤더가 깔끔히 안 뜸 (기본 fallback `시나리오 6` 으로만 표시되어 설명 부재).
