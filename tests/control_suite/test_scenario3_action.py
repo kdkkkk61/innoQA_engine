@@ -1002,6 +1002,29 @@ class TestScenario3Action(ControlSuiteBase):
                       f"입력: 동일 idx=0 / 결과: 알림 없음 (yaml :287 기대와 불일치, wr.procRows={proc_rows_wr3})", sc=3)
         page.web_restrict.close()
 
+        # ── Case 9: 업로드 제한용량 13자 차단 메시지 (yaml :182, audit 갭 2026-05-28) ──
+        # yaml verified — DOM maxlength=null(신빌드) 라 13자 입력 자유, 확인 시 차단:
+        # "업로드 제한용량의 입력 가능 글자수는 최대 12자 까지 가능합니다." (modal_stage_block).
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_nth_and_confirm(1, mode="multi")   # wr#1 회피용 idx=1
+        page.web_restrict.set_name("[AUTO]_web_limit13")
+        page.web_restrict.set_upload_limit("1234567890123")   # 13자
+        page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first.evaluate("el => el.click()")
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = ("12자" in msg) and ("업로드" in msg or "제한용량" in msg)
+            self._add("pass" if ok else "fail",
+                      "웹제한 모달 — 업로드 제한용량 13자 차단 메시지 (yaml :182 audit 갭)",
+                      f"입력: uploadLimitSize='1234567890123' (13자) / 결과: 메시지={msg!r}", sc=3)
+        else:
+            self._add("fail", "[차단 메시지] 업로드 제한용량 13자 — 미노출",
+                      f"입력: 13자 / 결과: 알림 없음 (yaml :182 기대와 불일치)", sc=3)
+        page.web_restrict.close()
+
         # ── Case 6: 메인 모달 전자서명 예외처리 중복 → '이미 등록된 전자서명' (yaml :382 신 발견) ──
         # 신규 추가 — yaml 미기록 신 발견 (2026-05-19) 검증
         page.set_sign_except_toggle(True)
@@ -1916,3 +1939,91 @@ class TestScenario3Action(ControlSuiteBase):
         self._add("pass" if ok_save else "fail",
                   "[저장 확인] 프로세스별 제어 (태그) - 정상 저장 → 메인 저장 OK (sc4 4e EDIT 데이터)",
                   f"입력: 태그 mode + drv 50자 (정상) + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+
+    # ==================================================================
+    # 시나리오 3k — yaml audit 갭 — process_modal 검증 (2026-05-28 추가)
+    #   사용자 의문 "yaml 명세 있는데 왜 테스트 없음?" → systematic audit 결과 3건 추가:
+    #     a) cacheFolder 빈값 + 추가 → '폴더 이름을 입력해 주세요.' (yaml :734)
+    #     b) special_folder 다중 체크 → cacheFolderList 1건 병합 등록 (yaml :198/510 must_test)
+    #     c) IP/Port 삭제 후 동일값 재추가 → '이미 등록된 IP와 Port' 알림 (yaml :197/264 ux_bug)
+    # ==================================================================
+    def test_scenario3k_yaml_audit_process_modal(self, logged_in_page, settings):
+        """sc3k — yaml audit 결과 process_modal 갭 3건 보완."""
+        print("\n━━ [제어 스위트] 시나리오 3k: yaml audit — process_modal 갭 검증 ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+
+        # 정책 ADD 모달 진입 + 프로세스 추가 → process_modal 안에서 검증
+        page.open_add_modal()
+        page.set_csu_name("[AUTO]_sc3_step20_audit")
+        page.click_individual_process_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="single")
+
+        # ── (a) cacheFolder 빈값 + 추가 차단 메시지 (yaml :734) ─────
+        page.process.set_cache_input("")
+        page.process.click_cache_add_btn()
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg_a = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok_a = "폴더" in msg_a and ("이름" in msg_a or "입력" in msg_a)
+            self._add("pass" if ok_a else "fail",
+                      "(a) process_modal — cacheFolder 빈값 + 추가 차단 메시지 (yaml :734 audit 갭)",
+                      f"입력: cacheFolderInput='' + 추가 / 결과: 메시지={msg_a!r}", sc=3)
+        else:
+            self._add("fail", "[차단 메시지] (a) cacheFolder 빈값 — 미노출",
+                      f"입력: 빈값 + 추가 / 결과: 알림 없음 (yaml :734 기대와 불일치)", sc=3)
+
+        # ── (b) special_folder 다중 체크 → 1건 병합 등록 (yaml :198/510 must_test) ──
+        page.process.click_special_folder_btn()
+        page.special_folder.wait_open()
+        page.special_folder.select_codes(["DESKTOP", "FAVORITES"])
+        page.special_folder.confirm()
+        page.special_folder.wait_closed()
+        # cacheFolderInput 에 inline tag 2개 → 추가 클릭 → cacheFolderList 1건 병합 기대
+        cache_before = len(page.process.get_cache_folder_list())
+        page.process.click_cache_add_btn()
+        # 알림 dismiss 안전망
+        if page.is_confirm_modal_visible(timeout=500):
+            page.dismiss_confirm_modal()
+        cache_after_items = page.process.get_cache_folder_list()
+        added = len(cache_after_items) - cache_before
+        # yaml :510-516: 2건 체크해도 cacheFolderList 에 1건으로 통째 등록 (buggy 패턴)
+        ok_b = added == 1
+        self._add("warn" if ok_b else "fail",   # buggy 패턴이라 warn (제품 결함 노출)
+                  "(b) process_modal — special_folder 다중 체크 → 1건 병합 (yaml :510 must_test, buggy)",
+                  f"입력: DESKTOP+FAVORITES 체크+확인+추가 / 결과: cache 추가={added}건, list={cache_after_items}", sc=3)
+        # 정리 — process_modal cancel 시 어차피 폐기되므로 별도 cache 제거 불필요
+
+        # ── (c) IP/Port 삭제 후 동일값 재추가 잘못된 중복 (yaml :197/264 ux_bug) ─
+        page.process.set_pnetwork(True)
+        DUP_IP, DUP_PORT = "192.168.99.99", "8888"
+        page.process.add_ip_port(DUP_IP, DUP_PORT)
+        if page.is_confirm_modal_visible(timeout=500):
+            page.dismiss_confirm_modal()
+        ip_after_add = page.process.get_ip_list()
+        page.process.remove_ip_port(DUP_IP, DUP_PORT)
+        ip_after_del = page.process.get_ip_list()
+        # 재추가 → 잘못된 '이미 등록' 알림 기대 (display:none 잔류 li 가 dup-check 통과 못 함)
+        page.process.add_ip_port(DUP_IP, DUP_PORT)
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg_c = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            is_dup_msg = ("이미 등록" in msg_c) and ("IP" in msg_c.upper() or "Port" in msg_c)
+            # 이 동작은 ux_bug — 메시지가 떴다는 것 자체가 제품 결함 확정
+            self._add("warn" if is_dup_msg else "fail",
+                      "(c) process_modal — IP/Port 삭제 후 재추가 → 잘못된 '이미 등록' 알림 (yaml :197 ux_bug)",
+                      f"입력: {DUP_IP}:{DUP_PORT} 추가→삭제→재추가 / 결과: 메시지={msg_c!r}, IP after_del={len(ip_after_del)}", sc=3)
+        else:
+            # 메시지 미노출 = 버그 재현 안 됨 (제품이 정상 동작 — 좋은 일)
+            self._add("pass", "(c) process_modal — IP/Port 삭제 후 재추가 정상 (yaml :197 ux_bug 미재현)",
+                      f"입력: 추가→삭제→재추가 / 결과: 알림 없음, IP list={page.process.get_ip_list()}", sc=3)
+
+        # 정리 — process_modal close (X) + 메인 모달 close (저장 안 함)
+        page.process.close()
+        page.close_modal()

@@ -1504,6 +1504,27 @@ class TestScenario4Modify(ControlSuiteBase):
             self._add("fail", "[차단 메시지] EDIT cross_instance — 알림 미노출",
                       f"입력: 동일 idx=0 / 결과: 알림 없음 (wr.procRows={proc_rows_new})", sc=4)
         page.web_restrict.close()
+
+        # ── G. 업로드 제한용량 13자 차단 (sc3f Case9 EDIT 대칭, yaml :182) ──
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_nth_and_confirm(1, mode="multi")   # 기존 wr 회피
+        page.web_restrict.set_name("[AUTO]_web_edit_limit13")
+        page.web_restrict.set_upload_limit("1234567890123")   # 13자
+        page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first.evaluate("el => el.click()")
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg_g = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok_g = ("12자" in msg_g) and ("업로드" in msg_g or "제한용량" in msg_g)
+            self._add("pass" if ok_g else "fail",
+                      "EDIT 웹제한 모달 — 업로드 제한용량 13자 차단 메시지 (sc3f Case9 EDIT)",
+                      f"입력: uploadLimitSize 13자 / 결과: 메시지={msg_g!r}", sc=4)
+        else:
+            self._add("fail", "[차단 메시지] EDIT 업로드 제한용량 13자 — 미노출",
+                      f"입력: 13자 / 결과: 알림 없음", sc=4)
+        page.web_restrict.close()
         page.close_modal()
 
     # ==================================================================
@@ -2036,4 +2057,85 @@ class TestScenario4Modify(ControlSuiteBase):
                     page.close_modal()
                 except Exception:
                     pass
+
+    # ==================================================================
+    # 시나리오 4r — yaml audit 갭 — EDIT process_modal 검증 (sc3k EDIT 대칭, 2026-05-28 추가)
+    #   a) cacheFolder 빈값 차단 메시지 (yaml :734)
+    #   b) special_folder 다중 체크 → 1건 병합 (yaml :510 must_test)
+    #   c) IP/Port 삭제 후 재추가 잘못된 '이미 등록' (yaml :197 ux_bug)
+    # ==================================================================
+    def test_scenario4r_yaml_audit_edit_process_modal(self, logged_in_page, settings):
+        """sc4r — yaml audit 갭 3건 EDIT 대칭 (sc3k 와 동일 검증, EDIT 컨텍스트)."""
+        print("\n━━ [제어 스위트] 시나리오 4r: yaml audit — EDIT process_modal 갭 ━━━")
+        page = NpouchControlSuitePage(logged_in_page, settings)
+        self._page = page.page
+        candidates = ["[AUTO]_sc3_step2", "[AUTO]_sc3_step3", "[AUTO]_sc3_step1"]
+        page.navigate_to_clean()
+        TARGET_NAME = next((n for n in candidates if page.is_policy_exists(n)), None)
+        if not TARGET_NAME:
+            self._add("skip", "sc4r — 프로세스 보유 sc3 정책 부재 → skip",
+                      f"후보={candidates}", sc=4)
+            return
+
+        page.open_modify_modal(TARGET_NAME)
+        if len(page.get_item_list_rows()) < 1:
+            self._add("skip", "sc4r — 프로세스 행 0건 → skip", f"정책 '{TARGET_NAME}'", sc=4)
+            page.close_modal()
+            return
+
+        page.click_item_list_row(0)
+        page.process.wait_open()
+
+        # ── (a) cacheFolder 빈값 차단 (sc3k a EDIT) ──────────────
+        page.process.set_cache_input("")
+        page.process.click_cache_add_btn()
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg_a = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok_a = "폴더" in msg_a and ("이름" in msg_a or "입력" in msg_a)
+            self._add("pass" if ok_a else "fail",
+                      "EDIT process_modal — (a) cacheFolder 빈값 차단 (sc3k a EDIT)",
+                      f"입력: 빈값 + 추가 / 결과: 메시지={msg_a!r}", sc=4)
+        else:
+            self._add("fail", "[차단 메시지] EDIT (a) cacheFolder 빈값 — 미노출",
+                      "입력: 빈값+추가 / 결과: 알림 없음", sc=4)
+
+        # ── (b) special_folder 다중 체크 → 1건 병합 (sc3k b EDIT) ──
+        page.process.click_special_folder_btn()
+        page.special_folder.wait_open()
+        page.special_folder.select_codes(["DESKTOP", "FAVORITES"])
+        page.special_folder.confirm()
+        page.special_folder.wait_closed()
+        before_b = len(page.process.get_cache_folder_list())
+        page.process.click_cache_add_btn()
+        if page.is_confirm_modal_visible(timeout=500):
+            page.dismiss_confirm_modal()
+        after_items = page.process.get_cache_folder_list()
+        added = len(after_items) - before_b
+        ok_b = added == 1
+        self._add("warn" if ok_b else "fail",
+                  "EDIT process_modal — (b) special_folder 다중 체크 → 1건 병합 (sc3k b EDIT, buggy)",
+                  f"입력: DESKTOP+FAVORITES / 결과: 추가={added}건, list={after_items}", sc=4)
+
+        # ── (c) IP/Port 삭제 후 재추가 잘못된 중복 (sc3k c EDIT) ──
+        page.process.set_pnetwork(True)
+        DUP_IP, DUP_PORT = "10.99.99.99", "9999"
+        page.process.add_ip_port(DUP_IP, DUP_PORT)
+        if page.is_confirm_modal_visible(timeout=500):
+            page.dismiss_confirm_modal()
+        page.process.remove_ip_port(DUP_IP, DUP_PORT)
+        page.process.add_ip_port(DUP_IP, DUP_PORT)
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg_c = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            is_dup = ("이미 등록" in msg_c) and ("IP" in msg_c.upper() or "Port" in msg_c)
+            self._add("warn" if is_dup else "fail",
+                      "EDIT process_modal — (c) IP/Port 삭제 후 재추가 잘못된 중복 (sc3k c EDIT, ux_bug)",
+                      f"입력: {DUP_IP}:{DUP_PORT} 추가→삭제→재추가 / 결과: 메시지={msg_c!r}", sc=4)
+        else:
+            self._add("pass", "EDIT process_modal — (c) IP/Port 재추가 정상 (ux_bug 미재현)",
+                      "입력: 추가→삭제→재추가 / 결과: 알림 없음", sc=4)
+
+        page.process.close()
+        page.close_modal()
 

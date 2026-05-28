@@ -77,6 +77,10 @@
 | 39 | 웹제한 이름 빈값 차단 | 3f Case1 | 4l A | ✅ |
 | 39b | 웹제한 이름 중복 차단 | 3f Case7 | 4l E | ✅ (2026-05-28 추가 — 2차 Chrome 확인 갭) |
 | 39c | cross_instance 프로세스 중복 silent 거부 + 알림 (yaml :287) | 3f Case8 | 4l F | ✅ (2026-05-28 추가 — Chrome 직접 확정, yaml 명세 있던 갭) |
+| 39d | 업로드 제한용량 13자 차단 메시지 (yaml :182) | 3f Case9 | 4l G | ✅ (2026-05-28 systematic audit) |
+| 39e | cacheFolder 빈값 차단 메시지 (yaml :734) | 3k (a) | 4r (a) | ✅ (2026-05-28 systematic audit) |
+| 39f | special_folder 다중 체크 → 1건 병합 (yaml :510 must_test, buggy) | 3k (b) | 4r (b) | ✅ warn (2026-05-28 systematic audit — 제품 결함 노출) |
+| 39g | IP/Port 삭제 후 재추가 잘못된 '이미 등록' (yaml :197 ux_bug) | 3k (c) | 4r (c) | ✅ warn (2026-05-28 systematic audit — ux_bug 재현 검증) |
 | 40 | URL 중복 차단 + 메시지 일관성 | 3f Case3 | 4l B | ✅ (일관성 분리검증 4l) |
 | 41 | 웹 확장자 중복 차단 | 3f Case5 | 4l C | ✅ |
 | 41b | 웹 확장자 형식(특수문자) 거부 | 3 형식거부 | 4l C2 | ✅ (2026-05-28 추가) |
