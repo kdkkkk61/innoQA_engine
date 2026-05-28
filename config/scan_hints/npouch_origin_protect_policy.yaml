@@ -1,0 +1,125 @@
+# ══════════════════════════════════════════════════════════════════════
+# nPouch 원본보호 정책 — modal_form scan_hints (초기 골격)
+# ══════════════════════════════════════════════════════════════════════
+# 작성일: 2026-05-28 (Chrome MCP 초기 스캔)
+# 의존성: 제어 스위트 (managerControlSuite) 의 [AUTO_KEEP] 정책 필요 — sc5/sc6 연계 핸드오프
+#
+# Chrome MCP 초기 검증 (2026-05-28):
+#   - 목록 페이지 버튼: addItemBtn / modifyItemBtn / copyItemBtn / removeItemBtn / searchText
+#   - 테이블 헤더 7개, 현재 52행 보유 (기존 정책 多)
+#   - ADD 모달: div#addItemModal.modal-wrap.in (동적 생성/제거 패턴)
+#   - 모달 안 input/textarea/select 총 26개 (visible 22 + hidden toggle 4)
+#   - 탭 4개 추정 (기본 설정 / 허용 프로세스 / 예외처리 프로세스 / 실행차단 프로세스)
+#     ⚠ nav-tabs 표준 selector 미일치 — 탭 영역 분리 selector 추가 조사 필요
+#   - CSU select 버튼 + #controlSuiteId span 존재 (제어스위트 연계 지점 확인)
+# ══════════════════════════════════════════════════════════════════════
+
+scan_mode: modal_form
+page_id:   npouch_origin_protect
+
+# ──────────────────────────────────────────────────────────────────────
+# 의존성 (사용자 결정 2026-05-28)
+# ──────────────────────────────────────────────────────────────────────
+dependencies:
+  upstream_keep:
+    page: "managerControlSuite"
+    artifact: "[AUTO_KEEP]_sc5_step1"
+    usage: "원본보호 정책 ADD 시 CSU select 버튼 → 제어스위트 picker → [AUTO_KEEP] 선택"
+    note: |
+      sc5 lifecycle 완료 시 보존되는 keep 정책을 원본보호 sc3/sc4 가 연계 사용.
+      keep 부재 시 → sc3/sc4 skip (warn) 또는 sc1 에서 [AUTO_KEEP] 생성 분기.
+
+# ──────────────────────────────────────────────────────────────────────
+# 목록 페이지 (시나리오 1)
+# ──────────────────────────────────────────────────────────────────────
+list_ui:
+  search:
+    input:       "input#searchText"
+  table_headers_count: 7   # Chrome 확인 (라벨 한글 — 텍스트 채굴 별도)
+  current_row_count_at_scan: 52   # 2026-05-28 스캔 시점
+
+modal_trigger:
+  add:    "button#addItemBtn"
+  modify: "button#modifyItemBtn"
+  copy:   "button#copyItemBtn"
+  delete: "button#removeItemBtn"
+
+# ──────────────────────────────────────────────────────────────────────
+# 메인 모달
+# ──────────────────────────────────────────────────────────────────────
+modal_id: "addItemModal"
+modal_open_selector: "div#addItemModal.modal-wrap.in"
+
+# 필드 인벤토리 (Chrome MCP 2026-05-28 직접 추출)
+fields:
+  basic:
+    - {id: "originProtectPolicyName", tag: "INPUT", type: "text", required_estimated: true, note: "정책 이름"}
+    - {id: "driveLetter",             tag: "INPUT", type: "text", note: "드라이브 letter"}
+    - {id: "driveLabel",              tag: "INPUT", type: "text", note: "드라이브 라벨"}
+    - {id: "originProtectDriveQuota", tag: "INPUT", type: "text", note: "용량 quota"}
+
+  csu_link:
+    button: "div#addItemModal button.addBtn.smallBtn.addTemplate"
+    result_span: "span#controlSuiteId"
+    note: "제어스위트 picker 호출 → [AUTO_KEEP] 선택 → span 에 id 바인딩"
+
+  process_toggles:
+    - {id: "isAllowProcess",  type: "checkbox", note: "허용 프로세스 토글"}
+    - {id: "isExceptProcess", type: "checkbox", note: "예외처리 프로세스 토글"}
+    - {id: "isBlockProcess",  type: "checkbox", note: "실행차단 프로세스 토글"}
+
+  file_watch:
+    - {id: "isWatchFileExtension", type: "checkbox", hidden: true, note: "파일 감시 확장자 토글"}
+    - {id: "watchFileExtensions",  type: "text",     note: "확장자 input"}
+    - {id: "watchFileExtensionAddBtn", tag: "BUTTON", note: "확장자 추가 버튼"}
+    - {id: "isWatchFileHeader",    type: "checkbox", note: "헤더 체크"}
+    - {id: "watchExceptFolders",   type: "text",     note: "예외 폴더 input"}
+    - {id: "watchExceptFolderAddBtn", tag: "BUTTON", note: "예외폴더 추가 버튼"}
+
+  shutdown_alert:
+    - {id: "isAllowProcessShutdownText", type: "checkbox", hidden: true, note: "프로세스 종료 알림 토글"}
+    - {id: "allowProcessShutdownText",   tag: "TEXTAREA", note: "종료 알림 텍스트"}
+
+  screen_watermark:
+    - {id: "isScreenWaterMark",            type: "checkbox", hidden: true, note: "화면 워터마크 토글"}
+    - {id: "screenWaterMarkText",          type: "text",     note: "워터마크 텍스트"}
+    - {id: "isScreenWaterMarkPcInfo",      type: "checkbox", note: "PC 정보 포함"}
+    - {id: "isScreenWaterMarkCurrentTime", type: "checkbox", note: "현재 시각 포함"}
+    - {id: "screenWaterMarkOpacity",       type: "text",     note: "투명도"}
+    - {id: "screenWaterMarkDegree",        type: "text",     note: "각도"}
+
+  print_watermark:
+    - {id: "isPrintWaterMark",            type: "checkbox", hidden: true, note: "출력 워터마크 토글"}
+    - {id: "printWaterMarkText",          type: "text",     note: "텍스트"}
+    - {id: "isPrintWaterMarkPcInfo",      type: "checkbox", note: "PC 정보"}
+    - {id: "isPrintWaterMarkCurrentTime", type: "checkbox", note: "시각"}
+    - {id: "printWaterMarkOpacity",       type: "text",     note: "투명도"}
+    - {id: "printWaterMarkDegree",        type: "text",     note: "각도"}
+
+  misc:
+    - {id: "isSecondTakeout", type: "checkbox", note: "2차 반출 (기능 미확정)"}
+
+# ──────────────────────────────────────────────────────────────────────
+# 시나리오 책임 분담 (제어스위트 패턴 참고 — 사용자 결정 시 확정)
+# ──────────────────────────────────────────────────────────────────────
+scenario_plan:
+  sc1: "UI 구조 — 목록·버튼·모달 진입/탈출 (clean slate cleanup 포함)"
+  sc2: "입력 구조 — 26 필드 존재·default·maxlength·필수 1차 검증"
+  sc3: "ADD 동작 — 정상 ADD + 형식/중복/오버 입력 검증 + 메시지 패턴"
+  sc4: "EDIT 동작 — list 행 → EDIT 모달 + 저장값 일치 + sc3 회귀"
+  sc5: "lifecycle — 생성 ON → 전체 OFF → 요소 제거 → 재채움 (AUTO_KEEP 보존)"
+  sc6: "연계 데이터 핸드오프 확인 (다음 페이지 = ?)"
+  zz:  "최종 cleanup — AUTO 만 정리, KEEP 보존"
+
+# ──────────────────────────────────────────────────────────────────────
+# TODO — 추가 Chrome MCP 조사 (테스트 작성 전)
+# ──────────────────────────────────────────────────────────────────────
+todo:
+  - "탭 4개의 실제 selector (nav-tabs 표준 아님) — 탭별 영역 분리 확인"
+  - "각 input maxlength (DOM 속성 추출)"
+  - "필수 필드 (이름 외) 식별 — 빈값 저장 시 메시지"
+  - "이름 중복 메시지 — '이미 등록된 이름 입니다.' 동일 추정"
+  - "프로세스 토글 ON 시 종속 영역 (허용/예외/차단 list?) UI"
+  - "CSU picker — 실제 picker 모달 ID 확인 + KEEP 선택 흐름"
+  - "워터마크 토글 종속 disabled 동작"
+  - "검증 메시지 사실 수집 (control_suite 패턴 따라)"
