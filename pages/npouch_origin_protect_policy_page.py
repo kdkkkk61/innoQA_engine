@@ -320,6 +320,46 @@ class NpouchOriginProtectPolicyPage(BasePage):
         self.click_attached(self.SEL_CANCEL_BTN)
         self.wait_for(self.SEL_ADD_BTN)
 
+    # ── 확인 모달 (전역 알림) 헬퍼 — control_suite 패턴 복제 ──────────
+    def is_confirm_modal_visible(self, timeout: int = 1500) -> bool:
+        """__globalMessageModal 알림 노출 여부 (attached 대기 포함)."""
+        try:
+            self.page.locator(self.SEL_CONFIRM_MODAL).first.wait_for(
+                state="attached", timeout=timeout
+            )
+            return True
+        except Exception:
+            return False
+
+    def get_confirm_message(self) -> str:
+        """알림 메시지 텍스트."""
+        loc = self.page.locator(
+            "div#__globalMessageModal .modal-body, div#__globalMessageModal .modal-body-text"
+        )
+        cnt = loc.count()
+        for i in range(cnt):
+            try:
+                t = loc.nth(i).inner_text().strip()
+                if t:
+                    return t
+            except Exception:
+                continue
+        return ""
+
+    def dismiss_confirm_modal(self) -> None:
+        """알림 '확인' 클릭 + 닫힘 대기."""
+        try:
+            self.click_attached(self.SEL_CONFIRM_BTN)
+        except Exception:
+            # fallback — JS click (좌표 무관)
+            self.page.locator(self.SEL_CONFIRM_BTN).first.evaluate("el => el.click()")
+        try:
+            self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+                state="detached", timeout=self._TIMEOUT_MODAL
+            )
+        except Exception:
+            pass
+
     def save_policy(self, name: str) -> None:
         self.fill(self.SEL_POLICY_NAME, name)
         self.click_attached(self.SEL_SUBMIT_BTN)
