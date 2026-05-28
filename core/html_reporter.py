@@ -89,6 +89,19 @@ _SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
         5: "시나리오 5: 케이스 검증",
         6: "시나리오 6: 연계 데이터 핸드오프 ([AUTO_KEEP] 확인)",
         7: "시나리오 7: 최종 cleanup (AUTO 정리·KEEP 보존)",
+        # sc1 sub (a/b/c)
+        101: "시나리오 1a: navigate + 메인 모달",
+        102: "시나리오 1b: process_modal sub-tab (개별/태그)",
+        103: "시나리오 1c: web_restrict 모달",
+        # sc2 sub (a~h)
+        201: "시나리오 2a: 메인 모달 필드",
+        202: "시나리오 2b: process_modal 필드",
+        203: "시나리오 2c: cache_folder picker (특수폴더)",
+        204: "시나리오 2d: web_restrict 프로세스 picker (multi)",
+        205: "시나리오 2e: web_restrict 모달 필드",
+        206: "시나리오 2f: process picker (single)",
+        207: "시나리오 2g: 초기값 점검",
+        208: "시나리오 2h: 태그 모달 필드",
         # sc3 sub (a~k)
         302: "시나리오 3b: minimal 저장",
         303: "시나리오 3c: ADD 종합 풍부 (전체 영역)",
@@ -349,18 +362,24 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
     _scenario_num = _scenario_num_of  # sc5 lifecycle 세분 포함 모듈 헬퍼
 
     # page_id 조건부 sort — 영역 우선순위 (1차 → 2차 프로세스 → 태그 → 웹제한) 적용
+    # parent 별 묶음 정렬 — 1 < 1a < 1b < ... < 2 < 2a < ... < 6 < 7 자연순
+    # sub-num (sn>=100) 는 parent = sn // 100, sub = sn % 100 로 분해해서
+    # base(sub=0) → sub_a → sub_b ... 순서 유지.
     if page_id in _PAGE_IDS_USE_LABEL_GROUP_SORT:
         def sort_key(x):
             sn = _scenario_num(x)
-            # sub-numbering (sn>=100) : area 정렬 제외 → 코드 실행 순서 유지.
-            # sc5 lifecycle (501/502/503) + sc3a~k (301~311) + sc4b~r (402~418) 등 다 해당.
-            # results 가 append(실행) 순이라 stable sort 로 그대로 보존됨.
             if sn >= 100:
-                return (sn, (0, ""), 0)
-            return (sn, _label_area_priority(x), x.order or 9999)
+                # sub-num: parent=sn//100, sub=sn%100 → (parent, sub, area=0) 시간순
+                return (sn // 100, sn % 100, (0, ""), 0)
+            # base (sub 없음): parent=sn, sub=0 → 같은 parent 의 sub-num 보다 먼저
+            return (sn, 0, _label_area_priority(x), x.order or 9999)
     else:
-        # 기존 동작 (시나리오 → order) — RansomCruncher 등 영향 없음
-        sort_key = lambda x: (_scenario_num(x), x.order or 9999)
+        # 기존 동작 + parent 별 묶음 — RansomCruncher 등도 일관 적용
+        def sort_key(x):
+            sn = _scenario_num(x)
+            if sn >= 100:
+                return (sn // 100, sn % 100, x.order or 9999)
+            return (sn, 0, x.order or 9999)
 
     for r in sorted(report.results, key=sort_key):
         badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
@@ -428,12 +447,14 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
         label      = _PAGE_LABELS.get(page_id, page_id)
         is_list    = any(r.pattern in _LIST_PAGE_PATTERNS for r in report.results)
         bug_items  = [r for r in report.results if r.status in ("fail", "warn", "known_bug", "error")]
-        # page_id 조건부 sort — 영역 우선순위 (1차 → 2차) (RansomCruncher 등 무관)
-        #   sub-numbering (>=100) 은 area 제외 — 실행 순서 유지 (table sort 와 일관)
+        # page_id 조건부 sort — parent 별 묶음 (1 < 1a < 1b < ... < 2 < ... < 6 < 7)
         if page_id in _PAGE_IDS_USE_LABEL_GROUP_SORT:
-            bug_items.sort(key=lambda r: (
-                (_scenario_num_of(r), (0, ""), 0) if _scenario_num_of(r) >= 100
-                else (_scenario_num_of(r), _label_area_priority(r), r.order or 9999)))
+            def _bug_sort_key(r):
+                sn = _scenario_num_of(r)
+                if sn >= 100:
+                    return (sn // 100, sn % 100, (0, ""), 0)
+                return (sn, 0, _label_area_priority(r), r.order or 9999)
+            bug_items.sort(key=_bug_sort_key)
         for r in bug_items:
             issue_num += 1
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
@@ -537,7 +558,7 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .result-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .result-table th { background: #f0f4f8; padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; }
 .result-table td { padding: 9px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
-.result-table tr:hover td { background: #fafbfc; }
+/* tr:hover 하얘지는 효과 제거 (사용자 요청 2026-05-29 — 가독성 향상) */
 .col-label    { width: 40%; }
 .col-status   { width: 10%; text-align: center; white-space: nowrap; }
 .col-expected { width: 22%; font-size: 12px; color: #555; }
