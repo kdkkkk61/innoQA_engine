@@ -56,6 +56,16 @@ _SCENARIO_LABELS: dict[int, str] = {
     53: "시나리오 5c: 토글 전부 OFF + 빈 정책 확인",
     6:  "시나리오 6: 연계 데이터 핸드오프 ([AUTO_KEEP] 확인)",
     7:  "시나리오 7: 최종 cleanup (AUTO 정리·KEEP 보존)",
+    # ── origin_protect sub-numbering (sc1a/1b/.../sc2a/2b/...) ─────
+    # 메서드 단위 sub-header 분리 — base._add 가 메서드 이름에서 자동 매핑.
+    11: "시나리오 1a: navigate + 목록 UI (4 버튼 + 검색)",
+    12: "시나리오 1b: ADD 모달 진입 + 26 필드·CSU·탭",
+    13: "시나리오 1c: ADD 비기본 탭 접근 차단 (3 탭)",
+    14: "시나리오 1d: ADD close → re-open default reset",
+    21: "시나리오 2a: ADD 모달 필드 인벤토리 (26 항목)",
+    22: "시나리오 2b: 필수 marker — span.star 정확 3개",
+    23: "시나리오 2c: default 값 (4 switch ON / 9 checkbox OFF / 13 text 빈값)",
+    24: "시나리오 2d: maxlength = 전부 null (서버 측 검증)",
 }
 
 

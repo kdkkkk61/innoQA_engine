@@ -116,6 +116,19 @@ class OriginProtectBase:
             pass
 
     def _add(self, status: str, label: str, detail: str = "", sc: int = 0) -> None:
+        # sub-numbering — 메서드 이름 'test_scenarioNX_...' 에서 자동 추출 → sc = N*10 + sub
+        # 보고서가 sc1a / sc1b / sc2a / ... 별로 헤더 분리되도록.
+        try:
+            nm = self._request.node.name
+            m = re.match(r"test_scenario(\d+)([a-z])_", nm)
+            if m:
+                sn = int(m.group(1))
+                sub = ord(m.group(2)) - ord("a") + 1
+                # sc 인자 비어있거나 부모 sn 과 일치 시에만 sub-num 적용
+                if sc in (0, sn):
+                    sc = sn * 10 + sub
+        except Exception:
+            pass
         t, s = _r(status, label, detail, sc=sc,
                   page=self._page if status in ("fail", "warn") else None)
         print(t)
