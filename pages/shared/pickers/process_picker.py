@@ -98,13 +98,28 @@ class ProcessPicker:
 
     # ── 선택 ────────────────────────────────────────────────────────
     def select_first(self, mode: PickerMode) -> None:
-        """모드별 첫 행의 input 클릭."""
+        """모드별 첫 행의 input '선택' (idempotent).
+
+        ⚠ multi(체크박스) 는 click 이 토글이라, picker 재오픈 시 이전 체크 상태가
+        남아있으면 click 으로 언체크됨 → 결과적으로 선택 0건 (sc3f Case7 / sc4l E
+        backdrop fix 후에도 wr#2 적용 프로세스 0건으로 confirm 시 '선택된 프로세스가
+        없습니다.' 메시지 발생 — 2026-05-28 사용자 보고).
+        → multi 모드는 is_checked() 가드: 이미 체크면 no-op, 아니면 click.
+        single/tag(라디오) 는 click 이 토글 아님 → 항상 click.
+        """
         sel = {
             "single": self.SEL_RADIO_PROCESS,
             "tag":    self.SEL_RADIO_TAG,
             "multi":  self.SEL_CHECKBOX_PROCESS,
         }[mode]
-        self._click_hidden(self.page.locator(sel).first)
+        loc = self.page.locator(sel).first
+        if mode == "multi":
+            try:
+                if loc.is_checked():
+                    return
+            except Exception:
+                pass
+        self._click_hidden(loc)
 
     # ── 액션 ────────────────────────────────────────────────────────
     def confirm(self) -> None:

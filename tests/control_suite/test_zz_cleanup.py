@@ -30,7 +30,7 @@ class TestZzCleanup(ControlSuiteBase):
 
         self._add("pass" if not auto_leftover else "fail",
                   "최종 cleanup — [AUTO]_ 정책 전부 삭제",
-                  f"입력: delete_all_auto_policies / 결과: 삭제={deleted}건, [AUTO] 잔여={auto_leftover}", sc=6)
+                  f"입력: delete_all_auto_policies / 결과: 삭제={deleted}건, [AUTO] 잔여={auto_leftover}", sc=7)
         self._add("pass",
                   "최종 cleanup — [AUTO_KEEP]_ 보존 확인 (다음 연계/다음 run sc1 정리)",
-                  f"결과: 보존된 [AUTO_KEEP]={keep_left or '(없음)'}", sc=6)
+                  f"결과: 보존된 [AUTO_KEEP]={keep_left or '(없음)'}", sc=7)

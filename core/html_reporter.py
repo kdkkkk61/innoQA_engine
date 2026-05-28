@@ -54,6 +54,8 @@ _SCENARIO_LABELS: dict[int, str] = {
     51: "시나리오 5a: lifecycle 생성 + 재오픈 일치",
     52: "시나리오 5b: 요소(내용) 제거 + 재오픈 비움",
     53: "시나리오 5c: 토글 전부 OFF + 빈 정책 확인",
+    6:  "시나리오 6: 연계 데이터 핸드오프 ([AUTO_KEEP] 확인)",
+    7:  "시나리오 7: 최종 cleanup (AUTO 정리·KEEP 보존)",
 }
 
 

@@ -5,6 +5,24 @@
 
 ---
 
+## [RESOLVED] HTML 리포트에 시나리오 6 헤더 미표시 — sc6/sc7 라벨 dict 누락 (2026-05-28)
+- **날짜**: 2026-05-28
+- **증상**: 전체 suite 41 passed 정상 실행됐고 pytest 로그에 sc6 3건(pass/pass/skip) 다 기록됐으나, HTML 리포트에 "시나리오 6" 섹션 헤더가 깔끔히 안 뜸 (기본 fallback `시나리오 6` 으로만 표시되어 설명 부재).
+- **원인**: `core/html_reporter.py` 의 `_SCENARIO_LABELS` dict 가 1~5 + 51/52/53 까지만 정의. sc6/sc7 키 없음 → `_scenario_label` 이 fallback("시나리오 {N}") 으로 처리되어 부제목 없는 헤더.
+- **수정**: `_SCENARIO_LABELS` 에 `6: "시나리오 6: 연계 데이터 핸드오프 ([AUTO_KEEP] 확인)"`, `7: "시나리오 7: 최종 cleanup (AUTO 정리·KEEP 보존)"` 추가. zz_cleanup 의 `_add(..., sc=6)` → `sc=7` 로 구분 (sc6=연계 확인, sc7=최종 정리 의미 분리).
+- **파일**: `core/html_reporter.py`, `tests/control_suite/test_zz_cleanup.py`
+
+---
+
+## [RESOLVED] sc3f Case7 / sc4l E 웹 이름 중복 — picker multi-select 가 토글로 작동해 wr#2 적용 프로세스 0건 (2026-05-28)
+- **날짜**: 2026-05-28
+- **증상**: 웹 이름 중복 테스트 (#9 BUG 리포트) 의 실제 결과 메시지가 `'선택된 프로세스가 없습니다.'` — 우선순위(프로세스 ≥ 1건 먼저 > 이름 중복) 에 막혀 이름 중복 검증 단계까지 도달 못 함. 스크린샷: wr#2 모달 `[AUTO]_web_3f` 이름인데 `적용 프로세스` 테이블 0행.
+- **원인**: `pages/shared/pickers/process_picker.py select_first(mode="multi")` 가 `_click_hidden(checkbox)` (= JS `el.click()`) 로 체크박스를 클릭. wr#1 confirm 후 picker 의 AngularJS state 가 이전 체크를 보유한 채 재오픈 → 두 번째 호출의 click 이 **토글-off** → wr#2 적용 프로세스 0건 → 우선순위 검증에 막힘. (single/tag 는 라디오라 토글 아님 — multi 만 발생.)
+- **수정**: `select_first` multi 모드에 `is_checked()` 가드 추가 — 이미 체크되어 있으면 no-op, 아니면 click (idempotent). single/tag 는 종전대로 항상 click.
+- **파일**: `pages/shared/pickers/process_picker.py`
+
+---
+
 ## [RESOLVED] 테스트 abort(예외)가 HTML 리포트에 안 나옴 — pytest FAILED 인데 리포트는 fail 0 (2026-05-28)
 - **날짜**: 2026-05-28
 - **증상**: pytest 결과 "2 failed, 23 passed" 인데 HTML QA 보고서는 ❌ 0 (실패 0)으로 표시. 테스트가 실패했는데 보고서엔 정상으로 보임 (사용자 지적).
