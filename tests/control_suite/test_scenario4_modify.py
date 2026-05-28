@@ -1483,7 +1483,26 @@ class TestScenario4Modify(ControlSuiteBase):
         else:
             self._add("fail", "[차단 메시지] EDIT 웹제한 이름 중복 — 미노출",
                       f"입력: 기존 이름 재등록 / 결과: 알림 없음 (Chrome 확인과 불일치)", sc=4)
+        page.web_restrict.close()
 
+        # ── F. cross_instance 프로세스 중복 (sc3f Case8 EDIT 대칭, yaml :287) ──
+        # 기존 wr 행이 idx=0 사용 중 → 신규 wr picker 에서 동일 idx=0 선택 → silent 거부 + 알림.
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_nth_and_confirm(0, mode="multi")   # 기존 wr 와 동일 idx
+        proc_rows_new = len(page.web_restrict.get_process_rows())
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg_f = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok_f = ("이미 등록" in msg_f) and ("타 웹제한" in msg_f or "생략" in msg_f or "포함" in msg_f)
+            self._add("pass" if ok_f and proc_rows_new == 0 else "fail",
+                      "EDIT 웹제한 모달 — cross_instance 프로세스 중복 silent 거부 + 알림 (sc3f Case8 EDIT)",
+                      f"입력: 기존 wr 와 동일 idx=0 / 결과: 메시지={msg_f!r}, wr.procRows={proc_rows_new}", sc=4)
+        else:
+            self._add("fail", "[차단 메시지] EDIT cross_instance — 알림 미노출",
+                      f"입력: 동일 idx=0 / 결과: 알림 없음 (wr.procRows={proc_rows_new})", sc=4)
         page.web_restrict.close()
         page.close_modal()
 

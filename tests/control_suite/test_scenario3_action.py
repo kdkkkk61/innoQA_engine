@@ -980,6 +980,28 @@ class TestScenario3Action(ControlSuiteBase):
         # 정리
         page.web_restrict.close()
 
+        # ── Case 8: cross_instance 프로세스 중복 (yaml :287, 2026-05-28 추가) ──
+        # 한 정책 안 다른 wr 가 이미 쓰는 프로세스를 wr#3 picker 로 재선택 → 제품이
+        # silent 거부 + 알림: '{name}은 이미 등록되어 있어 생략되었습니다.(타 웹제한 포함)'.
+        # wr#3 적용 프로세스 0건. (Case7 이 wr#1=idx=0 로 저장해둠 → wr#3 idx=0 시도)
+        page.click_add_web_restrict_btn()
+        page.web_restrict.wait_open()
+        page.web_restrict.click_add_process_btn()
+        page.picker.wait_open()
+        page.picker.select_nth_and_confirm(0, mode="multi")   # wr#1 과 동일 idx
+        proc_rows_wr3 = len(page.web_restrict.get_process_rows())
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+            ok = ("이미 등록" in msg) and ("타 웹제한" in msg or "생략" in msg or "포함" in msg)
+            self._add("pass" if ok and proc_rows_wr3 == 0 else "fail",
+                      "웹제한 모달 — cross_instance 프로세스 중복 silent 거부 + 알림 (yaml :287)",
+                      f"입력: wr#1 사용중 idx=0 동일 선택 / 결과: 메시지={msg!r}, wr.procRows={proc_rows_wr3}", sc=3)
+        else:
+            self._add("fail", "[차단 메시지] cross_instance 프로세스 중복 — 알림 미노출",
+                      f"입력: 동일 idx=0 / 결과: 알림 없음 (yaml :287 기대와 불일치, wr.procRows={proc_rows_wr3})", sc=3)
+        page.web_restrict.close()
+
         # ── Case 6: 메인 모달 전자서명 예외처리 중복 → '이미 등록된 전자서명' (yaml :382 신 발견) ──
         # 신규 추가 — yaml 미기록 신 발견 (2026-05-19) 검증
         page.set_sign_except_toggle(True)
