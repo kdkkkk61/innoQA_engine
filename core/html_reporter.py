@@ -43,64 +43,86 @@ _PAGE_LABELS: dict[str, str] = {
 }
 
 # ── 시나리오 번호 → 표시 라벨 (extra["scenario"] 태깅 기준) ────────
+# 공통 fallback — page_id 별 dict 에 없을 때 사용.
 _SCENARIO_LABELS: dict[int, str] = {
     1: "시나리오 1: UI 구조",
     2: "시나리오 2: 입력 구조",
     3: "시나리오 3: 동작 검증",
     4: "시나리오 4: 수정 시나리오",
     5: "시나리오 5: 케이스 검증",
-    # sc5 lifecycle 세분 (51/52/53) — 라벨 '시나리오 5a/5b/5c' 로 추출.
-    # 모두 scenario=5 면 영역정렬에 lifecycle 시간순(a→b→c)이 파괴되어 세분 필요.
-    6:  "시나리오 6: 연계 데이터 핸드오프 ([AUTO_KEEP] 확인)",
-    7:  "시나리오 7: 최종 cleanup (AUTO 정리·KEEP 보존)",
+    6: "시나리오 6: 연계 데이터 핸드오프 ([AUTO_KEEP] 확인)",
+    7: "시나리오 7: 최종 cleanup (AUTO 정리·KEEP 보존)",
+}
 
-    # ── sub-numbering 통일 체계 (sn*100 + sub_idx, a=1, b=2, ..., r=18, ...) ────
-    # base._add 가 메서드 이름 'test_scenarioNX_...' 에서 자동 매핑.
-    # 원본보호 sc1/sc2 + control_suite sc3/sc4/sc5 모두 동일.
-
-    # origin_protect sc1
-    101: "시나리오 1a: navigate + 목록 UI (4 버튼 + 검색)",
-    102: "시나리오 1b: ADD 모달 진입 + 26 필드·CSU·탭",
-    103: "시나리오 1c: ADD 비기본 탭 접근 차단 (3 탭)",
-    104: "시나리오 1d: ADD close → re-open default reset",
-    # origin_protect sc2
-    201: "시나리오 2a: ADD 모달 필드 인벤토리 (26 항목)",
-    202: "시나리오 2b: 필수 marker — span.star 정확 3개",
-    203: "시나리오 2c: default 값 (4 switch ON / 9 checkbox OFF / 13 text 빈값)",
-    204: "시나리오 2d: maxlength = 전부 null (서버 측 검증)",
-    # control_suite sc3 (a~k)
-    302: "시나리오 3b: minimal 저장",
-    303: "시나리오 3c: ADD 종합 풍부 (전체 영역)",
-    304: "시나리오 3d: 웹제한 ADD 동작",
-    305: "시나리오 3e: 검증 메시지 (메인 모달)",
-    306: "시나리오 3f: validation 확장 (web/csu)",
-    307: "시나리오 3g: format / overflow",
-    308: "시나리오 3h: length boundary (메인)",
-    309: "시나리오 3i: picker duplicate",
-    310: "시나리오 3j: save cycle errors (서버 오류)",
-    311: "시나리오 3k: yaml audit (process_modal 갭)",
-    # control_suite sc4 (b~r)
-    402: "시나리오 4b: minimal 수정",
-    403: "시나리오 4c: 메인 필드 CRUD (EDIT)",
-    404: "시나리오 4d: process_modal full (EDIT)",
-    405: "시나리오 4e: tag full (EDIT)",
-    406: "시나리오 4f: web_restrict full (EDIT)",
-    407: "시나리오 4g: validation 메시지 (EDIT)",
-    408: "시나리오 4h: sub-modal 재진입 변경 없음",
-    409: "시나리오 4i: 이름 중복 (EDIT)",
-    410: "시나리오 4j: ux defect 재현 (EDIT)",
-    411: "시나리오 4k: 메인 모달 중복 (EDIT)",
-    412: "시나리오 4l: 웹제한 validation (EDIT)",
-    413: "시나리오 4m: process_modal validation (EDIT)",
-    414: "시나리오 4n: picker duplicate (EDIT)",
-    415: "시나리오 4o: format/overflow (EDIT)",
-    416: "시나리오 4p: length boundary (EDIT)",
-    417: "시나리오 4q: normal boundary 회귀",
-    418: "시나리오 4r: yaml audit EDIT (process_modal 갭)",
-    # control_suite sc5 lifecycle (a/b/c)
-    501: "시나리오 5a: lifecycle 생성 + 재오픈 일치",
-    502: "시나리오 5b: 요소(내용) 제거 + 재오픈 비움",
-    503: "시나리오 5c: 토글 전부 OFF + 빈 정책 확인",
+# ── page_id 별 sub-numbering 라벨 (sn*100 + sub_idx) ────────────────
+# 같은 sub-num 키(예: 301) 가 page 마다 다른 의미(origin sc3a vs csu sc3 ?)일 수 있어 분리.
+_SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
+    "npouch_origin_protect": {
+        # 단일 parent (공통 dict 로도 fallback 가능)
+        1: "시나리오 1: UI 구조",
+        2: "시나리오 2: 입력 구조",
+        3: "시나리오 3: ADD 동작 검증",
+        # sc1 sub
+        101: "시나리오 1a: navigate + 목록 UI (4 버튼 + 검색)",
+        102: "시나리오 1b: ADD 모달 진입 + 26 필드·CSU·탭",
+        103: "시나리오 1c: ADD 비기본 탭 접근 차단 (3 탭)",
+        104: "시나리오 1d: ADD close → re-open default reset",
+        # sc2 sub
+        201: "시나리오 2a: ADD 모달 필드 인벤토리 (26 항목)",
+        202: "시나리오 2b: 필수 marker — span.star 정확 3개",
+        203: "시나리오 2c: default 값 (4 switch ON / 9 checkbox OFF / 13 text 빈값)",
+        204: "시나리오 2d: maxlength = 전부 null (서버 측 검증)",
+        # sc3 sub (작성 예정 — yaml 사실 13건 기반)
+        301: "시나리오 3a: 필수 빈값 메시지 5건 (α/β1/β2/β3/γ) + 발화순서",
+        302: "시나리오 3b: 정책 이름 중복 차단 메시지",
+        303: "시나리오 3c: driveLetter 형식 — alert + value reset",
+        304: "시나리오 3d: 확장자 list (중복/형식/빈값/다중구분자)",
+        305: "시나리오 3e: 예외폴더 list (중복/형식 없음/빈값 typo 결함)",
+        306: "시나리오 3f: 워터마크 토큰 동작 ([/PCINFO/]·[/TIME/])",
+        307: "시나리오 3g: 정상 저장 + CSU picker (KEEP 활용)",
+    },
+    "npouch_control_suite": {
+        1: "시나리오 1: UI 구조",
+        2: "시나리오 2: 입력 구조",
+        3: "시나리오 3: 동작 검증",
+        4: "시나리오 4: 수정 시나리오",
+        5: "시나리오 5: 케이스 검증",
+        6: "시나리오 6: 연계 데이터 핸드오프 ([AUTO_KEEP] 확인)",
+        7: "시나리오 7: 최종 cleanup (AUTO 정리·KEEP 보존)",
+        # sc3 sub (a~k)
+        302: "시나리오 3b: minimal 저장",
+        303: "시나리오 3c: ADD 종합 풍부 (전체 영역)",
+        304: "시나리오 3d: 웹제한 ADD 동작",
+        305: "시나리오 3e: 검증 메시지 (메인 모달)",
+        306: "시나리오 3f: validation 확장 (web/csu)",
+        307: "시나리오 3g: format / overflow",
+        308: "시나리오 3h: length boundary (메인)",
+        309: "시나리오 3i: picker duplicate",
+        310: "시나리오 3j: save cycle errors (서버 오류)",
+        311: "시나리오 3k: yaml audit (process_modal 갭)",
+        # sc4 sub (b~r)
+        402: "시나리오 4b: minimal 수정",
+        403: "시나리오 4c: 메인 필드 CRUD (EDIT)",
+        404: "시나리오 4d: process_modal full (EDIT)",
+        405: "시나리오 4e: tag full (EDIT)",
+        406: "시나리오 4f: web_restrict full (EDIT)",
+        407: "시나리오 4g: validation 메시지 (EDIT)",
+        408: "시나리오 4h: sub-modal 재진입 변경 없음",
+        409: "시나리오 4i: 이름 중복 (EDIT)",
+        410: "시나리오 4j: ux defect 재현 (EDIT)",
+        411: "시나리오 4k: 메인 모달 중복 (EDIT)",
+        412: "시나리오 4l: 웹제한 validation (EDIT)",
+        413: "시나리오 4m: process_modal validation (EDIT)",
+        414: "시나리오 4n: picker duplicate (EDIT)",
+        415: "시나리오 4o: format/overflow (EDIT)",
+        416: "시나리오 4p: length boundary (EDIT)",
+        417: "시나리오 4q: normal boundary 회귀",
+        418: "시나리오 4r: yaml audit EDIT (process_modal 갭)",
+        # sc5 lifecycle (a/b/c)
+        501: "시나리오 5a: lifecycle 생성 + 재오픈 일치",
+        502: "시나리오 5b: 요소(내용) 제거 + 재오픈 비움",
+        503: "시나리오 5c: 토글 전부 OFF + 빈 정책 확인",
+    },
 }
 
 
@@ -215,13 +237,17 @@ def _expected_vs_actual(r: ScanResult) -> tuple[str, str]:
 
 # ── 시나리오 레이블 결정 ───────────────────────────────────────────
 
-def _scenario_label(r: ScanResult, is_list_page: bool) -> str:
+def _scenario_label(r: ScanResult, is_list_page: bool, page_id: str = "") -> str:
     # ① extra["scenario"] 명시 태깅 우선 — qa_runner / list_page_runner가 부여
     scenario_num = (r.extra or {}).get("scenario")
     if scenario_num is not None:
-        # sc5 lifecycle 은 51/52/53 세분 라벨 우선 (5a/5b/5c 헤더 구분)
+        # sub-numbering(sn*100+sub) + base — page_id 별 dict 우선 → 공통 fallback
         num = _scenario_num_of(r)
-        return _SCENARIO_LABELS.get(num) or _SCENARIO_LABELS.get(scenario_num, f"시나리오 {scenario_num}")
+        page_dict = _SCENARIO_LABELS_BY_PAGE.get(page_id, {})
+        return (page_dict.get(num)
+                or page_dict.get(scenario_num)
+                or _SCENARIO_LABELS.get(num)
+                or _SCENARIO_LABELS.get(scenario_num, f"시나리오 {scenario_num}"))
 
     # ② 폴백: order 임계값 (구버전 호환 / 태깅 없는 결과)
     if is_list_page:
@@ -338,7 +364,7 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
 
     for r in sorted(report.results, key=sort_key):
         badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
-        scenario   = _scenario_label(r, is_list_page)
+        scenario   = _scenario_label(r, is_list_page, page_id)
         expected, actual = _expected_vs_actual(r)
         # 항목 라벨에서 '시나리오 Nx — ' prefix 제거 (헤더가 이미 시나리오 표시 → 중복/장황 방지)
         disp_label = re.sub(r"^시나리오\s*\d+[a-z]?\s*[—–\-]\s*", "", r.label or "")
@@ -352,7 +378,9 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
 
         # parent 전환 시 — 큰 헤더 출력
         if parent_num != prev_parent_num:
-            parent_label = _SCENARIO_LABELS.get(parent_num, f"시나리오 {parent_num}")
+            page_dict = _SCENARIO_LABELS_BY_PAGE.get(page_id, {})
+            parent_label = (page_dict.get(parent_num)
+                            or _SCENARIO_LABELS.get(parent_num, f"시나리오 {parent_num}"))
             rows.append(f"""
         <tr class="scenario-header">
           <td colspan="4">{html.escape(parent_label)}</td>
@@ -409,7 +437,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
         for r in bug_items:
             issue_num += 1
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
-            scenario   = _scenario_label(r, is_list)
+            scenario   = _scenario_label(r, is_list, page_id)
             steps      = _reproduce_steps(r)
             expected, actual = _expected_vs_actual(r)
             severity   = "높음" if r.status in ("fail", "error") else "낮음"
