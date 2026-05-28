@@ -1466,7 +1466,9 @@ class TestScenario4Modify(ControlSuiteBase):
         page.web_restrict.wait_open()
         page.web_restrict.click_add_process_btn()
         page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="multi")
+        # 기존 wr 행이 idx=0 사용 중 → 신규 wr 는 idx=1 (다른 프로세스) 필수.
+        # yaml :287 cross_instance_ADD_flow: 동일 프로세스 재선택 silent 거부.
+        page.picker.select_nth_and_confirm(1, mode="multi")
         page.web_restrict.set_name(orig_name)   # 기존 행과 동일 이름
         # confirm — picker 닫힘 후 잔여 modal-backdrop 가 pointer 가로채는 3-stack 케이스 →
         # JS evaluate click (좌표 무관, ng-click 발화 OK — yaml :564). dismiss_confirm_modal fallback 동일 패턴.

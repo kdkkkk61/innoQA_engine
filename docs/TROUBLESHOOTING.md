@@ -25,6 +25,21 @@
 
 ---
 
+## [RESOLVED] sc3f Case7 / sc4l E 웹 이름 중복 — wr#2 가 wr#1 과 동일 프로세스 재선택해서 silent 거부 (2026-05-28)
+- **날짜**: 2026-05-28
+- **증상**: picker fix 2차(check force=True) 후에도 #27 BUG 재현 — 메시지 여전히 `'선택된 프로세스가 없습니다.'`. 41 passed 전체 통과 중 sc3f Case7 / sc4l E 만 fail 잔존.
+- **원인 (Chrome MCP 직접 검증 2026-05-28)**: picker fix 자체는 정상. **테스트 시나리오 순서가 문제** (사용자 강조 "테스트 순서가 매우매우 중요").
+  - wr#1 이 picker row 0 (예: `111bug_process.exe`) 사용·저장.
+  - wr#2 picker 재오픈 시 row 0 그대로 노출 (필터 없음). 체크박스 click → checked=true.
+  - Picker confirm → 제품이 "동일 정책 안 wr 중복 프로세스" silent 거부 + cross_instance 알림: `'{name}은 이미 등록되어 있어 생략되었습니다.(타 웹제한 포함)'` (yaml :287 정확 일치).
+  - 결과: wr#2 적용 프로세스 0건 → 이름 중복 단계 도달 못 함 → '선택된 프로세스가 없습니다.'
+- **수정**:
+  - `process_picker.py` 에 `select_nth(idx)` + `select_nth_and_confirm(idx)` 헬퍼 추가 (임의 행 선택).
+  - sc3f Case7 / sc4l E: `select_first_and_confirm` → `select_nth_and_confirm(1, ...)` 로 변경 (wr#2 가 wr#1 의 idx=0 이 아닌 idx=1 = 다른 프로세스 선택).
+- **파일**: `pages/shared/pickers/process_picker.py`, `tests/control_suite/test_scenario3_action.py`, `tests/control_suite/test_scenario4_modify.py`
+
+---
+
 ## [RESOLVED] sc3f Case7 / sc4l E 웹 이름 중복 — picker multi-select DOM/AngularJS 모델 동기화 실패 (2026-05-28)
 - **날짜**: 2026-05-28
 - **증상**: 웹 이름 중복 테스트 (#9·#27 BUG) 의 실제 결과 메시지가 `'선택된 프로세스가 없습니다.'` — 우선순위(프로세스 ≥ 1건 먼저 > 이름 중복) 에 막혀 이름 중복 검증 단계까지 도달 못 함. wr#2 모달 적용 프로세스 0행.

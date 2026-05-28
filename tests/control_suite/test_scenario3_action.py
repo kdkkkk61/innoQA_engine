@@ -958,7 +958,10 @@ class TestScenario3Action(ControlSuiteBase):
         page.web_restrict.wait_open()
         page.web_restrict.click_add_process_btn()
         page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="multi")
+        # wr#1 이 idx=0 사용 → wr#2 는 idx=1 (다른 프로세스) 필수.
+        # yaml :287 cross_instance_ADD_flow: 동일 프로세스 재선택 시 silent 거부 →
+        # wr#2 적용 프로세스 0건 → 이름 중복 단계 도달 못 함 (2026-05-28 Chrome 확정).
+        page.picker.select_nth_and_confirm(1, mode="multi")
         page.web_restrict.set_name("[AUTO]_web_3f")   # wr#1 과 동일 이름
         # confirm — picker 닫힘 후 잔여 modal-backdrop 가 pointer 가로채는 3-stack 케이스 →
         # JS evaluate click (좌표 무관, ng-click 발화 OK — yaml :564). dismiss_confirm_modal fallback 동일 패턴.

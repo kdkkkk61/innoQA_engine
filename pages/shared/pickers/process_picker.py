@@ -138,6 +138,30 @@ class ProcessPicker:
     def cancel(self) -> None:
         self._click(self.page.locator(self.SEL_CLOSE_BTN).first)
 
+    def select_nth(self, idx: int, mode: PickerMode) -> None:
+        """모드별 N번째 행 선택 (idempotent for multi).
+
+        용도: 한 정책 안 다른 web_restrict 에 '다른' 프로세스를 할당해야 할 때
+              (yaml :287 cross_instance_ADD_flow — 동일 프로세스 재선택 시 silent 거부).
+        """
+        sel = {
+            "single": self.SEL_RADIO_PROCESS,
+            "tag":    self.SEL_RADIO_TAG,
+            "multi":  self.SEL_CHECKBOX_PROCESS,
+        }[mode]
+        loc = self.page.locator(sel).nth(idx)
+        if mode == "multi":
+            try:
+                loc.check(force=True)
+            except Exception:
+                loc.evaluate(
+                    "el => { el.checked = true; "
+                    "el.dispatchEvent(new Event('change', {bubbles: true})); "
+                    "el.dispatchEvent(new Event('click', {bubbles: true})); }"
+                )
+            return
+        self._click_hidden(loc)
+
     # ── 표준 흐름 헬퍼 ──────────────────────────────────────────────
     def select_first_and_confirm(self, mode: PickerMode) -> str:
         """첫 행 선택 + 확인 → 선택된 행 텍스트 반환."""
@@ -156,3 +180,27 @@ class ProcessPicker:
         self.confirm()
         self.wait_closed()
         return first_text
+
+    def select_nth_and_confirm(self, idx: int, mode: PickerMode) -> str:
+        """N번째 행 선택 + 확인 → 선택된 행 텍스트 반환.
+
+        용도 (sc3f Case7 / sc4l E — 2026-05-28 Chrome MCP 확정):
+          한 정책 안 wr#2 에 wr#1 과 '다른' 프로세스 할당 필요. wr#1 이 idx=0 사용했으면
+          wr#2 는 idx=1 사용. 동일 idx 재선택 시 제품이 silent 거부 + cross_instance
+          알림 메시지 ('{name}은 이미 등록되어 있어 생략되었습니다.(타 웹제한 포함)').
+        """
+        self.wait_open()
+        try:
+            self.page.locator(self.SEL_ROW).first.wait_for(
+                state="attached", timeout=3000
+            )
+        except Exception:
+            pass
+        cnt = self.get_row_count()
+        if cnt <= idx:
+            raise RuntimeError(f"ProcessPicker: 행 {cnt}건, idx={idx} 요청")
+        text = self.page.locator(self.SEL_ROW).nth(idx).locator("td").nth(1).inner_text().strip()
+        self.select_nth(idx, mode)
+        self.confirm()
+        self.wait_closed()
+        return text
