@@ -242,6 +242,35 @@ scenario_3_must_test_add:
     valid_inputs_verified:   ["대문자 Z", "소문자 z (→ Z 자동 변환)"]
     verified_by: "Chrome MCP + 사용자 스크린샷 확인 2026-05-28"
 
+  watermark_token_auto_insert:
+    description: |
+      워터마크 PC 정보/현재 시각 체크박스 → 워터마크 텍스트 input 에 토큰 자동 삽입/제거.
+      사용자 알림 (2026-05-28) + Chrome MCP 직접 검증.
+    tokens:
+      pc_info: "[/PCINFO/]"
+      current_time: "[/TIME/]"
+    behavior:
+      - "체크 ON → 해당 토큰을 텍스트 뒤에 append"
+      - "체크 OFF → 해당 토큰만 제거 (다른 토큰은 유지)"
+      - "체크 순서대로 토큰 순서: 먼저 체크된 토큰이 앞"
+    verified_transitions:   # Chrome MCP 직접 dump 2026-05-28
+      screen_watermark:
+        initial:         ""
+        after_pc_check:  "[/PCINFO/]"           # PC 체크 →
+        after_time_add:  "[/PCINFO/][/TIME/]"   # 시각 추가 →
+        after_pc_remove: "[/TIME/]"             # PC 해제 (시각 유지)
+        after_all_clear: ""                     # 둘 다 해제
+      print_watermark: "화면 워터마크와 완전 동일 패턴 — 토큰 동일"
+    applies_to:
+      - field: "screenWaterMarkText"
+        toggles: ["isScreenWaterMarkPcInfo", "isScreenWaterMarkCurrentTime"]
+      - field: "printWaterMarkText"
+        toggles: ["isPrintWaterMarkPcInfo", "isPrintWaterMarkCurrentTime"]
+    severity: "must_test"
+    pending_edge_cases:
+      - "사용자가 수동 입력한 텍스트 + 토글 ON 시 — 기존 텍스트와 토큰 공존? 덮어쓰기?"
+      - "사용자가 토큰 자체를 수동 삭제 시 → 체크박스 자동 해제?"
+
   known_bugs_origin_protect:
     description: "ux_bug 결함 후보 — sc3 에서 warn 또는 fail 로 노출"
     items:
@@ -373,6 +402,8 @@ todo:
     - "✅ list_input_validation 예외폴더: 형식 없음(free text)/빈값(typo 결함)"
     - "✅ driveLetter 정확 메시지 — '드라이브 문자는 영문자만 입력할 수 있습니다.' (alert + reset 동시) — silent 마스킹 추정 정정"
     - "✅ known_bug: watchExceptFolders 빈값 → '확장자를 입력하세요' 메시지 일관성 결함"
+    - "✅ default_values 정밀화: hidden switch 4개 default ON / 일반 checkbox 9개 default OFF (사용자 통찰 정정)"
+    - "✅ watermark_token_auto_insert: PC 정보 / 현재 시각 체크 → 텍스트에 [/PCINFO/] / [/TIME/] 자동 삽입·제거 (화면/출력 동일)"
   # 미해결 (다음 Chrome 세션)
   pending:
     - "각 input maxlength (DOM 속성 추출) — driveLetter 외 다른 필드"
