@@ -287,6 +287,7 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
                            page_id: str = "") -> str:
     rows = []
     prev_scenario = None
+    prev_parent_num = None   # 큰 시나리오(1·2·3·...) 전환 추적 — sub-header 와 디자인 차등
     _scenario_num = _scenario_num_of  # sc5 lifecycle 세분 포함 모듈 헬퍼
 
     # page_id 조건부 sort — 영역 우선순위 (1차 → 2차 프로세스 → 태그 → 웹제한) 적용
@@ -310,12 +311,32 @@ def _render_results_table(report: PageScanReport, is_list_page: bool,
         # 항목 라벨에서 '시나리오 Nx — ' prefix 제거 (헤더가 이미 시나리오 표시 → 중복/장황 방지)
         disp_label = re.sub(r"^시나리오\s*\d+[a-z]?\s*[—–\-]\s*", "", r.label or "")
 
-        # 시나리오 구분 헤더 행 (4컬럼 전체 span)
-        if scenario != prev_scenario:
+        # 시나리오 구분 헤더 — 2단 계층:
+        #   parent (sn < 10 단독, 또는 sub-num 의 base): 큰 헤더 (시나리오 1 / 2 / ...)
+        #   sub (sn >= 10, sn % 10 ≠ 0): 작은 헤더 (시나리오 1a / 1b / 2a / ...)
+        sn = _scenario_num(r)
+        is_sub = sn >= 10 and (sn % 10) != 0   # 11/12/13/14/21/22/23/24/51/52/53 등
+        parent_num = sn // 10 if is_sub else sn
+
+        # parent 전환 시 — 큰 헤더 출력
+        if parent_num != prev_parent_num:
+            parent_label = _SCENARIO_LABELS.get(parent_num, f"시나리오 {parent_num}")
             rows.append(f"""
         <tr class="scenario-header">
+          <td colspan="4">{html.escape(parent_label)}</td>
+        </tr>""")
+            prev_parent_num = parent_num
+            prev_scenario = None   # parent 갱신 후 sub-header 도 새로 그리도록 reset
+
+        # sub 진입 (sn >= 10) — 작은 헤더 출력 (parent 헤더와 분리)
+        if is_sub and scenario != prev_scenario:
+            rows.append(f"""
+        <tr class="scenario-subheader">
           <td colspan="4">{html.escape(scenario)}</td>
         </tr>""")
+            prev_scenario = scenario
+        elif not is_sub:
+            # sub 가 아닌 경우 parent 만 있으면 충분 — 별도 sub-header 없음
             prev_scenario = scenario
 
         rows.append(f"""
@@ -464,10 +485,15 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .row-bug-high td { background: #fff8f8; }
 .row-bug-low td  { background: #fffdf0; }
 .row-error td    { background: #fdf0ff; }
-/* 시나리오 구분 헤더 */
-.scenario-header td { background: #e8f0f8; color: #1e3a5f; font-weight: 700;
-  font-size: 13px; padding: 8px 14px; border-top: 2px solid #b8cfe8;
+/* 시나리오 구분 헤더 — parent (큰 시나리오 1·2·3·...) */
+.scenario-header td { background: #1e3a5f; color: #ffffff; font-weight: 700;
+  font-size: 15px; padding: 12px 16px; border-top: 4px solid #0f1f3a;
+  border-bottom: 1px solid #0f1f3a; letter-spacing: 0.5px; }
+/* 시나리오 sub 헤더 (sub-numbering: sc1a / 1b / ... / 2a / 2b / ... ) */
+.scenario-subheader td { background: #e8f0f8; color: #1e3a5f; font-weight: 600;
+  font-size: 13px; padding: 7px 14px 7px 30px; border-top: 1px solid #b8cfe8;
   border-bottom: 1px solid #b8cfe8; letter-spacing: 0.3px; }
+.scenario-subheader td::before { content: "└ "; color: #4a72a5; font-weight: 400; }
 
 /* 배지 */
 .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
