@@ -161,6 +161,9 @@ scenario_3_must_test_add:
     cases:
       - {case: "α", field: "originProtectPolicyName", input: "빈값 + 나머지 채움",
          message: "정책 이름을 입력해 주세요.", modal_id: "__globalMessageModal"}
+      - {case: "α'", field: "originProtectPolicyName", input: "기존 정책과 동일 이름 + 저장",
+         message: "정책 이름이 이미 등록되어 있습니다.", modal_id: "__globalMessageModal",
+         note: "control_suite '이미 등록된 이름 입니다.' 와 다른 텍스트 — 원본보호 정책 고유 메시지. Chrome MCP 직접 확인 2026-05-28."}
       - {case: "β1", field: "driveLetter", input: "Letter만 빈",
          message: "드라이브 문자를 입력해 주세요.", modal_id: "__globalMessageModal"}
       - {case: "β2", field: "driveLabel", input: "Label만 빈",
@@ -267,6 +270,28 @@ scenario_3_must_test_add:
       - field: "printWaterMarkText"
         toggles: ["isPrintWaterMarkPcInfo", "isPrintWaterMarkCurrentTime"]
     severity: "must_test"
+    save_and_reopen_sync:   # Chrome MCP 직접 검증 2026-05-28 (사용자 강조 "예측 영역 가지마" 후 확정)
+      description: |
+        저장/재진입 시 text ↔ checkbox sync 동작:
+          저장 시: text 값 우선 보존 (체크박스 상태 무시).
+          EDIT 재진입 시: 서버에서 받은 text 의 토큰 분석해서 체크박스 상태 재계산.
+        즉 ADD/EDIT 중 단방향 sync 결함은 저장 후 자동 복구됨 (일시적 UI 불일치만 발생).
+      verified_transition:
+        before_save:
+          text: ""           # 사용자가 수동으로 토큰 삭제
+          pc: true            # 체크박스는 ON 유지 (단방향 sync 결함)
+          time: true
+          wm_toggle: true
+        after_save_reopen:
+          text: ""            # 저장 시 text 우선 — 빈값 보존
+          pc: false           # text 토큰 없으므로 false 로 재계산
+          time: false         # 동일
+          wm_toggle: true     # 워터마크 토글 자체는 독립 — text 와 무관하게 ON 유지
+      conclusion: |
+        - 데이터 무결성: 저장된 정책의 최종 상태는 text 기준 일관 (text 가 truth source).
+        - UI 결함 severity 재평가: warn (일시 UI 불일치 — 저장으로 해결).
+        - wm_toggle (isScreenWaterMark/isPrintWaterMark) 는 PC/Time 과 독립적 — 별도 정책 영역.
+
     edge_cases_verified:   # Chrome MCP 직접 검증 2026-05-28
       manual_text_plus_toggle:
         description: "사용자 수동 입력 텍스트 'ABC' 보존 + 토큰 뒤에 append/제거"
@@ -297,15 +322,14 @@ scenario_3_must_test_add:
     items:
       - id: "watermark_token_one_way_sync"
         symptom: |
-          워터마크 토큰 [/PCINFO/]·[/TIME/] sync 방향 비대칭:
+          워터마크 토큰 [/PCINFO/]·[/TIME/] ADD/EDIT 중 sync 방향 비대칭:
           checkbox → text 는 자동 동기화 / text → checkbox 는 sync 안 됨.
-          사용자가 텍스트 토큰 수동 삭제해도 체크박스는 ON 유지 → 데이터 불일치.
-        severity: "warn — 단방향 sync UI 일관성 결함"
-        verified_by: "Chrome MCP 직접 검증 2026-05-28"
-        related: "watermark_token_auto_insert.edge_cases_verified.manual_token_deletion"
-        pending_followup:
-          - "정책 저장 시 text vs checkbox 중 어느 쪽 우선되는지"
-          - "close → re-open 후 체크박스/텍스트 동기화 여부"
+        severity: "warn — 일시 UI 불일치 (저장으로 해결)"
+        verified_by: "Chrome MCP 직접 검증 2026-05-28 (저장+재진입 동작까지 확인)"
+        save_recovery_verified: true
+        save_behavior: "저장 시 text 우선 (체크박스 상태 무시). 재진입 시 text 토큰 기준 체크박스 재계산."
+        related: "watermark_token_auto_insert.save_and_reopen_sync"
+        impact: "데이터 무결성에는 영향 없음 (저장 결과 일관). 사용자 UX 일시 혼란만."
 
       - id: "watch_except_folder_empty_wrong_message"
         symptom: |
@@ -437,6 +461,9 @@ todo:
     - "✅ known_bug: watchExceptFolders 빈값 → '확장자를 입력하세요' 메시지 일관성 결함"
     - "✅ default_values 정밀화: hidden switch 4개 default ON / 일반 checkbox 9개 default OFF (사용자 통찰 정정)"
     - "✅ watermark_token_auto_insert: PC 정보 / 현재 시각 체크 → 텍스트에 [/PCINFO/] / [/TIME/] 자동 삽입·제거 (화면/출력 동일)"
+    - "✅ watermark edge case: 수동 입력 + 토글 = 수동 텍스트 보존 / 토큰 수동 삭제 = checkbox 자동 해제 안 됨 (단방향 sync)"
+    - "✅ watermark 저장+재진입 sync: 저장 시 text 우선, 재진입 시 text 토큰 기준 checkbox 재계산 (단방향 sync 자동 복구)"
+    - "✅ 정책 이름 중복 메시지: '정책 이름이 이미 등록되어 있습니다.' (control_suite '이미 등록된 이름 입니다.' 와 다름)"
   # 미해결 (다음 Chrome 세션)
   pending:
     - "각 input maxlength (DOM 속성 추출) — driveLetter 외 다른 필드"
