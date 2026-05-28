@@ -267,13 +267,46 @@ scenario_3_must_test_add:
       - field: "printWaterMarkText"
         toggles: ["isPrintWaterMarkPcInfo", "isPrintWaterMarkCurrentTime"]
     severity: "must_test"
-    pending_edge_cases:
-      - "사용자가 수동 입력한 텍스트 + 토글 ON 시 — 기존 텍스트와 토큰 공존? 덮어쓰기?"
-      - "사용자가 토큰 자체를 수동 삭제 시 → 체크박스 자동 해제?"
+    edge_cases_verified:   # Chrome MCP 직접 검증 2026-05-28
+      manual_text_plus_toggle:
+        description: "사용자 수동 입력 텍스트 'ABC' 보존 + 토큰 뒤에 append/제거"
+        transitions:
+          before:         "ABC"
+          after_pc:       "ABC[/PCINFO/]"
+          after_time_add: "ABC[/PCINFO/][/TIME/]"
+          after_pc_off:   "ABC[/TIME/]"
+        verdict: "수동 텍스트 보존 — 토큰만 정확히 추가/제거 (깨끗한 동작)"
+
+      manual_token_deletion:   # ⚠ 결함 후보 — 단방향 sync
+        description: |
+          텍스트에서 토큰 수동 삭제해도 체크박스 상태는 자동 해제되지 않음.
+          sync 방향: checkbox → text ✓ / text → checkbox ✗
+        transitions:
+          state1_both_checked:        {text: "[/PCINFO/][/TIME/]", pc: true,  time: true}
+          state2_pc_token_removed:    {text: "[/TIME/]",           pc: true,  time: true}   # pc 그대로 true!
+          state3_all_text_cleared:    {text: "",                   pc: true,  time: true}   # 둘 다 true 유지
+        severity: "warn — 데이터 불일치 잠재"
+        consequence: |
+          사용자가 텍스트만 편집하면 체크박스 상태와 어긋남.
+          정책 저장 시 어느 값(text vs checkbox) 우선되는지 별도 검증 필요 (pending).
+          close → re-open 후 동기화 여부도 별도 검증 필요 (pending).
+        category: "단방향 sync — UI 일관성 결함"
 
   known_bugs_origin_protect:
     description: "ux_bug 결함 후보 — sc3 에서 warn 또는 fail 로 노출"
     items:
+      - id: "watermark_token_one_way_sync"
+        symptom: |
+          워터마크 토큰 [/PCINFO/]·[/TIME/] sync 방향 비대칭:
+          checkbox → text 는 자동 동기화 / text → checkbox 는 sync 안 됨.
+          사용자가 텍스트 토큰 수동 삭제해도 체크박스는 ON 유지 → 데이터 불일치.
+        severity: "warn — 단방향 sync UI 일관성 결함"
+        verified_by: "Chrome MCP 직접 검증 2026-05-28"
+        related: "watermark_token_auto_insert.edge_cases_verified.manual_token_deletion"
+        pending_followup:
+          - "정책 저장 시 text vs checkbox 중 어느 쪽 우선되는지"
+          - "close → re-open 후 체크박스/텍스트 동기화 여부"
+
       - id: "watch_except_folder_empty_wrong_message"
         symptom: |
           예외 폴더 input (watchExceptFolders) 빈값 + 추가 버튼 클릭 시
