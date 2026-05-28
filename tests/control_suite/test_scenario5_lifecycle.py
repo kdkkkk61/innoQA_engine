@@ -509,8 +509,8 @@ class TestScenario5Lifecycle(ControlSuiteBase):
                       f"입력: 재오픈 / 결과: 실제값={val!r}", sc=5)
 
         page.close_modal()
-        # 시나리오 5 종료 — 시나리오 6 가 새 KEEP 을 만들 예정이므로 전체 정리.
+        # 시나리오 5 종료 — [AUTO] 만 정리, [AUTO_KEEP]_sc5_step1 은 보존 (sc6 연계 / 수동 확인용).
         # ⚠ close_modal 직후 list 의 삭제 버튼 click 잔해 timeout 방지 → navigate_to (F5) 로 list 안정화
         page.navigate_to()
-        page.delete_all_test_data()
+        page.delete_all_auto_policies()   # [AUTO] 만 삭제, [AUTO_KEEP]_ 보존
 

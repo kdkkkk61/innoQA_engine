@@ -875,16 +875,29 @@ class TestScenario3Action(ControlSuiteBase):
             self._add("warn", "[차단 메시지] 웹제한 모달 — 확장자 중복 — 메시지 미노출",
                       f"입력: 같은 확장자 재추가 / 결과: 알림 없음", sc=3)
 
-        # ── Case 3: URL 중복 (yaml 386, typo 메시지) ─────────────
+        # ── Case 3: URL 중복 (yaml 386) — 차단 동작 + 메시지 일관성 분리 (sc4l 과 대칭) ──
         page.web_restrict.add_url("naver.com")
         page.web_restrict.add_url("naver.com")  # 중복
         if page.is_confirm_modal_visible():
             msg = page.get_confirm_message()
             page.dismiss_confirm_modal()
-            ok = "이미 등록" in msg and ("폴더 경로" in msg or "URL" in msg)
-            self._add("pass" if ok else "fail",
-                      "웹제한 모달 — URL 중복 차단 메시지 (yaml verified, typo: '폴더 경로')",
+            # 1) 중복 거부 동작 자체는 정상
+            blocked = "이미 등록" in msg
+            self._add("pass" if blocked else "fail",
+                      "웹제한 모달 — URL 중복 거부 동작",
                       f"입력: 'naver.com' (재추가) / 결과: 메시지={msg!r}", sc=3)
+            # 2) 메시지 영역 일관성 — 'URL' 영역인데 '폴더 경로' 메시지면 일관성 결함 (sc4l 과 동일 분류)
+            is_url_msg = "URL" in msg.upper() or "주소" in msg
+            is_folder_msg = "폴더" in msg or "경로" in msg
+            if is_url_msg and not is_folder_msg:
+                self._add("pass", "웹제한 모달 — URL 중복 메시지 일관성 (URL 영역 표현)",
+                          f"입력: URL 재추가 / 결과: 메시지에 'URL/주소' 포함, '폴더/경로' 미포함 = {msg!r}", sc=3)
+            elif is_folder_msg:
+                self._add("warn", "[메시지 일관성 결함] 웹제한 URL 중복 — 'URL' 영역인데 '폴더 경로' 메시지 노출",
+                          f"입력: 'naver.com' 재추가 / 결과: UI 영역 ≠ 메시지 영역 불일치 = {msg!r}", sc=3)
+            else:
+                self._add("warn", "[메시지 일관성 결함] 웹제한 URL 중복 — URL/주소 단어 누락",
+                          f"입력: URL 재추가 / 결과: 'URL'/'주소'/'폴더'/'경로' 모두 없음 = {msg!r}", sc=3)
         else:
             self._add("warn", "[차단 메시지] 웹제한 모달 — URL 중복 — 메시지 미노출",
                       f"입력: 같은 URL 재추가 / 결과: 알림 없음", sc=3)

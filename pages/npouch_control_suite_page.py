@@ -211,6 +211,10 @@ class NpouchControlSuitePage(BasePage):
         # 이전 테스트에서 남은 sub-modal 정리 (picker / web_restrict / process_modal)
         self._close_leftover_submodals()
         self._close_modal_if_open()
+        # backdrop 안전망 (2026-05-27): navigate_to_clean 의 F5 reload 가 긴 run 에서
+        # 서버 지연으로 간헐 실패(except pass) → modal-backdrop.in 잔존 누적 → 다음 click intercept.
+        # 모달 닫은 직후 backdrop/body 잔해 강제 정리 (close_modal 과 동일 surgical cleanup).
+        self._cleanup_modal_residue()
 
         if ("ControlSuite" in self.page.url
                 and self.is_visible(self.SEL_ADD_BTN)):

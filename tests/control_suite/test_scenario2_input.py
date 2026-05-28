@@ -766,6 +766,29 @@ class TestScenario2Input(ControlSuiteBase):
                   "[입력 확인] 웹제한 모달 — 허용 URL 복귀 → 업로드 암호화 disabled 해제",
                   f"입력: decrypt_allow 선택 / 결과: disabled={dis_after}", sc=2)
 
+        # ── 역순: 업로드 암호화 먼저 클릭 (decrypt_allow 상태) → 막히지 않는지 (사용자 검증 요청) ──
+        # 정방향(decrypt_target→암호화 강제)은 위에서 확인. 역순: 복호화 대상 아닌 상태에서
+        # 업로드 암호화를 수동으로 먼저 켤 수 있는지 + 그 후 decrypt_target 가도 강제 유지되는지.
+        enc_dis_now = page.web_restrict.is_file_encrypt_disabled()
+        if not enc_dis_now:
+            page.web_restrict.set_file_encrypt(True)
+            enc_chk = page.web_restrict.is_file_encrypt_checked()
+            self._add("pass" if enc_chk else "fail",
+                      "[입력 확인] 웹제한 모달 — 업로드 암호화 먼저 수동 ON (decrypt_allow 상태) 막히지 않음",
+                      f"입력: file_encrypt 수동 클릭 / 결과: checked={enc_chk}", sc=2)
+            # 암호화 ON 상태에서 decrypt_target 선택 → 강제(checked+disabled) 유지되는지
+            page.web_restrict.click_decrypt_target()
+            after_chk = page.web_restrict.is_file_encrypt_checked()
+            after_dis = page.web_restrict.is_file_encrypt_disabled()
+            self._add("pass" if (after_chk and after_dis) else "fail",
+                      "[입력 확인] 웹제한 모달 — 암호화 먼저 ON 후 복호화 대상 선택 → 강제(checked+disabled) 유지",
+                      f"입력: file_encrypt ON → decrypt_target / 결과: checked={after_chk}, disabled={after_dis}", sc=2)
+            page.web_restrict.click_decrypt_allow()  # 원복 (다음 검증 영향 차단)
+        else:
+            self._add("warn",
+                      "[입력 확인] 웹제한 모달 — decrypt_allow 인데 업로드 암호화 disabled (먼저 클릭 막힘 — 의도 확인 필요)",
+                      f"입력: decrypt_allow 상태 / 결과: file_encrypt disabled={enc_dis_now}", sc=2)
+
         # ── headerCheck (독립) ─────────────────────────────────
         page.web_restrict.set_header_check(True)
         hc = page.page.locator(page.web_restrict.SEL_HEADER_CHECK).first.is_checked()
