@@ -420,6 +420,7 @@ class TestScenario5Lifecycle(ControlSuiteBase):
             ("다시 ON 하고 지우고 다시 OFF" — 사용자 표현)
           - 확장자 list (라디오 영역, 토글 무관) / 커스텀 / 프로세스·태그·웹제한 행 삭제
           → 재오픈 시 이름만 + 전부 OFF + 전부 비움
+          → (검증 완료 후) sc6 연계용으로 프로세스 1건 재채움 → 내용 있는 [AUTO_KEEP] 보존
 
         5b 정책이 list 에 없으면 skip.
         """
@@ -509,8 +510,34 @@ class TestScenario5Lifecycle(ControlSuiteBase):
                       f"입력: 재오픈 / 결과: 실제값={val!r}", sc=5)
 
         page.close_modal()
-        # 시나리오 5 종료 — [AUTO] 만 정리, [AUTO_KEEP]_sc5_step1 은 보존 (sc6 연계 / 수동 확인용).
+
+        # ── sc6 연계용 — [AUTO_KEEP] 정책 최소 내용 재채움 (빈 정책으로 남기지 않음) ──
+        # 사용자 결정 (2026-05-28): "5 종료 시 keep 을 가진(내용 있는) 정책이 남아야 함 — sc6 가 사용".
+        # 위 lifecycle 제거 검증(빈 정책)은 그대로 유지하고, 그 뒤 프로세스 1건 추가 저장 →
+        # 내용 있는 [AUTO_KEEP] 보존. (lifecycle 검증 결과 ≠ sc6 핸드오프 상태 분리)
+        page.navigate_to()
+        page.open_modify_modal(NAME)
+        page.click_individual_process_tab()
+        page.click_add_process_btn()
+        page.process.wait_open()
+        page.process.click_pick_btn()
+        page.picker.wait_open()
+        page.picker.select_first_and_confirm(mode="single")
+        page.process.confirm()
+        repop_msg = page.save_policy(mode="modify")
+        page.dismiss_confirm_modal()
+        # 재오픈 → 내용(프로세스 1건) 보존 확인
+        page.navigate_to()
+        page.open_modify_modal(NAME)
+        page.click_individual_process_tab()
+        keep_rows = len(page.get_item_list_rows())
+        self._add("pass" if keep_rows >= 1 else "fail",
+                  "시나리오 5c — [AUTO_KEEP] 정책 재채움 (sc6 연계용 내용 보존)",
+                  f"입력: 프로세스 1건 추가 저장 / 결과: 메시지={repop_msg!r}, 프로세스 행={keep_rows}", sc=5)
+        page.close_modal()
+
+        # 시나리오 5 종료 — [AUTO] 만 정리, [AUTO_KEEP]_sc5_step1 은 보존 (sc6 연계).
         # ⚠ close_modal 직후 list 의 삭제 버튼 click 잔해 timeout 방지 → navigate_to (F5) 로 list 안정화
         page.navigate_to()
-        page.delete_all_auto_policies()   # [AUTO] 만 삭제, [AUTO_KEEP]_ 보존
+        page.delete_all_auto_policies()   # [AUTO] 만 삭제, [AUTO_KEEP]_ (내용 보유) 보존
 

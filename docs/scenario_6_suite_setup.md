@@ -51,8 +51,22 @@ sc6 (연계 페이지 / 다음 정책 페이지)
   → 예: 운용 프로세스 [AUTO]_np_proc_suite — 태그 페이지가 사용
 
 zz_cleanup (test_zz_cleanup.py — 최종)
-  → delete_all_test_data() = AUTO + AUTO_KEEP 일괄 삭제 (다음 session clean)
+  → delete_all_auto_policies() = AUTO 만 삭제 / AUTO_KEEP 보존
+  → AUTO_KEEP 최종 정리는 "다음 run 의 sc1 시작 (delete_all_test_data)" 가 담당
+    (zz 가 keep 을 지우면 sc6 '남겨둠' 의도와 충돌 → 사용자 결정 2026-05-28 로 변경)
 ```
+
+### cleanup 책임 분담 (사용자 결정 2026-05-28 — 제어 스위트 확정)
+
+| 시점 | 호출 | 대상 |
+|------|------|------|
+| sc1 시작 (`_ensure_session_cleanup`) | `delete_all_test_data()` | AUTO + AUTO_KEEP 전부 (clean slate) |
+| sc5 완료 (5c) | `delete_all_auto_policies()` | AUTO 만 / AUTO_KEEP 보존 (+ 프로세스 1건 재채움) |
+| sc6 | (cleanup 없음) | AUTO_KEEP 존재·내용 **확인/표시만** → 다음 연계 사용 신호 |
+| zz_cleanup (최종) | `delete_all_auto_policies()` | AUTO 안전망 / AUTO_KEEP 보존 |
+
+- AUTO_KEEP 은 run 종료 후에도 남아 다음 연계(통합정책 등)·수동 확인에 사용. 다음 run sc1 이 최종 wipe.
+- 제어 스위트 sc6 는 다운스트림(통합정책) 테스트 **미구현** 상태라 "생성" 대신 "sc5 산출물 확인"으로 재정의 (`test_scenario6_suite_setup.py`). 통합정책 구현 시 실제 연계 사용 추가.
 
 ### sc3 / sc4 관계 (생성-수정 연계, 같은 페이지 안)
 
