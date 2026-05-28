@@ -151,6 +151,47 @@ scenario_3_must_test_add:
     severity: "must_test"
     verified_by: "Chrome MCP 직접 검증 2026-05-28 + 사용자 스크린샷"
 
+  # 검증 메시지 정확 텍스트 (스크린샷 직접 확인 2026-05-28 — 추정 0)
+  required_field_empty_messages:
+    description: |
+      각 필수 필드 빈값 + 저장 시 노출되는 정확한 메시지.
+      이전 추정 (길이/토큰 기반) 은 4건 중 4건 다 틀림 — 사용자 강조 "추정 != 사실".
+      모두 modal_id = __globalMessageModal.
+    verified_by: "Chrome MCP + 사용자 스크린샷 확인 2026-05-28"
+    cases:
+      - {case: "α", field: "originProtectPolicyName", input: "빈값 + 나머지 채움",
+         message: "정책 이름을 입력해 주세요.", modal_id: "__globalMessageModal"}
+      - {case: "β1", field: "driveLetter", input: "Letter만 빈",
+         message: "드라이브 문자를 입력해 주세요.", modal_id: "__globalMessageModal"}
+      - {case: "β2", field: "driveLabel", input: "Label만 빈",
+         message: "드라이브 라벨을 입력해 주세요.", modal_id: "__globalMessageModal"}
+      - {case: "β3", field: "originProtectDriveQuota", input: "Quota만 빈",
+         message: "원본보호 드라이브 용량을 입력해 주세요.",
+         modal_id: "__globalMessageModal",
+         note: "다른 메시지들과 달리 '원본보호' 접두어 있음 — 명명 패턴 비일관"}
+      - {case: "γ", field: "controlSuiteId", input: "CSU 미선택",
+         message: "제어 스위트를 선택해 주세요.", modal_id: "__globalMessageModal"}
+
+    validation_firing_order:
+      description: "여러 필수 동시 빈값 시 어느 메시지가 먼저 발화하는가."
+      verified:
+        - {rank: 1, field: "originProtectPolicyName",
+           verified_by: "δ case (다 빈) → α 와 동일 메시지 확인 2026-05-28"}
+      pending: "rank 2~5 (이름 채움 + 나머지 점진 채우기로 추가 확정 필요)"
+
+  list_duplicate_messages:
+    description: "리스트 형식 input (확장자/예외폴더) 에 중복 값 추가 시 메시지"
+    verified_by: "Chrome MCP + 사용자 스크린샷 확인 2026-05-28"
+    cases:
+      - {field: "watchFileExtensions", input: "같은 확장자 'txt' 두 번 추가",
+         message: "이미 동일한 확장자가 존재합니다.",
+         modal_id: "__globalMessageModal",
+         note: "control_suite allowExtensionInput/P/allowFileExtention 메시지와 완전 동일 — 공유 validator"}
+      - {field: "watchExceptFolders", input: "같은 폴더 'C:\\Temp' 두 번 추가",
+         message: "이미 등록된 폴더 경로가 존재합니다.",
+         modal_id: "__globalMessageModal",
+         note: "이 메시지는 진짜 폴더 영역에 일관성 있음. control_suite attachAllowUrl 의 같은 메시지는 URL 영역인데 노출 = typo 결함 (yaml :730 일치)"}
+
   required_fields:
     description: |
       ADD 모달 필수 필드 — 진짜 마커는 라벨 안 * 가 아니라 별도 <span class="star">*</span>.
@@ -240,6 +281,9 @@ todo:
     - "✅ 탭 차단 메시지 정확 텍스트 + modal_id (__globalMessageModal)"
     - "✅ driveLetter silent 마스킹 규칙 확정 (알파벳 1자, 대문자 변환)"
     - "✅ CSU picker 모달 ID + 검색 + radio + confirm 모든 selector 확정"
+    - "✅ required_field_empty_messages 5건 정확 텍스트 (α/β1/β2/β3/γ) — 스크린샷 확인"
+    - "✅ validation 발화 순서 1순위 = 정책 이름 (δ case 확인)"
+    - "✅ list_duplicate_messages 2건 (확장자/예외폴더) 정확 텍스트"
   # 미해결 (다음 Chrome 세션)
   pending:
     - "각 input maxlength (DOM 속성 추출) — driveLetter 외 다른 필드"
