@@ -927,7 +927,8 @@ class TestScenario3Action(ControlSuiteBase):
         page.web_restrict.add_url("naver.com")  # 중복
         if page.is_confirm_modal_visible():
             msg = page.get_confirm_message()
-            page.dismiss_confirm_modal()
+            # ⚠ 사용자 지적 (2026-05-28): dismiss 전에 _add → 스크린샷에 알림 상태 캡처
+            #    (이전 패턴은 dismiss → _add 라 스크린샷에 알림 없음 = 보고서 ≠ 스크린샷 불일치)
             # 1) 중복 거부 동작 자체는 정상
             blocked = "이미 등록" in msg
             self._add("pass" if blocked else "fail",
@@ -945,6 +946,8 @@ class TestScenario3Action(ControlSuiteBase):
             else:
                 self._add("warn", "[메시지 일관성 결함] 웹제한 URL 중복 — URL/주소 단어 누락",
                           f"입력: URL 재추가 / 결과: 'URL'/'주소'/'폴더'/'경로' 모두 없음 = {msg!r}", sc=3)
+            # ⚠ 모든 _add 끝나고 dismiss (스크린샷 캡처 완료 후)
+            page.dismiss_confirm_modal()
         else:
             self._add("warn", "[차단 메시지] 웹제한 모달 — URL 중복 — 메시지 미노출",
                       f"입력: 같은 URL 재추가 / 결과: 알림 없음", sc=3)
@@ -1993,11 +1996,12 @@ class TestScenario3Action(ControlSuiteBase):
             page.dismiss_confirm_modal()
         cache_after_items = page.process.get_cache_folder_list()
         added = len(cache_after_items) - cache_before
-        # yaml :510-516: 2건 체크해도 cacheFolderList 에 1건으로 통째 등록 (buggy 패턴)
+        # 사용자 결정 (2026-05-28): "사용자가 원해서 묶어 붙이는 경우도 있어서" 1건 병합 = 정상 동작.
+        # buggy 분류 철회 → pass (의도된 병합 등록 — 다중 체크 = 다중 폴더 단일 등록).
         ok_b = added == 1
-        self._add("warn" if ok_b else "fail",   # buggy 패턴이라 warn (제품 결함 노출)
-                  "(b) process_modal — special_folder 다중 체크 → 1건 병합 (yaml :510 must_test, buggy)",
-                  f"입력: DESKTOP+FAVORITES 체크+확인+추가 / 결과: cache 추가={added}건, list={cache_after_items}", sc=3)
+        self._add("pass" if ok_b else "fail",
+                  "(b) process_modal — special_folder 다중 체크 → 1건 병합 등록 (yaml :510 의도 동작)",
+                  f"입력: [/DESKTOP/]+[/FAVORITES/] 체크+확인+추가 / 결과: cache 추가={added}건, list={cache_after_items}", sc=3)
         # 정리 — process_modal cancel 시 어차피 폐기되므로 별도 cache 제거 불필요
 
         # ── (c) IP/Port 삭제 후 동일값 재추가 잘못된 중복 (yaml :197/264 ux_bug) ─

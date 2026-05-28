@@ -510,10 +510,12 @@ scenario_3_extra_findings_2026_05_13:
         - cacheFolderInput 안에 inline tag 2개 정상 표시 ([/DESKTOP/], [/FAVORITES/])
         - 그 다음 '추가' 클릭 → cacheFolderList 에 **1건으로 통째 합쳐서 등록**
           data-cache-folder = "[/DESKTOP/][/FAVORITES/]" (병합된 단일 문자열)
-      → 사용자 의도 (N개 폴더 등록) 와 다른 동작 — buggy 패턴 확정
-      → cache_folder 의 ';' 다중구분자 미적용과 같은 패턴 (개별 분리 X)
+      → 사용자 결정 (2026-05-28): 사용자가 묶어 등록 원하는 경우도 있어 **의도 동작**
+        (1건 병합 등록은 정상 — buggy 분류 철회).
+      → cache_folder 의 ';' 다중구분자 미적용과 같은 패턴 (개별 분리 X — 의도된 동작)
     chrome_mcp_verified: 2026-05-13
-    severity: "must_test"
+    severity: "must_test"   # 의도 동작 검증 (병합 1건 등록되는지)
+    user_decision_2026_05_28: "buggy 아님 — 사용자 묶음 등록 의도일 수 있음. pass 처리."
 
   modal_open_state_check_policy:
     description: |

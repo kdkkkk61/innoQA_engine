@@ -1372,7 +1372,7 @@ class TestScenario4Modify(ControlSuiteBase):
             page.web_restrict.add_url(dup_url)
             if page.is_confirm_modal_visible(timeout=1500):
                 msg_b = page.get_confirm_message()
-                page.dismiss_confirm_modal()
+                # ⚠ dismiss 전에 _add → 스크린샷에 알림 상태 캡처 (사용자 지적 2026-05-28)
                 # B-1: 중복 거부 자체는 동작했는가
                 blocked = "이미 등록" in msg_b
                 self._add("pass" if blocked else "fail",
@@ -1390,6 +1390,8 @@ class TestScenario4Modify(ControlSuiteBase):
                 else:
                     self._add("warn", "[메시지 일관성 결함] EDIT 웹제한 URL 중복 — URL/주소 단어 누락",
                               f"입력: URL 재추가 / 결과: 메시지에 'URL'/'주소'/'폴더'/'경로' 모두 없음 = {msg_b!r}", sc=4)
+                # 모든 _add 후 dismiss
+                page.dismiss_confirm_modal()
             else:
                 self._add("warn", "[차단 메시지] EDIT 웹제한 URL 중복 — 메시지 미노출",
                           f"입력: '{dup_url}' 재추가 / 결과: 알림 없음", sc=4)
@@ -2112,10 +2114,11 @@ class TestScenario4Modify(ControlSuiteBase):
             page.dismiss_confirm_modal()
         after_items = page.process.get_cache_folder_list()
         added = len(after_items) - before_b
+        # 사용자 결정 (2026-05-28): 1건 병합 = 의도 동작 (사용자가 묶어 등록 원하는 경우).
         ok_b = added == 1
-        self._add("warn" if ok_b else "fail",
-                  "EDIT process_modal — (b) special_folder 다중 체크 → 1건 병합 (sc3k b EDIT, buggy)",
-                  f"입력: DESKTOP+FAVORITES / 결과: 추가={added}건, list={after_items}", sc=4)
+        self._add("pass" if ok_b else "fail",
+                  "EDIT process_modal — (b) special_folder 다중 체크 → 1건 병합 등록 (sc3k b EDIT, 의도 동작)",
+                  f"입력: [/DESKTOP/]+[/FAVORITES/] / 결과: 추가={added}건, list={after_items}", sc=4)
 
         # ── (c) IP/Port 삭제 후 재추가 잘못된 중복 (sc3k c EDIT) ──
         page.process.set_pnetwork(True)
