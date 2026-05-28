@@ -79,6 +79,11 @@ _SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
         305: "시나리오 3e: 예외폴더 list (중복/형식 없음/빈값 typo 결함)",
         306: "시나리오 3f: 워터마크 토큰 동작 ([/PCINFO/]·[/TIME/])",
         307: "시나리오 3g: 정상 저장 + CSU picker (KEEP 활용)",
+        308: "시나리오 3h: Quota 마스킹 (숫자만/음수·소수점 제거/13자리 OK)",
+        309: "시나리오 3i: 워터마크 투명도(0~100 cap)/각도(0~360 cap)",
+        310: "시나리오 3j: free text inputs (driveLabel·종료알림 textarea)",
+        311: "시나리오 3k: 워터마크 저장+재오픈 sync 복구 (text 우선)",
+        312: "시나리오 3l: driveLetter 같은 값 정책 2건 공존 (도메인 의도)",
     },
     "npouch_control_suite": {
         1: "시나리오 1: UI 구조",
