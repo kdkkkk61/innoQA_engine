@@ -569,10 +569,12 @@ def pytest_runtest_makereport(item, call):
             if call.excinfo is not None:
                 _first = str(call.excinfo.value).splitlines()
                 _crash_msg = f"{call.excinfo.typename}: {(_first[0] if _first else '')[:200]}"
+            # 테스트 예외 abort = 실행 오류(error) — 제품 결함(fail) 아님.
+            # ⛔ ERROR 카운트에 잡혀 BUG 높음(🔴) 과 분리됨 (2026-05-28 사용자 지적).
             _crash_sr = ScanResult(
                 pattern="scenario_test", selector="",
                 label=f"[테스트 중단] {item.name}",
-                status="fail", detail=_crash_msg,
+                status="error", detail=_crash_msg,
                 extra={"scenario": 0, "crash": True},
             )
             _existing = getattr(item, "_scan_report", None)

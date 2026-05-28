@@ -38,7 +38,8 @@
 - **날짜**: 2026-05-28
 - **증상**: pytest 결과 "2 failed, 23 passed" 인데 HTML QA 보고서는 ❌ 0 (실패 0)으로 표시. 테스트가 실패했는데 보고서엔 정상으로 보임 (사용자 지적).
 - **원인**: `_add()` 는 검증 블록마다 ScanResult 를 누적하지만, 테스트가 예외(Playwright TimeoutError 등)로 **중단(abort)** 되면 그 크래시 자체는 어떤 ScanResult 도 남기지 않음. 리포트는 크래시 직전까지 기록된 pass/warn 항목만 표시 → fail 0 으로 숨음. `pytest_runtest_makereport` 의 fail hook 은 스크린샷/진단만 찍고 리포트 항목은 추가 안 했음.
-- **수정**: `conftest.py pytest_runtest_makereport` 의 `report.failed` 블록 최상단에 크래시용 `ScanResult(status="fail", label="[테스트 중단] {name}", detail=예외요약)` 를 `item._scan_report.results` 에 append (page None 이어도 기록되도록 early-return 앞에 배치). 이미 `_scan_reports` 에 수집된 동일 객체를 변형하므로 리포트에 반영됨.
+- **수정**: `conftest.py pytest_runtest_makereport` 의 `report.failed` 블록 최상단에 크래시용 `ScanResult(status="error", label="[테스트 중단] {name}", detail=예외요약)` 를 `item._scan_report.results` 에 append (page None 이어도 기록되도록 early-return 앞에 배치). 이미 `_scan_reports` 에 수집된 동일 객체를 변형하므로 리포트에 반영됨.
+  - status=**error** (실행 오류) 채택 — 제품 결함(fail/BUG) 아닌 테스트 abort 라 ⛔ ERROR 카운트에 분리. 초기 fail 로 넣었다가 사용자 지적(2026-05-28: "다 BUG높음에 가있는데 error 로 가야") 후 정정.
 - **파일**: `conftest.py`
 
 ---
