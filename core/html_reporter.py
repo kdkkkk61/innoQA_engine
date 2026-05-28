@@ -50,8 +50,7 @@ _SCENARIO_LABELS: dict[int, str] = {
     3: "시나리오 3: 동작 검증",
     4: "시나리오 4: 수정 시나리오",
     5: "시나리오 5: 케이스 검증",
-    6: "시나리오 6: 연계 데이터 핸드오프 ([AUTO_KEEP] 확인)",
-    7: "시나리오 7: 최종 cleanup (AUTO 정리·KEEP 보존)",
+    6: "시나리오 6: 연계 데이터 핸드오프 + 최종 cleanup ([AUTO_KEEP] 확인·AUTO 정리)",
 }
 
 # ── page_id 별 sub-numbering 라벨 (sn*100 + sub_idx) ────────────────
@@ -87,8 +86,7 @@ _SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
         3: "시나리오 3: 동작 검증",
         4: "시나리오 4: 수정 시나리오",
         5: "시나리오 5: 케이스 검증",
-        6: "시나리오 6: 연계 데이터 핸드오프 ([AUTO_KEEP] 확인)",
-        7: "시나리오 7: 최종 cleanup (AUTO 정리·KEEP 보존)",
+        6: "시나리오 6: 연계 데이터 핸드오프 + 최종 cleanup ([AUTO_KEEP] 확인·AUTO 정리)",
         # sc1 sub (a/b/c)
         101: "시나리오 1a: navigate + 메인 모달",
         102: "시나리오 1b: process_modal sub-tab (개별/태그)",
