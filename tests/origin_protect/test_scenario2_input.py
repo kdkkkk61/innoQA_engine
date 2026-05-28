@@ -100,9 +100,15 @@ class TestOriginProtectScenario2Input(OriginProtectBase):
         page.close_modal()
 
     def test_scenario2c_default_values_reset(self, logged_in_page, settings):
-        """sc2c — ADD 모달 default = 모든 text 빈값 / 모든 checkbox false.
+        """sc2c — ADD 모달 default 정확 검증.
 
-        close → re-open 시 reset 동작 (메모리 잔존 없음) 검증.
+        Chrome MCP 직접 확인 2026-05-28 (사용자 통찰 후 재검증):
+          - 모든 text/textarea = "" (13개)
+          - hidden switch (parent.class='switch') 4개 = default ON
+              isWatchFileExtension / isAllowProcessShutdownText
+              isScreenWaterMark / isPrintWaterMark
+          - 일반 visible checkbox 9개 = default OFF
+        close → re-open 시 위 상태로 일관 reset.
         """
         print("\n━━ [원본보호 정책] 시나리오 2c: default 값 + reset ━━━")
         page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
@@ -140,27 +146,36 @@ class TestOriginProtectScenario2Input(OriginProtectBase):
                       f"sc2c — '{label}' default 빈값",
                       f"결과: value={val!r}", sc=2)
 
-        # 모든 checkbox default = false
-        checkbox_defaults = {
+        # hidden switch 4종 default = ON (true) — Bootstrap 'switch' 패턴
+        switch_default_on = {
+            "파일 감시 기능 토글":  page.SEL_WATCH_EXT_TOGGLE,
+            "종료 알림 토글":       page.SEL_SHUTDOWN_MSG_TOGGLE,
+            "화면 워터마크 토글":   page.SEL_SCREEN_WM,
+            "출력 워터마크 토글":   page.SEL_PRINT_WM,
+        }
+        for label, sel in switch_default_on.items():
+            checked = page.page.locator(sel).is_checked()
+            self._add("pass" if checked is True else "fail",
+                      f"sc2c — '{label}' default ON (hidden switch)",
+                      f"결과: checked={checked} (기대 True)", sc=2)
+
+        # 일반 checkbox 9종 default = OFF (false)
+        checkbox_default_off = {
             "허용 프로세스 사용":        page.SEL_ALLOW_PROCESS,
             "예외처리 프로세스 사용":    page.SEL_EXCEPT_PROCESS,
             "실행차단 프로세스 사용":    page.SEL_BLOCK_PROCESS,
-            "파일 감시 기능 토글":       page.SEL_WATCH_EXT_TOGGLE,
             "헤더 체크 토글":            page.SEL_WATCH_HEADER,
-            "종료 알림 토글":            page.SEL_SHUTDOWN_MSG_TOGGLE,
-            "화면 워터마크 토글":        page.SEL_SCREEN_WM,
             "화면 워터마크 PC 정보":     page.SEL_SCREEN_WM_PC_INFO,
             "화면 워터마크 현재 시각":   page.SEL_SCREEN_WM_TIME,
-            "출력 워터마크 토글":        page.SEL_PRINT_WM,
             "출력 워터마크 PC 정보":     page.SEL_PRINT_WM_PC_INFO,
             "출력 워터마크 현재 시각":   page.SEL_PRINT_WM_TIME,
             "2차 반출":                  page.SEL_SECOND_TAKEOUT,
         }
-        for label, sel in checkbox_defaults.items():
+        for label, sel in checkbox_default_off.items():
             checked = page.page.locator(sel).is_checked()
             self._add("pass" if checked is False else "fail",
-                      f"sc2c — '{label}' default false",
-                      f"결과: checked={checked}", sc=2)
+                      f"sc2c — '{label}' default OFF",
+                      f"결과: checked={checked} (기대 False)", sc=2)
 
         page.close_modal()
 

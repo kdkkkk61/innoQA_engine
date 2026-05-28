@@ -271,12 +271,33 @@ scenario_3_must_test_add:
     verified_by: "Chrome MCP 직접 검증 2026-05-28 (span.star 3개 확정)"
 
   default_values:
-    description: "ADD 모달 close → re-open 시 모든 필드 초기화 — 진짜 default 확인 (prefill 아님)"
-    verified_by: "Chrome MCP 직접 검증 2026-05-28"
-    fields:
-      all_text_inputs: ""
-      all_checkboxes: false   # isAllowProcess 포함 — 사용자 ADD 스크린샷에서도 unchecked
-    reset_behavior: "close → re-open 동작 시 메모리 잔존 없이 빈/false 로 리셋"
+    description: |
+      ADD 모달 close → re-open 시 default 초기화 — Chrome MCP 직접 검증 2026-05-28.
+      ⚠ 사용자 지적 (2026-05-28) — 이전 'all_checkboxes: false' 추정은 부정확:
+        Bootstrap 'switch' 패턴 hidden checkbox 4개 = default ON.
+        일반 visible checkbox 9개 = default OFF.
+        구분: parent_class='switch' 인 hidden input 이 default ON.
+    verified_by: "Chrome MCP 직접 검증 2026-05-28 (사용자 통찰 후 재검증 — 13 checkbox 일괄 dump)"
+    text_inputs:
+      all_empty: true
+      note: "모든 text/textarea = ''"
+    checkbox_defaults:
+      hidden_switch_default_on:   # parent.class='switch', cb.offsetParent===null
+        - isWatchFileExtension     # 파일 감시 기능
+        - isAllowProcessShutdownText  # 프로세스 종료 알림
+        - isScreenWaterMark        # 화면 워터마크
+        - isPrintWaterMark         # 출력 워터마크
+      general_checkbox_default_off:
+        - isAllowProcess          # 허용 프로세스 사용
+        - isExceptProcess         # 예외처리 프로세스 사용
+        - isBlockProcess          # 실행차단 프로세스 사용
+        - isWatchFileHeader       # 헤더 체크
+        - isScreenWaterMarkPcInfo
+        - isScreenWaterMarkCurrentTime
+        - isPrintWaterMarkPcInfo
+        - isPrintWaterMarkCurrentTime
+        - isSecondTakeout         # 2차 반출
+    reset_behavior: "close → re-open 시 위 default 상태로 일관 리셋 (메모리 잔존 없음)"
 
   maxlength_inventory:
     description: "ADD 모달 모든 input 의 DOM maxlength 속성 = null. 서버 측 검증 의존."
