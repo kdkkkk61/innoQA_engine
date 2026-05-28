@@ -27,17 +27,18 @@ class TestOriginProtectScenario1Ui(OriginProtectBase):
                   "navigate_to → managerNpouchOriginProtectPolicy",
                   f"url={page.page.url!r}", sc=1)
 
-        # 4 버튼 + 검색 input 존재
-        buttons_present = {
-            "addItemBtn":    page.page.locator(page.SEL_ADD_BTN).count() > 0,
-            "modifyItemBtn": page.page.locator(page.SEL_MODIFY_BTN).count() > 0,
-            "copyItemBtn":   page.page.locator(page.SEL_COPY_BTN).count() > 0,
-            "removeItemBtn": page.page.locator(page.SEL_DELETE_BTN).count() > 0,
-            "searchText":    page.page.locator(page.SEL_SEARCH_INPUT).count() > 0,
+        # 목록 페이지 버튼/검색 (한글 라벨 — 화면 표시 그대로)
+        elements = {
+            "추가": page.SEL_ADD_BTN,
+            "수정": page.SEL_MODIFY_BTN,
+            "복사": page.SEL_COPY_BTN,
+            "삭제": page.SEL_DELETE_BTN,
+            "검색": page.SEL_SEARCH_INPUT,
         }
-        for name, present in buttons_present.items():
+        for label, sel in elements.items():
+            present = page.page.locator(sel).count() > 0
             self._add("pass" if present else "fail",
-                      f"목록 페이지 — {name} 존재",
+                      f"목록 페이지 — '{label}' 존재",
                       f"결과: present={present}", sc=1)
 
     def test_scenario1b_add_modal_enter_exit(self, logged_in_page, settings):
@@ -53,31 +54,36 @@ class TestOriginProtectScenario1Ui(OriginProtectBase):
                   "ADD 모달 진입",
                   f"결과: modal_open={modal_open}", sc=1)
 
-        # 핵심 필드 4건 (기본 설정) 존재 확인
+        # 기본 설정 탭 필드 (화면 라벨 그대로)
         core_fields = {
-            "originProtectPolicyName": page.SEL_POLICY_NAME,
-            "driveLetter":             page.SEL_DRIVE_LETTER,
-            "driveLabel":              page.SEL_DRIVE_LABEL,
-            "originProtectDriveQuota": page.SEL_DRIVE_QUOTA,
+            "정책 이름":               page.SEL_POLICY_NAME,
+            "원본보호 드라이브 - 문자": page.SEL_DRIVE_LETTER,
+            "원본보호 드라이브 - 라벨": page.SEL_DRIVE_LABEL,
+            "원본보호 드라이브 - 용량": page.SEL_DRIVE_QUOTA,
         }
-        for fid, sel in core_fields.items():
+        for label, sel in core_fields.items():
             present = page.page.locator(sel).count() > 0
             self._add("pass" if present else "fail",
-                      f"ADD 모달 — 기본 필드 '{fid}' 존재",
+                      f"ADD 모달 — '{label}' 필드 존재",
                       f"selector='{sel}' / 결과: present={present}", sc=1)
 
-        # CSU select 버튼 + #controlSuiteId span (제어스위트 연계 지점)
+        # 제어 스위트 선택 영역 (선택 버튼 + 결과 span)
         csu_btn_present = page.page.locator(page.SEL_CSU_SELECT_BTN).count() > 0
         csu_span_present = page.page.locator(page.SEL_CSU_ID_SPAN).count() > 0
         self._add("pass" if csu_btn_present and csu_span_present else "fail",
-                  "ADD 모달 — 제어스위트 연계 (CSU select 버튼 + controlSuiteId span)",
+                  "ADD 모달 — '제어 스위트 선택' 영역 (선택 버튼 + 결과 span)",
                   f"결과: btn={csu_btn_present}, span={csu_span_present}", sc=1)
 
-        # 프로세스 토글 3종
-        for tid in ["isAllowProcess", "isExceptProcess", "isBlockProcess"]:
+        # 프로세스 사용 토글 3종 (화면 라벨)
+        process_toggles = {
+            "허용 프로세스 사용":     "isAllowProcess",
+            "예외처리 프로세스 사용": "isExceptProcess",
+            "실행차단 프로세스 사용": "isBlockProcess",
+        }
+        for label, tid in process_toggles.items():
             present = page.page.locator(f"input#{tid}").count() > 0
             self._add("pass" if present else "fail",
-                      f"ADD 모달 — 프로세스 토글 '{tid}' 존재",
+                      f"ADD 모달 — '{label}' 토글 존재",
                       f"결과: present={present}", sc=1)
 
         # ADD 모달 탭 4개 존재 (yaml: tab_count=4 / 순서: 기본설정·허용·예외처리·실행차단)
@@ -173,14 +179,14 @@ class TestOriginProtectScenario1Ui(OriginProtectBase):
         page.open_add_modal()
 
         defaults_ok = {
-            "originProtectPolicyName": page.page.locator(page.SEL_POLICY_NAME).input_value() == "",
-            "driveLetter":             page.page.locator(page.SEL_DRIVE_LETTER).input_value() == "",
-            "driveLabel":              page.page.locator(page.SEL_DRIVE_LABEL).input_value() == "",
-            "originProtectDriveQuota": page.page.locator(page.SEL_DRIVE_QUOTA).input_value() == "",
+            "정책 이름":               page.page.locator(page.SEL_POLICY_NAME).input_value() == "",
+            "원본보호 드라이브 - 문자": page.page.locator(page.SEL_DRIVE_LETTER).input_value() == "",
+            "원본보호 드라이브 - 라벨": page.page.locator(page.SEL_DRIVE_LABEL).input_value() == "",
+            "원본보호 드라이브 - 용량": page.page.locator(page.SEL_DRIVE_QUOTA).input_value() == "",
         }
-        for fid, ok in defaults_ok.items():
+        for label, ok in defaults_ok.items():
             self._add("pass" if ok else "fail",
-                      f"sc1d — ADD 재오픈 시 '{fid}' 빈값 default reset",
+                      f"sc1d — ADD 재오픈 시 '{label}' 빈값 default reset",
                       f"결과: ok={ok}", sc=1)
 
         page.close_modal()
