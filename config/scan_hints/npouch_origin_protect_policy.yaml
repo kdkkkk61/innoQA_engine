@@ -230,6 +230,22 @@ scenario_3_must_test_add:
           - {input: "720",  result: "360", note: "큰 값도 360 cap"}
         range: "0~360 (cap)"
 
+  # 도메인 사실 — 원본보호 정책의 의도된 동작 (사용자 설명 2026-05-29)
+  domain_behaviors:
+    description: |
+      원본보호 정책 = 드라이브 생성 단위. 나중에 엔파우치 정책에 1:1 등록 시점 적용.
+      → 같은 driveLetter 정책 여러 개 공존은 정상 (각각 다른 엔파우치 정책이 받음).
+      → 정책 이름만 unique 식별자 필수.
+    drive_letter_duplication: "allowed (도메인 의도) — 충돌 검증 안 함이 정상"
+    drive_label_duplication:  "allowed 추정 (free text 라 검증 자체 없음)"
+    quota_duplication:        "allowed (수치 값)"
+    name_must_be_unique: true
+    name_duplicate_message: "정책 이름이 이미 등록되어 있습니다."
+    verified_by: "Chrome MCP 직접 검증 2026-05-29 + 사용자 도메인 설명"
+    test_implication: |
+      sc3에서 driveLetter 같은 값으로 저장 성공 = pass (warn 아님).
+      이전 'drive_letter_no_conflict_check' known_bug 분류는 잘못 — 철회됨.
+
   free_text_inputs:
     description: "형식 검증 없는 자유 텍스트 input — alert 없음, 길이 제한 없음"
     fields:
@@ -363,19 +379,6 @@ scenario_3_must_test_add:
   known_bugs_origin_protect:
     description: "ux_bug 결함 후보 — sc3 에서 warn 또는 fail 로 노출"
     items:
-      - id: "drive_letter_no_conflict_check"
-        symptom: |
-          driveLetter 충돌 검증 없음. 다른 정책이 같은 letter 사용 중이어도
-          새 정책에 동일 letter 입력 + 저장 → 차단 메시지 없이 그대로 저장 성공.
-          동일 letter 정책 2건 이상 공존 가능 — 실제 OS 마운트 시 충돌 가능성.
-        verified_by: "Chrome MCP 직접 검증 2026-05-29"
-        transition:
-          - "기존 정책 (예: [AUTO]_sc3b_dup) 가 driveLetter='Z' 로 저장됨"
-          - "새 정책 [AUTO]_sc3_letter_conflict 도 driveLetter='Z' + 저장 → 정상 등록"
-          - "결과: 'Z' 사용 정책 2건 list 공존 — 알림 0건"
-        severity: "warn — 잠재 운영 결함 (마운트 시 충돌 가능)"
-        impact: "UI 단계에서 차단 가능했어야 함 (이름 중복은 차단하면서 letter 중복은 무검증)"
-
       - id: "watermark_token_one_way_sync"
         symptom: |
           워터마크 토큰 [/PCINFO/]·[/TIME/] ADD/EDIT 중 sync 방향 비대칭:
@@ -523,7 +526,7 @@ todo:
     - "✅ Quota 마스킹: 숫자만, 음수/소수점 silent 제거, 13자리 허용, leading zero 제거 (control_suite uploadLimit 과 다른 패턴)"
     - "✅ 투명도/각도: 0~100 / 0~360 cap, 음수/문자 silent 제거"
     - "✅ driveLabel/종료알림 textarea: free text — 한글/특수/숫자/긴 입력 다 허용, alert 없음"
-    - "✅ known_bug: driveLetter 충돌 검증 없음 — 같은 letter 정책 2건 공존 가능 (warn)"
+    - "✅ 도메인 사실: driveLetter 같은 값 정책 여러 개 공존 = 의도 동작 (엔파우치 정책에 1:1 등록 시점 적용). 이전 'known_bug' 분류 철회."
   # 미해결 (다음 Chrome 세션)
   pending:
     - "각 input maxlength (DOM 속성 추출) — driveLetter 외 다른 필드"
