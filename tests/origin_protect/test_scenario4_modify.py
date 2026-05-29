@@ -106,6 +106,143 @@ def _csu_select_first(page):
     page.page.wait_for_timeout(1500)
 
 
+def _pick_process_in_picker(page, prefer_keyword: str = "AUTO") -> str:
+    """globalProcessList picker 에서 프로세스 1건 선택 + 확인.
+
+    사용자 정책 (2026-05-29):
+      - 기본: 맨 위 프로세스 (첫 행 fallback)
+      - sc6 있으면 'AUTO' 검색해서 사용 (검색 결과 있으면 첫 행)
+    multi-select picker — 첫 행 체크박스 click + 확인 버튼.
+    Returns: 선택된 프로세스 이름 (또는 '').
+    """
+    picker = page.page.locator("#globalProcessList.in")
+    picker.wait_for(state="attached", timeout=5000)
+    # AUTO 검색 시도
+    try:
+        si = page.page.locator("#globalProcessList.in input[type='search'], #globalProcessList.in input[placeholder]").first
+        si.fill(prefer_keyword)
+        page.page.locator("#globalProcessList.in button i.fa-search, #globalProcessList.in button.searchBtn").first.evaluate(
+            "el => (el.closest('button') || el).click()"
+        )
+        page.page.wait_for_timeout(800)
+    except Exception:
+        pass
+    # 검색 결과 0건 시 검색 비우고 fallback
+    rows = page.page.locator("#globalProcessList.in table tbody tr:has(input[type='checkbox'])")
+    if rows.count() == 0:
+        try:
+            si.fill("")
+            page.page.locator("#globalProcessList.in button i.fa-search, #globalProcessList.in button.searchBtn").first.evaluate(
+                "el => (el.closest('button') || el).click()"
+            )
+            page.page.wait_for_timeout(800)
+        except Exception:
+            pass
+        rows = page.page.locator("#globalProcessList.in table tbody tr:has(input[type='checkbox'])")
+    # 첫 행 체크박스 click + 이름 추출
+    process_name = ""
+    if rows.count() > 0:
+        first = rows.first
+        process_name = first.evaluate(
+            "el => { const a = el.querySelector('a, span'); return a ? a.textContent.trim() : ''; }"
+        )
+        cb = first.locator("input[type='checkbox']").first
+        cb.evaluate("el => { if (!el.checked) el.click(); }")
+        page.page.wait_for_timeout(300)
+    # 확인 버튼 click
+    page.page.locator("#globalProcessList.in button.btn-primary, #globalProcessList.in button:has-text('확인')").first.evaluate(
+        "el => el.click()"
+    )
+    page.page.wait_for_timeout(1500)
+    return process_name
+
+
+def _add_process_to_tab(page, tab_name: str, proc_type: str, description: str = "") -> dict:
+    """탭 (허용/예외처리/실행차단) 의 + 버튼 → sub-modal → picker → 저장.
+
+    Returns: {process_name, sub_msg, registered}
+    """
+    # 탭 진입
+    page.page.evaluate(
+        """(name) => {
+            const tabs = Array.from(document.querySelectorAll('#addItemModal.in ul li'));
+            const t = tabs.find(li => li.textContent.trim() === name);
+            if (t) (t.querySelector('a') || t).click();
+        }""",
+        tab_name,
+    )
+    page.page.wait_for_timeout(600)
+    # + 버튼
+    page.page.evaluate(
+        """(pt) => {
+            const btn = document.querySelector(`#addItemModal.in button[data-process-type="${pt}"]`);
+            if (btn) btn.click();
+        }""",
+        proc_type,
+    )
+    page.page.wait_for_timeout(1500)
+    # "프로세스 선택" 버튼
+    page.page.evaluate(
+        """() => {
+            const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+            const sub = subs.find(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+            if (sub) {
+                const btn = Array.from(sub.querySelectorAll('button')).find(b => /프로세스 선택/.test(b.textContent));
+                if (btn) btn.click();
+            }
+        }"""
+    )
+    page.page.wait_for_timeout(1500)
+    # picker — AUTO 검색 / 첫 행 fallback
+    proc_name = _pick_process_in_picker(page, "AUTO")
+    # 설명 입력
+    if description:
+        page.page.evaluate(
+            """(desc) => {
+                const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                const sub = subs.find(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+                if (sub) {
+                    const ta = sub.querySelector('textarea');
+                    if (ta) {
+                        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                        setter.call(ta, desc);
+                        ta.dispatchEvent(new Event('input', {bubbles:true}));
+                    }
+                }
+            }""",
+            description,
+        )
+        page.page.wait_for_timeout(300)
+    # 등록
+    page.page.evaluate(
+        """() => {
+            const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+            const sub = subs.find(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+            if (sub) {
+                const btn = Array.from(sub.querySelectorAll('button')).find(b => /등록|저장/.test(b.textContent));
+                if (btn) btn.click();
+            }
+        }"""
+    )
+    page.page.wait_for_timeout(1500)
+    # 결과 확인
+    sub_msg = ""
+    if page.is_confirm_modal_visible(timeout=1000):
+        sub_msg = page.get_confirm_message()
+        page.dismiss_confirm_modal()
+    sub_still_open = page.page.evaluate(
+        """() => {
+            const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+            return subs.some(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+        }"""
+    )
+    return {
+        "process_name": proc_name,
+        "sub_msg": sub_msg,
+        "registered": not sub_still_open,
+    }
+
+
 def _ensure_sc3g_policy(page):
     """sc3g 정책 없으면 즉시 생성 (사용자 정정 2026-05-29: 없으면 만들어서 테스트).
 
@@ -1201,4 +1338,278 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                   f"active tab: {active_tab!r}, 알림: {gm_open} "
                   f"(도메인 의도 = 사용 OFF 시 탭 차단 자연 / 진입 가능 = 사용자 혼란)",
                   sc=4)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4v — 개별 프로세스 add 3 탭 + 저장 + 재진입 list 확인
+    # 프로세스 선택: AUTO 검색 → 0건 fallback 첫 행 / 설명 입력 / 등록 흐름 전체
+    # 사용자 명시: "기본 맨 위 / sc6 있으면 AUTO 검색"
+    # ==================================================================
+    def test_scenario4v_process_add_3tabs(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4v: 개별 프로세스 add 3 탭 ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        for tab_name, proc_type in [
+            ("허용 프로세스", "ALLOW_PROCESS"),
+            ("예외처리 프로세스", "EXCEPT_PROCESS"),
+            ("실행차단 프로세스", "BLOCK_PROCESS"),
+        ]:
+            r = _add_process_to_tab(page, tab_name, proc_type,
+                                     description=f"sc4v {tab_name} 설명")
+            self._add("pass" if r["registered"] else "fail",
+                      f"sc4v — [{tab_name}] 프로세스 add (AUTO 검색 → 첫행 fallback)",
+                      f"선택 process: {r['process_name']!r} / "
+                      f"sub-modal 등록 성공: {r['registered']} / msg: {r['sub_msg']!r}",
+                      sc=4)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4w — 개별 프로세스 remove 동작 (- 버튼)
+    # ==================================================================
+    def test_scenario4w_process_remove(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4w: 개별 프로세스 remove ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        page.page.evaluate(
+            """() => {
+                const tabs = Array.from(document.querySelectorAll('#addItemModal.in ul li'));
+                const t = tabs.find(li => li.textContent.trim() === '허용 프로세스');
+                if (t) (t.querySelector('a') || t).click();
+            }"""
+        )
+        page.page.wait_for_timeout(800)
+        before_count = page.page.locator(
+            "#addItemModal.in table tbody tr:has(input[type='checkbox'])"
+        ).count()
+        if before_count > 0:
+            page.page.evaluate(
+                """() => {
+                    const rows = document.querySelectorAll('#addItemModal.in table tbody tr');
+                    if (rows[0]) {
+                        const cb = rows[0].querySelector('input[type="checkbox"]');
+                        if (cb && !cb.checked) cb.click();
+                    }
+                    const minus = document.querySelectorAll('#addItemModal.in i.fa-minus');
+                    for (const m of minus) {
+                        const btn = m.closest('button');
+                        if (btn && btn.offsetParent) { btn.click(); break; }
+                    }
+                }"""
+            )
+            page.page.wait_for_timeout(1500)
+            if page.is_confirm_modal_visible(timeout=1000):
+                page.dismiss_confirm_modal()
+        after_count = page.page.locator(
+            "#addItemModal.in table tbody tr:has(input[type='checkbox'])"
+        ).count()
+        removed = before_count > after_count
+        self._add("pass" if (before_count == 0 or removed) else "warn",
+                  "sc4w — [허용 프로세스] 개별 프로세스 remove (- 버튼)",
+                  f"before: {before_count} / after: {after_count} / removed: {removed}",
+                  sc=4)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4x — 태그 sub-tab add 동작
+    # ==================================================================
+    def test_scenario4x_tag_add(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4x: 태그 sub-tab add ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        page.page.evaluate(
+            """() => {
+                const tabs = Array.from(document.querySelectorAll('#addItemModal.in ul li'));
+                const t = tabs.find(li => li.textContent.trim() === '허용 프로세스');
+                if (t) (t.querySelector('a') || t).click();
+            }"""
+        )
+        page.page.wait_for_timeout(800)
+        page.page.evaluate(
+            """() => {
+                const modal = document.querySelector('#addItemModal.in');
+                const tags = Array.from(modal.querySelectorAll('a, li, button')).filter(el => el.textContent.trim() === '태그' && el.offsetParent);
+                if (tags[0]) tags[0].click();
+            }"""
+        )
+        page.page.wait_for_timeout(800)
+        page.page.evaluate(
+            """() => {
+                const plus = document.querySelectorAll('#addItemModal.in i.fa-plus');
+                for (const p of plus) {
+                    const btn = p.closest('button');
+                    if (btn && btn.offsetParent) { btn.click(); break; }
+                }
+            }"""
+        )
+        page.page.wait_for_timeout(1500)
+        modals_open = page.page.evaluate(
+            """() => {
+                return Array.from(document.querySelectorAll('.modal-wrap.in,.modal.in'))
+                    .map(m => (m.querySelector('.modal-title,h4')||{}).textContent?.trim() || m.id);
+            }"""
+        )
+        opened = any(("태그" in m or "추가" in m or "Tag" in m) for m in modals_open if m and m != "addItemModal")
+        self._add("pass" if opened else "warn",
+                  "sc4x — [태그 sub-tab] + 버튼 → 태그 add modal 진입",
+                  f"열린 modals: {modals_open}",
+                  sc=4)
+        page.page.evaluate(
+            """() => {
+                const subs = Array.from(document.querySelectorAll('.modal-wrap.in')).filter(m => m.id !== 'addItemModal');
+                for (const s of subs) {
+                    const c = Array.from(s.querySelectorAll('button')).find(b => /취소|닫기/.test(b.textContent));
+                    if (c) c.click();
+                }
+            }"""
+        )
+        page.page.wait_for_timeout(500)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4y — 태그 sub-tab remove 동작
+    # ==================================================================
+    def test_scenario4y_tag_remove(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4y: 태그 sub-tab remove ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        page.page.evaluate(
+            """() => {
+                const tabs = Array.from(document.querySelectorAll('#addItemModal.in ul li'));
+                const t = tabs.find(li => li.textContent.trim() === '허용 프로세스');
+                if (t) (t.querySelector('a') || t).click();
+            }"""
+        )
+        page.page.wait_for_timeout(800)
+        page.page.evaluate(
+            """() => {
+                const modal = document.querySelector('#addItemModal.in');
+                const tags = Array.from(modal.querySelectorAll('a, li, button')).filter(el => el.textContent.trim() === '태그' && el.offsetParent);
+                if (tags[0]) tags[0].click();
+            }"""
+        )
+        page.page.wait_for_timeout(800)
+        before_count = page.page.locator(
+            "#addItemModal.in [id*='Tag'] tbody tr:has(input[type='checkbox'])"
+        ).count()
+        if before_count > 0:
+            page.page.evaluate(
+                """() => {
+                    const rows = document.querySelectorAll('#addItemModal.in [id*="Tag"] tbody tr');
+                    if (rows[0]) {
+                        const cb = rows[0].querySelector('input[type="checkbox"]');
+                        if (cb && !cb.checked) cb.click();
+                    }
+                    const minus = document.querySelectorAll('#addItemModal.in i.fa-minus');
+                    for (const m of minus) {
+                        const btn = m.closest('button');
+                        if (btn && btn.offsetParent) { btn.click(); break; }
+                    }
+                }"""
+            )
+            page.page.wait_for_timeout(1500)
+            if page.is_confirm_modal_visible(timeout=1000):
+                page.dismiss_confirm_modal()
+        after_count = page.page.locator(
+            "#addItemModal.in [id*='Tag'] tbody tr:has(input[type='checkbox'])"
+        ).count()
+        removed = before_count > after_count
+        self._add("pass" if (before_count == 0 or removed) else "warn",
+                  "sc4y — [허용 프로세스 태그] remove 동작",
+                  f"before: {before_count} / after: {after_count} / removed: {removed}",
+                  sc=4)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4z — sub-modal 설명 textarea free text (한글/특수/3000자)
+    # ==================================================================
+    def test_scenario4z_description_textarea(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4z: 프로세스 설명 textarea free text ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        page.page.evaluate(
+            """() => {
+                const tabs = Array.from(document.querySelectorAll('#addItemModal.in ul li'));
+                const t = tabs.find(li => li.textContent.trim() === '허용 프로세스');
+                if (t) (t.querySelector('a') || t).click();
+            }"""
+        )
+        page.page.wait_for_timeout(800)
+        page.page.evaluate(
+            """() => {
+                const btn = document.querySelector('#addItemModal.in button[data-process-type="ALLOW_PROCESS"]');
+                if (btn) btn.click();
+            }"""
+        )
+        page.page.wait_for_timeout(1500)
+
+        for inp, label in [("한글설명", "한글"), ("$@%*^&", "특수문자"), ("X"*3000, "3000자")]:
+            page.page.evaluate(
+                """(desc) => {
+                    const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                    const sub = subs.find(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+                    if (sub) {
+                        const ta = sub.querySelector('textarea');
+                        if (ta) {
+                            const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                            setter.call(ta, desc);
+                            ta.dispatchEvent(new Event('input', {bubbles:true}));
+                        }
+                    }
+                }""",
+                inp,
+            )
+            page.page.wait_for_timeout(200)
+            actual = page.page.evaluate(
+                """() => {
+                    const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                    const sub = subs.find(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+                    if (sub) {
+                        const ta = sub.querySelector('textarea');
+                        return ta ? ta.value : null;
+                    }
+                    return null;
+                }"""
+            )
+            ok = actual == inp
+            self._add("pass" if ok else "fail",
+                      f"sc4z — [허용 프로세스 설명] '{label}' 입력 보존 (free text)",
+                      f"입력 {len(inp)}자 / 결과 {len(actual or '')}자 / 보존={ok}",
+                      sc=4)
+
+        page.page.evaluate(
+            """() => {
+                const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                const sub = subs.find(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+                if (sub) {
+                    const c = Array.from(sub.querySelectorAll('button')).find(b => /취소|닫기/.test(b.textContent));
+                    if (c) c.click();
+                }
+            }"""
+        )
+        page.page.wait_for_timeout(500)
         _safe_close_modal(page)

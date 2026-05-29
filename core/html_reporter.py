@@ -111,6 +111,11 @@ _SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
         419: "시나리오 4s: 같은 프로세스 다중 탭 등록 결함 🔴 (도메인 배타성)",
         420: "시나리오 4t: 태그 sub-tab 진입 EDIT",
         421: "시나리오 4u: 사용 체크박스 OFF + 탭 진입 가능 ⚠ (UX)",
+        422: "시나리오 4v: 개별 프로세스 add 3 탭 (AUTO 검색 → 첫행 fallback)",
+        423: "시나리오 4w: 개별 프로세스 remove (- 버튼)",
+        424: "시나리오 4x: 태그 sub-tab add",
+        425: "시나리오 4y: 태그 sub-tab remove",
+        426: "시나리오 4z: 프로세스 설명 textarea free text (한글/특수/3000자)",
     },
     "npouch_control_suite": {
         0: "시나리오 0: UIScanner 자동 스캔 (신규 기능 감지 + UI 패턴 검증)",
