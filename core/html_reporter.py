@@ -106,6 +106,11 @@ _SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
         414: "시나리오 4n: 토글 종속 disabled EDIT (sc3o 대응 4 토글)",
         415: "시나리오 4o: 텍스트 길이 server reject EDIT 4 필드 (sc3n 대응)",
         416: "시나리오 4p: driveLetter 공존 EDIT 도메인 의도 (sc3l 대응)",
+        417: "시나리오 4q: EDIT 3 탭 진입 sanity (sc1c 차단과 대비)",
+        418: "시나리오 4r: 허용 프로세스 sub-modal 구조 + picker 진입",
+        419: "시나리오 4s: 같은 프로세스 다중 탭 등록 결함 🔴 (도메인 배타성)",
+        420: "시나리오 4t: 태그 sub-tab 진입 EDIT",
+        421: "시나리오 4u: 사용 체크박스 OFF + 탭 진입 가능 ⚠ (UX)",
     },
     "npouch_control_suite": {
         0: "시나리오 0: UIScanner 자동 스캔 (신규 기능 감지 + UI 패턴 검증)",

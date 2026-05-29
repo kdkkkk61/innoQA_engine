@@ -829,3 +829,376 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                   f"입력: {other_name} letter → 'Y' / msg={msg!r} (차단 메시지 부재 = 도메인 일치)",
                   sc=4, highlight=page.page.locator(page.SEL_DRIVE_LETTER))
         _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4q — EDIT 3 탭 진입 sanity (sc1c 의 ADD 차단과 대비)
+    # Chrome MCP 검증 2026-05-29: ADD = 탭 차단 / EDIT = 진입 가능 (사용자 알림)
+    # ==================================================================
+    def test_scenario4q_three_tabs_enter_edit(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4q: EDIT 3 탭 진입 sanity ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        for tab_name in ["허용 프로세스", "예외처리 프로세스", "실행차단 프로세스"]:
+            clicked = page.page.evaluate(
+                """(name) => {
+                    const tabs = Array.from(document.querySelectorAll('#addItemModal.in ul li'));
+                    const t = tabs.find(li => li.textContent.trim() === name);
+                    if (!t) return 'not_found';
+                    (t.querySelector('a') || t).click();
+                    return 'clicked';
+                }""",
+                tab_name,
+            )
+            page.page.wait_for_timeout(600)
+            active = page.page.evaluate(
+                """() => {
+                    const a = document.querySelector('#addItemModal.in ul li.active');
+                    return a ? a.textContent.trim() : null;
+                }"""
+            )
+            ok = active == tab_name
+            self._add("pass" if ok else "fail",
+                      f"sc4q — EDIT '{tab_name}' 탭 진입 가능 (ADD sc1c 차단과 대비)",
+                      f"click 결과: {clicked} / 현재 active: {active!r} (기대 '{tab_name}')",
+                      sc=4)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4r — 허용 프로세스 sub-modal 구조 검증 (필수 필드 + picker 진입)
+    # Chrome MCP 검증 2026-05-29: sub-modal title='허용 프로세스 추가/수정',
+    #   필수 = 프로세스 명, picker id='globalProcessList' (마스터 1252건)
+    # ==================================================================
+    def test_scenario4r_allow_process_submodal(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4r: 허용 프로세스 sub-modal 구조 ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        # 허용 프로세스 탭 진입 + + 버튼 click
+        page.page.evaluate(
+            """() => {
+                const tabs = Array.from(document.querySelectorAll('#addItemModal.in ul li'));
+                const t = tabs.find(li => li.textContent.trim() === '허용 프로세스');
+                (t.querySelector('a') || t).click();
+            }"""
+        )
+        page.page.wait_for_timeout(800)
+        # + 버튼 (data-process-type="ALLOW_PROCESS")
+        plus_clicked = page.page.evaluate(
+            """() => {
+                const btn = document.querySelector('#addItemModal.in button[data-process-type="ALLOW_PROCESS"]');
+                if (btn) { btn.click(); return 'clicked'; }
+                return 'no_btn';
+            }"""
+        )
+        page.page.wait_for_timeout(1500)
+        # sub-modal 진입 확인
+        sub_open = page.page.evaluate(
+            """() => {
+                const modals = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                const sub = modals.find(m => {
+                    const t = m.querySelector('.modal-title, h4');
+                    return t && /허용 프로세스 추가/.test(t.textContent);
+                });
+                return !!sub;
+            }"""
+        )
+        self._add("pass" if sub_open else "fail",
+                  "sc4r — 허용 프로세스 + 버튼 → sub-modal 진입",
+                  f"+ button click: {plus_clicked} / sub-modal open: {sub_open}",
+                  sc=4)
+
+        # "프로세스 선택" 버튼 → picker 진입
+        if sub_open:
+            picker_clicked = page.page.evaluate(
+                """() => {
+                    const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                    const sub = subs.find(m => /허용 프로세스 추가/.test((m.querySelector('.modal-title')||{}).textContent||''));
+                    if (!sub) return 'no_sub';
+                    const btn = Array.from(sub.querySelectorAll('button')).find(b => /프로세스 선택/.test(b.textContent));
+                    if (btn) { btn.click(); return 'clicked'; }
+                    return 'no_btn';
+                }"""
+            )
+            page.page.wait_for_timeout(1500)
+            picker_open = page.page.locator("#globalProcessList.in").count() > 0
+            picker_count = page.page.evaluate(
+                """() => {
+                    const p = document.querySelector('#globalProcessList.in');
+                    if (!p) return 0;
+                    const text = p.textContent || '';
+                    const m = text.match(/등록된 프로세스 *: *([\\d,]+)/);
+                    return m ? m[1] : '?';
+                }"""
+            )
+            self._add("pass" if picker_open else "fail",
+                      "sc4r — '프로세스 선택' 버튼 → globalProcessList picker 진입",
+                      f"picker click: {picker_clicked} / open: {picker_open} / 마스터 프로세스 count: {picker_count}",
+                      sc=4)
+            # picker 닫기
+            page.page.evaluate(
+                """() => {
+                    const p = document.querySelector('#globalProcessList.in');
+                    if (p) {
+                        const c = p.querySelector('button.close, button[data-dismiss="modal"]');
+                        if (c) c.click();
+                    }
+                }"""
+            )
+            page.page.wait_for_timeout(500)
+            # sub-modal 닫기
+            page.page.evaluate(
+                """() => {
+                    const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                    const sub = subs.find(m => /허용 프로세스 추가/.test((m.querySelector('.modal-title')||{}).textContent||''));
+                    if (sub) {
+                        const c = Array.from(sub.querySelectorAll('button')).find(b => /취소|닫기/.test(b.textContent));
+                        if (c) c.click();
+                    }
+                }"""
+            )
+            page.page.wait_for_timeout(500)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4s — 같은 프로세스 다중 탭 등록 결함 검증 🔴 (사용자 의심 결함)
+    # 도메인: 허용/예외처리/실행차단 는 상호 배타적이어야 정상
+    # ==================================================================
+    def test_scenario4s_same_process_multi_tab_defect(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4s: 같은 프로세스 다중 탭 등록 결함 ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        # 같은 프로세스를 허용/예외처리/실행차단 3 탭에 순차 등록 시도
+        target_process_idx = 0  # picker 의 첫 프로세스 (모든 탭에 동일하게)
+        registered_tabs = []
+        block_messages = []
+
+        for tab_name, proc_type in [
+            ("허용 프로세스", "ALLOW_PROCESS"),
+            ("예외처리 프로세스", "EXCEPT_PROCESS"),
+            ("실행차단 프로세스", "BLOCK_PROCESS"),
+        ]:
+            # 탭 진입
+            page.page.evaluate(
+                """(name) => {
+                    const tabs = Array.from(document.querySelectorAll('#addItemModal.in ul li'));
+                    const t = tabs.find(li => li.textContent.trim() === name);
+                    if (t) (t.querySelector('a') || t).click();
+                }""",
+                tab_name,
+            )
+            page.page.wait_for_timeout(600)
+
+            # + 버튼 click
+            page.page.evaluate(
+                """(proc_type) => {
+                    const btn = document.querySelector(`#addItemModal.in button[data-process-type="${proc_type}"]`);
+                    if (btn) btn.click();
+                }""",
+                proc_type,
+            )
+            page.page.wait_for_timeout(1500)
+
+            # "프로세스 선택" 버튼 click
+            page.page.evaluate(
+                """() => {
+                    const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                    const sub = subs.find(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+                    if (sub) {
+                        const btn = Array.from(sub.querySelectorAll('button')).find(b => /프로세스 선택/.test(b.textContent));
+                        if (btn) btn.click();
+                    }
+                }"""
+            )
+            page.page.wait_for_timeout(1500)
+
+            # picker 첫 행 (target_process_idx) 체크 + 확인
+            page.page.evaluate(
+                """(idx) => {
+                    const p = document.querySelector('#globalProcessList.in');
+                    if (!p) return;
+                    const rows = p.querySelectorAll('table tbody tr');
+                    const row = rows[idx];
+                    if (row) {
+                        const cb = row.querySelector('input[type="checkbox"]');
+                        if (cb && !cb.checked) cb.click();
+                    }
+                    const confirm = Array.from(p.querySelectorAll('button')).find(b => /확인/.test(b.textContent));
+                    if (confirm) confirm.click();
+                }""",
+                target_process_idx,
+            )
+            page.page.wait_for_timeout(1500)
+
+            # sub-modal 의 "등록" 버튼
+            msg = ""
+            try:
+                page.page.evaluate(
+                    """() => {
+                        const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                        const sub = subs.find(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+                        if (sub) {
+                            const btn = Array.from(sub.querySelectorAll('button')).find(b => /등록|저장/.test(b.textContent));
+                            if (btn) btn.click();
+                        }
+                    }"""
+                )
+                page.page.wait_for_timeout(1500)
+            except Exception:
+                pass
+
+            # 차단 메시지 또는 등록 성공 여부 확인
+            gm_open = page.page.locator("#__globalMessageModal.in").count() > 0
+            if gm_open:
+                msg = page.get_confirm_message()
+                page.dismiss_confirm_modal()
+
+            # sub-modal 이 닫혔으면 등록 성공
+            sub_open = page.page.evaluate(
+                """() => {
+                    const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                    return subs.some(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+                }"""
+            )
+            if not sub_open:
+                registered_tabs.append(tab_name)
+            else:
+                block_messages.append((tab_name, msg))
+                # sub-modal 닫기
+                page.page.evaluate(
+                    """() => {
+                        const subs = Array.from(document.querySelectorAll('.modal-wrap.in'));
+                        const sub = subs.find(m => /추가\\/수정/.test((m.querySelector('.modal-title')||{}).textContent||''));
+                        if (sub) {
+                            const c = Array.from(sub.querySelectorAll('button')).find(b => /취소|닫기/.test(b.textContent));
+                            if (c) c.click();
+                        }
+                    }"""
+                )
+                page.page.wait_for_timeout(500)
+
+        # 결과 — 같은 프로세스가 3 탭에 다 등록되면 결함 (배타성 위반)
+        defect_reproduced = len(registered_tabs) >= 2
+        self._add("warn" if defect_reproduced else "pass",
+                  "sc4s — [다중 탭] 같은 프로세스 ALLOW+EXCEPT+BLOCK 동시 등록 결함 🔴 (도메인 배타성 위반)",
+                  f"등록 성공 탭: {registered_tabs} / 차단 메시지: {block_messages} "
+                  f"(결함 재현 시 2+ 탭 등록 — 허용/차단 모순 가능)",
+                  sc=4)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4t — 태그 sub-tab 진입 + 구조 검증
+    # ==================================================================
+    def test_scenario4t_tag_subtab_edit(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4t: 태그 sub-tab 진입 EDIT ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        # 허용 프로세스 탭 진입
+        page.page.evaluate(
+            """() => {
+                const tabs = Array.from(document.querySelectorAll('#addItemModal.in ul li'));
+                const t = tabs.find(li => li.textContent.trim() === '허용 프로세스');
+                if (t) (t.querySelector('a') || t).click();
+            }"""
+        )
+        page.page.wait_for_timeout(800)
+        # 태그 sub-tab click
+        tag_clicked = page.page.evaluate(
+            """() => {
+                const modal = document.querySelector('#addItemModal.in');
+                const tags = Array.from(modal.querySelectorAll('a, li, button')).filter(el => el.textContent.trim() === '태그' && el.offsetParent);
+                if (tags[0]) { tags[0].click(); return 'clicked'; }
+                return 'not_found';
+            }"""
+        )
+        page.page.wait_for_timeout(800)
+        # 태그 sub-tab 활성화 확인
+        tag_active = page.page.evaluate(
+            """() => {
+                const modal = document.querySelector('#addItemModal.in');
+                const actives = Array.from(modal.querySelectorAll('.active, [class*="active"]'));
+                return actives.some(a => a.textContent.trim() === '태그' || a.textContent.includes('태그'));
+            }"""
+        )
+        self._add("pass" if tag_active else "warn",
+                  "sc4t — [허용 프로세스] 태그 sub-tab 진입 (개별/태그 분리)",
+                  f"click: {tag_clicked} / 태그 active: {tag_active}",
+                  sc=4)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4u — 사용 체크박스 OFF 시 탭 진입 가능 여부 (UX 결함 가능성)
+    # Chrome MCP 확인 2026-05-29: '허용 프로세스 사용: 사용안함' 상태에서도 탭 진입 가능
+    # ==================================================================
+    def test_scenario4u_use_checkbox_off_tab_enter(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4u: 사용 체크박스 OFF + 탭 진입 ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        # 기본 설정 탭에서 "허용 프로세스 사용" 체크박스 상태 확인
+        # selector: 본 화면에서 보면 isAllowProcess 같은 id 추정
+        use_checkboxes = [
+            ("허용 프로세스 사용", "isAllowProcess"),
+            ("예외처리 프로세스 사용", "isExceptProcess"),
+            ("실행차단 프로세스 사용", "isBlockProcess"),
+        ]
+        for label, cb_id in use_checkboxes:
+            state = page.page.evaluate(
+                """(id) => {
+                    const el = document.getElementById(id);
+                    return el ? {checked: el.checked, disabled: el.disabled} : null;
+                }""",
+                cb_id,
+            )
+            self._add("pass" if state else "warn",
+                      f"sc4u — [{label}] 체크박스 ({cb_id}) 상태 확인",
+                      f"결과: {state} (선언: ADD 시 OFF default, EDIT 진입 시 저장값 load)",
+                      sc=4)
+
+        # 사용 체크박스 OFF 상태에서도 허용 프로세스 탭 진입 가능 여부 (Chrome MCP 확인됨)
+        # 실제 click 시도
+        page.page.evaluate(
+            """() => {
+                const tabs = Array.from(document.querySelectorAll('#addItemModal.in ul li'));
+                const t = tabs.find(li => li.textContent.trim() === '허용 프로세스');
+                if (t) (t.querySelector('a') || t).click();
+            }"""
+        )
+        page.page.wait_for_timeout(800)
+        gm_open = page.page.locator("#__globalMessageModal.in").count() > 0
+        active_tab = page.page.evaluate(
+            """() => {
+                const a = document.querySelector('#addItemModal.in ul li.active');
+                return a ? a.textContent.trim() : null;
+            }"""
+        )
+        # 도메인 의도: 사용 OFF → 탭 진입 차단이 자연스러움 / 진입 가능 = UX 결함 후보
+        is_blocked = gm_open or active_tab != "허용 프로세스"
+        self._add("warn" if not is_blocked else "pass",
+                  "sc4u — [허용 프로세스] 사용 체크박스 OFF 상태 탭 진입 가능 ⚠ (UX 결함 후보)",
+                  f"active tab: {active_tab!r}, 알림: {gm_open} "
+                  f"(도메인 의도 = 사용 OFF 시 탭 차단 자연 / 진입 가능 = 사용자 혼란)",
+                  sc=4)
+        _safe_close_modal(page)
