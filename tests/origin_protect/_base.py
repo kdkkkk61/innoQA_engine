@@ -83,6 +83,22 @@ class OriginProtectBase:
         OriginProtectBase._SESSION_CLEANUP_DONE = True
 
     def _attach(self, scan_results: list[ScanResult]) -> None:
+        # 자동 sub-num 재태깅 안전망 — _add 우회 호출 cover (control_suite 와 동일 패턴)
+        try:
+            nm = self._request.node.name
+            m = re.match(r"test_scenario(\d+)([a-z])_", nm)
+            if m:
+                sn = int(m.group(1))
+                sub = ord(m.group(2)) - ord("a") + 1
+                new_sc = sn * 100 + sub
+                for r in scan_results:
+                    cur = (r.extra or {}).get("scenario")
+                    if cur in (None, 0, sn):
+                        if r.extra is None:
+                            r.extra = {}
+                        r.extra["scenario"] = new_sc
+        except Exception:
+            pass
         report = PageScanReport(page_id=self.PAGE_ID)
         report.results = scan_results
         self._request.node._scan_report    = report
