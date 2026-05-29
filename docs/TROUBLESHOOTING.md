@@ -1131,6 +1131,316 @@
 
 ---
 
+## [RESOLVED] B-1 시리즈 list_page 확장 — 신규 발견 시 휴리스틱 동작 + yaml stub 자동 (2026-05-29)
+- **상황**: MEMORY.md "B-1 시리즈 자동 분류 — modal_form (ransom_detect_policy, rdp_policy) 완전 적용 / list_page (제어스위트, 원본보호) 별도 계획 (미적용)" 상태. 사용자 요청 "신규 발견된 요소도 동일 type 다른 요소와 똑같이 자동 검증 진행".
+- **검토 과정**: 두 접근 비교 후 사용자 결정.
+  - 옵션 A (testable_aspects 가이드): yaml 메타로 type 별 "이런 검증 가능합니다" 출력. 부작용 0 / 자동 결과 0.
+  - 옵션 B (휴리스틱 자동 실행): type 별 안전 검증 실행 후 결과 카드 1줄. 즉시 회귀 신호.
+  - 사용자 결정: **B (휴리스틱)** — 자동 회귀 신호 우선.
+- **변경**: `core/ui_scanner.py` 의 `_scan_diff_yaml_dom` 신규 발견 카드에 두 가지 추가
+  - **Step 1 — yaml stub 자동 제안** (`_build_yaml_stub`): 발견된 요소의 type/maxlength/has_toggle 등 DOM 속성 기반으로 yaml 한 줄 stub 자동 생성. 검수자 복붙 → 다음 run 부터 자동 검증 시작.
+  - **Step 2 — type 별 안전 휴리스틱 동작 검증** (`_run_heuristic_test`):
+    - text/textarea: maxlength=null 시 warn ("긴 입력 시 server generic error 위험" — sc3n 패턴과 동일 신호)
+    - checkbox: click ON↔OFF 토글 가능 여부 검증 (원상복구 포함, 데이터 변경 X)
+    - radio: name 그룹 옵션 수 검출 + yaml options[] 작성 권장
+  - 결과는 신규 발견 카드 `detail` 안에 한 줄 합침 (별도 카드 안 만들어 보고서 시끄러움 방지)
+- **안전 원칙**: 저장 시도 / 종속 자동 탐색 / DOM mutation 추적 등 부작용 위험 휴리스틱 제외. step 3+ 추후 사용자 결정.
+- **파일**: `core/ui_scanner.py`
+
+---
+
+## [RESOLVED] control_suite.yaml — pre-existing 3건 YAML 구문 위반 (UIScanner 처음 load 로 노출)
+- **날짜**: 2026-05-29
+- **상황**: tests/control_suite/test_scenario0_scan.py 의 UIScanner.scan(page_id="control_suite") 호출이 control_suite.yaml 을 처음 parse 시도하면서 yaml.parser.ParserError 노출. 기존 sc1~sc6 시나리오 테스트는 yaml 을 안 읽었기 때문에 발견 안 됐던 잠재 결함.
+- **원인 (3건 모두 동일 패턴 — flow-mixed-block 위반)**:
+  1. line 1370 `processAuth` radio: flow-style `{...}` 안에 block-style `options:` 리스트 (line 1373-1375 들여쓰기)
+  2. line 1378 `otherFolderAccessAuth`: 동일 패턴
+  3. line 1387 `optionTextBtn` expand_button: flow mapping 안 value 뒤 콤마 누락
+  4. line 1419 `isUrl` toggle_checkbox: flow `{...}` 안 block `verified:` 리스트
+  5. line 1423 `isDataDecrypt` radio: 동일 + reaction block
+  6. line 1548 `unified_selectors`: message_modal_dialogs sequence 안에 mapping key 혼입 (sequence + mapping mix)
+- **수정**: 6 곳 모두 block style 로 변환. (1)~(5) 는 `{...}` flow mapping → indented mapping. (6) 은 top-level `message_modal_unified_selectors` 로 분리 (소비자 코드 없음 — 문서용 메타).
+- **검증**: `python -c "import yaml; yaml.safe_load(open(...))"` 통과. 32 top-level keys 로드.
+- **재발 방지**: 신규 yaml 추가 시 `python -c "import yaml; yaml.safe_load(open(F))"` 1회 통과 확인 권장. UIScanner 통합이 가장 빠른 syntax 검증 트리거.
+- **파일**: `config/scan_hints/control_suite.yaml`
+
+---
+
+## [OPEN — 🔴 HIGH 사용자 재확정] 원본보호 EDIT — 이름 중복 검증 부재 (예상 동작 아님 / 같은 이름 저장됨)
+- **사용자 판정 2026-05-29**: "중복 이름에 대해 차단 못 하고 있어. 버그 맞아 예상한 동작이 아니라 같은 이름으로 저장이 되니까."
+- **이전 항목 (아래) 와 동일 결함** — 강조 표시.
+- **날짜**: 2026-05-29 (sc4 MCP 검증 중 발견)
+- **증상**: EDIT 모달에서 정책 이름을 기존 다른 정책 이름으로 변경 + 저장 → 차단 메시지 없이 "저장 하였습니다" 성공 → list 에 같은 이름 정책 2건 공존.
+- **재현 (Chrome MCP 2026-05-29)**: `[AUTO]_sc3g_normal_save` EDIT → `[AUTO]_sc3b_dup` 으로 rename + 저장 → list 에 `[AUTO]_sc3b_dup` 2건 (등록일 11:48:48 / 11:48:06).
+- **ADD 와 비교**: sc3b 가 ADD 시점 동일 이름 시도 → "정책 이름이 이미 등록되어 있습니다." 차단 확인됨. EDIT 에서만 차단 X.
+- **권장 수정 (제품 측)**: EDIT 저장 시점에도 본인 row 제외 후 이름 중복 검증 — sc3b 메시지와 동일 차단.
+- **테스트 측 대응**: yaml `known_bugs.edit_name_duplicate_not_blocked` 등록 ✓. sc4 메서드 작성 시 검증 항목 포함 예정.
+- **파일**: `config/scan_hints/npouch_origin_protect_policy.yaml`
+
+---
+
+## [OPEN — 🟡 MEDIUM 사용자 재확정] 원본보호 EDIT — 거짓 성공 메시지 + silent revert (필수 입력 검증 부재)
+- **사용자 판정 2026-05-29**: "이름 빈값 넣으면 오류를 출력하는 게 아니라 기존의 내용을 출력하는 것도 버그야."
+- **날짜**: 2026-05-29
+- **증상**: EDIT 에서 필수 필드 (정책 이름 / driveLetter / driveLabel) 빈값 + 저장 → "저장 하였습니다" 거짓 메시지 + 모달 자동 닫힘 → 재 진입 시 기존값 그대로 (실제 변경 안 됨, silent revert).
+- **추가 사실 (2026-05-29)**: 정책 이름도 동일 패턴 — sc4b 검증으로 originProtectPolicyName 도 verified_fields 에 등록.
+- **ADD 와 비교**: ADD sc3a 는 "드라이브 문자를 입력해 주세요." 명확 차단 메시지 + 모달 안 닫힘. EDIT 는 동작 불일치.
+- **재현 (Chrome MCP 2026-05-29)**: `driveLetter=''` 저장 → list 행 클릭 → detail panel: `드라이브 문자: Y` / 다시 EDIT → `value='Y'`.
+- **데이터 안전성**: 실제 빈값 저장 안 되므로 데이터 무결성 영향 없음. 단 사용자가 변경했다고 오인 가능 = UX 결함.
+- **다른 필드 추정**: driveLabel / Quota / CSU 동일 패턴 가능성 — 별도 검증 필요.
+- **테스트 측**: yaml `known_bugs.edit_required_validation_silent_skip_with_false_success` 등록 ✓
+
+---
+
+## [RESOLVED] Crash entry 가 잘못된 sc 그룹에 노출 (sc0 에 sc4 crash 9건 표시)
+- **날짜**: 2026-05-29 (사용자 지적 — 보고서에 "시나리오 0" 그룹 하에 sc4 9 error 표시됨)
+- **증상**: conftest hook 의 crash ScanResult 가 `extra={"scenario": 0}` 고정 → 모든 crash entry 가 보고서의 "시나리오 0: UIScanner 자동 스캔" 그룹 헤더 하에 분류되어 노출. 실제로는 sc4a~sc4i 메서드의 crash 인데 sc4 그룹 안 보임.
+- **원인**: `conftest.py:574` 의 crash ScanResult 생성 시 `extra={"scenario": 0, "crash": True}` 하드코딩. 메서드 이름에서 sc 번호 추출 안 함.
+- **수정**: hook 안에서 `item.name` 의 `test_scenarioNX_...` 패턴 정규식 match → sn=0 이면 0 유지, 그 외는 `sn*100+sub` 로 scenario 동적 계산. 결과: sc4 crash → scenario=401~409 → "시나리오 4" 그룹 헤더 하에 정확 분류.
+- **파일**: `conftest.py`
+
+---
+
+## [RESOLVED] sc3+sc4 통합 실행 시 sc4 9건 cascade fail — 검색 input 잔존 (sc3k → sc4)
+- **날짜**: 2026-05-29 (사용자 보고 + log + Chrome MCP 직접 확인)
+- **증상**: sc3 단독 실행 OK / sc3+sc4 통합 실행 시 sc4 9건 다 `RuntimeError: row '[AUTO]_sc3g_normal_save' list 에 미발견`. sc3g 가 정책 정상 저장한 후에도 sc4 가 list 에서 못 찾음.
+- **원인 (Chrome MCP 직접 확인)**: 
+  - URL: `?pageNo=1&pageSize=20&searchText=auto`
+  - search_input: `"auto"` (소문자 잔존)
+  - sc3k 가 line 720 에서 `search.fill(NAME)` 으로 EDIT 재진입 검색 사용 후 비우지 않음 → sc3l/sc4 cascade 영향
+  - AngularJS 검색이 case-sensitive 또는 partial match 안 함 → "auto" 입력으로 "[AUTO]" 매칭 0 → list 필터링됨
+  - sc4 의 `_enter_edit_modal` 의 `SEL_TABLE_ROW.filter(has_text=name)` 가 필터링된 list 에서 못 찾음 → row not found
+  - `_ensure_sc3g_policy` 의 `is_policy_exists` 는 다른 경로로 정책 존재 확인 → fallback skip
+  - `page.navigate_to()` 의 early return 케이스에서 검색 input reset 안 됨
+- **수정 2건**:
+  1. `_enter_edit_modal` 진입 시 search input 명시 reset (navigate_to early return 안전망)
+  2. `sc3k` 끝 (page.close_modal 후) 검색 input 비우기 (책임 분리)
+- **파일**: `tests/origin_protect/test_scenario3_add.py`, `tests/origin_protect/test_scenario4_modify.py`
+
+---
+
+## [RESOLVED] sc4b — 이름 빈값 차단 기대 → 실제 silent revert + 거짓 성공 (sc4d 와 같은 패턴)
+- **날짜**: 2026-05-29
+- **증상**: sc4b 가 `'정책 이름을 입력해 주세요.'` 차단 메시지 기대했는데 EDIT 에서 `'저장 하였습니다'` + PUT 200 + 모달 자동 닫힘 → fail. 후속 `page.close_modal()` 30초 timeout (모달 이미 닫힘).
+- **사실**: EDIT 에서 이름 빈값도 sc4d (driveLetter/driveLabel) 와 같은 **silent revert** 결함. ADD sc3a 차단 vs EDIT 거짓 성공. data 안전 (실제 변경 안 됨) / UX 결함.
+- **수정**: sc4b 로직을 silent revert 검증 패턴으로 변경 — `'저장 하였습니다'` 떴으면 다시 진입해서 이름 보존 확인 → reverted=True 면 warn (known_bug:edit_required_validation_silent_skip_with_false_success). 모달 닫혀있을 가능성 cover (close_modal try/except).
+- **파일**: `tests/origin_protect/test_scenario4_modify.py`
+
+---
+
+## [RESOLVED] sc4c — 결함 재현 성공 / 원상복구 fail (rename row 식별 결함)
+- **날짜**: 2026-05-29
+- **증상**: sc4c 의 `[WARN] 결함 재현 (success 메시지): True` 정상 등록. 그러나 pytest FAILED — 원상복구 단계에서 `_enter_edit_modal(page, other_name)` 가 `filter(has_text=other_name).first` 사용 → other_name 정책 2건 (rename 된 sc3g + 기존) 중 어느 게 rename 된 건지 식별 못 함 → 잘못된 row click 또는 RuntimeError.
+- **수정**: 원상복구 로직을 JS 로 직접 처리 — `td 컬럼 텍스트 정확 매칭` + `latest mtime row 식별` + tActive 시퀀스 직접 dispatch → modifyItemBtn click → 이름 복구. `defect_reproduced=False` 이면 rename 안 일어남 → 원상복구 skip. exception 발생해도 sc4c 검증 자체는 영향 없음 (print 만).
+- **파일**: `tests/origin_protect/test_scenario4_modify.py`
+
+---
+
+## [RESOLVED] sc3k FAIL — backdrop=2 잔존 (sc3j 끝 + reload 후에도 잔존 → sc3l/m/n/o cascade)
+- **날짜**: 2026-05-29
+- **증상**: sc3k 진단 DUMP — `backdrops=2 body_style='padding-right: 10px;'` + `angular not loaded`. sc3l 시작 시 `click:button#addItemBtn` 가 `selectCommonPolicyItemModal` subtree intercept pointer events → 5초 timeout. sc3l/m/n cascade fail.
+- **원인**: sc3j 끝의 `page.close_modal()` 가 Bootstrap modal cancel 만 했고 `.modal-backdrop` element + `body.modal-open` class + body inline `padding-right` 잔존. `_setup` fixture 의 `page.reload()` 가 AngularJS SPA 에서 backdrop cleanup 못 함 (또는 reload 자체 fail + except swallowed).
+- **수정**: `_base.py:_setup` yield 후 reload 다음에 **backdrop 강제 JS cleanup** 추가:
+  ```python
+  p.evaluate("""() => {
+      document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+      document.body.classList.remove('modal-open');
+      document.body.style.removeProperty('padding-right');
+  }""")
+  ```
+- **파일**: `tests/origin_protect/_base.py`
+
+---
+
+## [RESOLVED] sc4a csu 기대값 결함 — 환경 의존 ([AUTO_KEEP] 부재 시 첫 행 사용)
+- **날짜**: 2026-05-29
+- **증상**: sc4a 의 csu 검증 `기대: '[AUTO_KEEP]_sc5_step1' / 실제: '전사 시큐어존 테스트'` fail. 그러나 sc3g 가 picker 첫 행 선택했으므로 실제 저장값 = 환경 의존 (cleanup 후 첫 행).
+- **수정**: csu 기대값 제거 + 별도 검증 — 빈값 아니고 "없음" 아니면 pass (정책 이름 무관).
+- **파일**: `tests/origin_protect/test_scenario4_modify.py`
+
+---
+
+## [RESOLVED 2차] CSU picker `_csu_select_first` — JS evaluate click → trusted click 최종 확정
+- **날짜**: 2026-05-29
+- **진단 (log 기반)**: sc3+sc4 통합 실행 후 보고서 분석:
+  - `[OK] sc3g — CSU picker 선택 → controlSuiteId span 바인딩: csuId len=2`
+  - `[FAIL] sc3g — 정상 저장 메시지: msg='제어 스위트를 선택해 주세요.'`
+  - `[FAIL] sc3g — 새 정책 list 등록 확인: exists=False`
+- **확정 원인**: JS `evaluate("el => el.click()")` 가 AngularJS ng-change watch 미발화 → ng-model `controlSuiteId` 빈값 유지 → 저장 시 빈 CSU 전송 → server "제어 스위트를 선택해 주세요." 차단. `csuId len=2` = "없음" textContent 길이 (선택 안 된 상태).
+- **이전 rollback 오해**: 사용자가 "원래 없었는데" 라고 한 list 의 [AUTO]_sc3* 5건 = 이전 trusted click fix 적용 시 만들어진 잔존 정책. JS evaluate click 자체는 항상 fail 이었음 (sc3g pytest 는 pass 지만 내부 _add 결과는 fail).
+- **최종 수정**: `_csu_select_first` 다시 Playwright trusted click 으로 복구 (multi-fallback 없는 단순 버전)
+  - picker open → `.in` attached wait (5초)
+  - row Playwright `click(force=True, timeout=5초)` → ng-click 핸들러 발화 → radio + ng-model 동기화
+  - 확인 버튼 Playwright trusted click
+- **파일**: `tests/origin_protect/test_scenario3_add.py`
+
+---
+
+## [ROLLBACK] CSU picker fix 누적 — 사용자 "원래 없었는데" 회귀 결함 의심 (1차 시도)
+- **날짜**: 2026-05-29
+- **상황**: 누적된 fix (`_csu_select_first` multi-fallback / `_csu_search_and_select` Enter press + 0건 fallback) 가 원래 작동하던 sc3 흐름을 깼을 가능성. 사용자 직접 알림 "원래 없었는데".
+- **사실 (Chrome MCP)**: 원본보호 list 에 [AUTO]_sc3* 5건 존재 → **원래 단순 evaluate JS 패턴이 정상 작동했음** 확정.
+- **수정**: 두 함수 원래 코드로 rollback (단순 evaluate JS click)
+  - `_csu_select_first`: picker open → radio click → confirm click (각 evaluate JS, wait 사이)
+  - `_csu_search_and_select`: picker open → search fill → search btn click → radios.count()>0 면 first click → confirm click
+- **유지 fix**:
+  - `_enter_edit_modal` list 렌더 wait 강화 (SEL_TABLE_ROW first attached 10초 + 정책 row 5초)
+  - `_ensure_sc3g_policy` list 등록 확인 + RuntimeError (silent fail 차단)
+  - `conftest.py` crash 분류 (메서드 이름 기반 sc 번호 추출)
+  - `_base.py:_setup` PAGE_ID 미리 attach
+- **파일**: `tests/origin_protect/test_scenario3_add.py`
+
+---
+
+## [RESOLVED] CSU picker `_csu_select_first` — radio.click(force=True) 만으로 stuck (Bootstrap radio + AngularJS)
+- **날짜**: 2026-05-29 (사용자 캡처 — picker 열린 상태에서 radio click 안 됨, 모든 라디오 unchecked)
+- **증상**: `_csu_select_first` 호출 → picker 열림 (74건 라디오 표시) → 첫 radio 의 `click(force=True, timeout=3000)` 가 3000ms timeout → except 의 JS fallback 도 ng-model 동기화 못 함 → picker stuck → test hang.
+- **원인**: AngularJS picker 의 Bootstrap radio 는 input 자체가 `display:none` 가능성 — force click 도 actionable check 부분 통과 못 함. 또한 radio click 보다 row (tr) click 이 AngularJS ng-click 핸들러 활용 가능.
+- **수정**: `_csu_select_first` 다중 fallback 으로 재작성
+  1. picker 모달 `.in` 클래스 명시 wait (5초 timeout)
+  2. **첫 행 `tr` Playwright trusted click** (force=True) — 행 자체가 ng-click 핸들러 보유
+  3. row click 실패 → radio.click(force=True) fallback
+  4. radio click 실패 → JS dispatch (`checked=true` + click/input/change 3 event) 최종 fallback
+  5. 확인 버튼도 trusted click + JS fallback
+- **파일**: `tests/origin_protect/test_scenario3_add.py:_csu_select_first`
+
+---
+
+## [RESOLVED] CSU picker — JS click 만으로 ng-change 미발화 → POST 422
+- **날짜**: 2026-05-29 (sc4 재실행 보고서 + log 분석)
+- **증상**: `_ensure_sc3g_policy` 호출 → CSU picker 첫 행 JS click + 확인 → 저장 시도 → **`POST 422` server reject** → sc3g 정책 list 등록 실패 → sc4 9 메서드 다 timeout (row not found).
+- **원인**: `_csu_select_first` 의 radio click 이 `.evaluate("el => el.click()")` JS-only → AngularJS ng-change watch 미발화 → controlSuiteId ng-model 빈값 유지 → 저장 시 빈 CSU id 전송 → server 422 거부.
+- **수정**:
+  1. `_csu_select_first` 의 radio click 을 **Playwright `radio.click(force=True)` trusted event** 로 교체 (JS fallback 보강)
+  2. `_ensure_sc3g_policy` 에 저장 후 list 확인 + 실패 시 명시 예외 (silent skip 방지)
+- **파일**: `tests/origin_protect/test_scenario3_add.py`, `tests/origin_protect/test_scenario4_modify.py`
+- **참고**: `control_suite.yaml` line 1395 "JS .click() 으로 ng-change watch 미동작 → trusted event 만 sync 발화" 메모와 동일 패턴.
+
+---
+
+## [OPEN] CSU picker 검색 — 정확한 keyword 입력해도 결과 0건 (ng-change 미발화 또는 특수문자 escape 결함)
+- **날짜**: 2026-05-29 (사용자 보고서 캡처)
+- **증상**: sc3g 의 CSU picker 검색 input 에 '[AUTO_KEEP]_sc5_step1' 정확히 입력 → 검색결과 0 → "선택된 항목 없습니다" 알림 → 정책 저장 실패. 실제 정책은 존재 ("적용중 제어 스위트" 텍스트로 노출됨).
+- **원인 후보**: (1) AngularJS ng-change watch 가 JS dispatch event 만으로 미발화 — control_suite.yaml line 1395 'trusted event 만 sync 발화' 메모와 동일 패턴. (2) 검색 keyword 의 `[` `]` 특수문자 escape 결함.
+- **테스트 측 workaround** (sc3g 수정 2026-05-29): `_csu_search_and_select` 가 검색 0건 시 input 비우고 전체 list 에서 첫 행 fallback. `si.press("Enter")` 보강으로 trusted event 시도.
+- **권장 수정 (제품 측)**: 검색 input 의 ng-change 즉시 발화 + partial match 검색 결과 반환.
+- **테스트 측**: yaml `known_bugs.csu_picker_search_returns_zero_with_exact_keyword` 등록 ✓
+
+---
+
+## [RESOLVED] 테스트 crash 가 보고서 error 카운트에 안 잡힘 — _add 호출 전 abort 시 누락
+- **날짜**: 2026-05-29 (사용자 지적 — sc4 9 메서드 FAILED 인데 보고서 error=0)
+- **증상**: pytest 가 FAILED 9건 처리했는데 보고서 상단 stats 의 "실행 오류(error)" 카운트 0. sc4 메서드들이 _add() 호출 전 (fallback / EDIT 진입 단계) crash → ScanResult 0건 → conftest hook 의 crash ScanResult 등록 분기에서 `_npouch_page_id` attribute 미설정으로 page_id 추출 실패 → 등록 skip.
+- **원인**: `tests/{origin_protect,control_suite}/_base.py:_setup` 가 PAGE_ID 를 `_attach` 호출 시점에만 set (= 첫 _add 호출 후). 그 전에 crash 나면 node 에 `_npouch_page_id` 없음 → hook 의 `_page_id = getattr(item, "_npouch_page_id", None)` = None → ScanResult 등록 elif 분기 진입 실패.
+- **수정**: 두 `_base.py` 의 `_setup` fixture 시작 시 `request.node._npouch_page_id = self.PAGE_ID` 미리 attach. 어떤 시점 crash 라도 hook 이 page_id 추출 가능 → status="error" ScanResult 정상 등록 → 보고서 stats 에 error 카운트 노출.
+- **파일**: `tests/origin_protect/_base.py`, `tests/control_suite/_base.py`, `conftest.py` (변경 없음 — hook 자체는 정상)
+- **날짜**: 2026-05-29 (sc4 MCP 검증 추가 사이클)
+- **증상**: EDIT 에서 Quota (originProtectDriveQuota) 빈값 + 저장 → "저장 하였습니다" 거짓 메시지 + 모달 닫힘 + 재 진입 시 **Quota='0' 실 저장 확인**. ADD sc3a 의 "원본보호 드라이브 용량을 입력해 주세요." 차단 메시지 부재.
+- **재현 (Chrome MCP 2026-05-29)**: `Quota='200'` (sc3g 저장값) → EDIT 빈값 저장 → 재 진입 `value='0'` 확인. 사용자 의도 없이 200 → 0 으로 변경.
+- **다른 필드와 비교**:
+  - driveLetter / driveLabel 빈값: silent revert (기존값 유지, **data 안전**)
+  - Quota 빈값: silent zero 변환 (실제 저장됨, **data 변경**)
+  - 필드별 일관성도 결함.
+- **권장 수정**: ADD sc3a 와 동일 차단 메시지 + 모달 안 닫힘. 또는 적어도 silent revert 로 통일 (data 안전).
+- **테스트 측**: yaml `known_bugs.edit_quota_empty_silent_zero_conversion` 등록 ✓
+
+---
+
+## [OPEN — 🟡 MEDIUM] 원본보호 EDIT — 4-3 위반 패턴 부재 (검증 실패 시 모달 자동 닫힘)
+- **날짜**: 2026-05-29
+- **증상**: ADD sc3a 는 검증 실패 시 모달 안 닫힘 (사용자 수정 기회). EDIT 는 거짓 성공 메시지 후 모달 자동 닫힘 — 사용자가 수정 못 함.
+- **테스트 측**: yaml `known_bugs.edit_4_3_pattern_missing` 등록 ✓
+
+---
+
+## [OPEN] 원본보호 EDIT — CSU picker 진입 시 radio 전부 unchecked
+- **날짜**: 2026-05-29
+- **증상**: EDIT 모달 → CSU '설정' click → picker 진입 시 상단 텍스트 "적용중인 제어 스위트 : [AUTO_KEEP]_sc5_step1" 정상 표시. 하지만 radio 20/20 모두 unchecked.
+- **회색 영역**: '새로 선택할 항목' 만 radio 로 표시하는 도메인 의도일 가능성 — 사용자 결정 필요.
+- **테스트 측**: yaml `known_bugs.edit_csu_picker_radio_unchecked_on_reopen` 등록 ✓
+
+---
+
+## [OPEN] 원본보호 EDIT — modal title="정책 추가" 그대로 (UX 결함)
+- **날짜**: 2026-05-29
+- **증상**: EDIT 모달 진입 시 modal title 이 'ADD' 와 동일 '정책 추가' 그대로. 하단 버튼 라벨은 '수정' 정상. modal 컨테이너 (#addItemModal) 가 ADD/EDIT 공통 재사용이라 title 만 dynamic 업데이트 누락.
+- **권장 수정**: EDIT 진입 시 title '정책 수정' 으로 변경.
+- **테스트 측**: yaml `known_bugs.edit_modal_title_not_updated` 등록 ✓.
+
+---
+
+## [OPEN] 원본보호 ADD/EDIT — 워터마크 투명도/각도 default 표시 불일치
+- **날짜**: 2026-05-29
+- **증상**: ADD 신규 모달 = '' (빈) / EDIT 진입 = '0'. 저장 시 ''→0 변환 후 load 시 '0' 표시.
+- **권장 수정**: ADD/EDIT default 통일 (둘 다 '' 또는 '0').
+- **테스트 측**: yaml `known_bugs.edit_watermark_numeric_default_inconsistent` 등록 ✓.
+
+---
+
+## [OPEN — 제품팀 수정 대기] 원본보호 — 파일 감시 토글 OFF 시 tag [X] 삭제 버튼은 여전히 클릭 가능 (종속 disabled 불완전)
+- **날짜**: 2026-05-29 (사용자 스크린샷) → 2026-05-29 Chrome MCP 직접 재현 완료
+- **증상**: 파일 감시기능 토글 (isWatchFileExtension) OFF 상태에서 input/추가 버튼/헤더 체크박스는 disabled 되지만, 등록된 확장자/예외폴더 tag 의 [X] 삭제 버튼은 클릭 가능 → tag 실제 삭제됨.
+- **결함 카테고리**: 토글 OFF 의도 = "변경 불가" 라면 삭제도 막아야 함. 입력/추가 차단 vs 삭제 허용 = 일관성 결함.
+- **재현 사실** (Chrome MCP 2026-05-29):
+  - selector: **`i.extentionDeleteBtn`** (두 list 공통 — 확장자/예외폴더)
+  - 토글 OFF 후 dump: `disabled_attr=null`, `pointer-events='auto'`, parent button `disabled=false`
+  - 실제 click: `tags_before=2 → tags_after=1` / **삭제됨 확정**
+- **테스트 측 대응**:
+  - yaml `known_bugs_origin_protect.toggle_off_tag_delete_still_clickable` 등록 (selector + 재현 사실) ✓
+  - yaml `toggle_dependencies.isWatchFileExtension.deps_defect[]` 격상 (deps_todo → deps_defect, selector 포함) ✓
+  - sc3o 검증 보강: tag 1건씩 등록 → 토글 OFF → click → 삭제 여부 확인 (warn 재현) ✓
+- **권장 수정 (제품 측)**: `i.extentionDeleteBtn` parent button 또는 i 자체에 토글 OFF 시 disabled 속성 부여. 또는 click handler 에서 토글 OFF 시 early return.
+- **파일**: `config/scan_hints/npouch_origin_protect_policy.yaml`, `tests/origin_protect/test_scenario3_add.py`, `docs/TROUBLESHOOTING.md`
+
+---
+
+## [PARTIAL] 원본보호 정책 ADD 영역 — 미커버 갭 inventory (2026-05-29)
+- **상황**: 사용자 요청 "부족한 부분 뽑아봐". sc3 14건 (a~n) 으로 ADD 핵심 동작은 커버되었으나 4 카테고리 미커버 잔존.
+- **A. 토글 종속 disabled (RESOLVED via sc3o)**: 5 토글 / 16 종속 — Chrome MCP 직접 검증 2026-05-29 후 yaml `toggle_dependencies` 명세화 + sc3o 메서드 신규 추가. 토글 OFF → 전부 disabled=true 정상 동작 확인.
+- **B. 다른 3 탭 (모달 안) — 미커버**: "허용 프로세스 / 예외처리 프로세스 / 실행차단 프로세스" 탭 ADD 시점 진입 가능 여부 / 차단 메시지 — 검증 0건.
+- **C. CSU picker 추가 동작 — 미커버**: 검색 / cancel / multi-page navigation / 다른 행 선택 / 미선택 후 확인 차단 — sc3g 가 '첫행 선택' 만 다룸.
+- **D. 워터마크 토글 자체 ON↔OFF 시 값 보존/복구 — 미커버**: sc3o 가 OFF → disabled 만 검증. 재 ON 시 text/체크박스 값 복구 동작은 아직.
+- **사용자 결정**: A 만 진행 (sc3o). B/C/D 는 sc3 마감 후 별도 결정.
+- **파일**: `config/scan_hints/npouch_origin_protect_policy.yaml`, `tests/origin_protect/test_scenario3_add.py`, `docs/TROUBLESHOOTING.md`
+
+---
+
+## [RESOLVED] 시나리오 점진 추가 시 검증 중복 5건 누적 (메타 결함)
+- **날짜**: 2026-05-29 (사용자 지적 — 보고서 + 로그 교차 점검 요청)
+- **증상**: 원본보호 정책 sc3 시리즈에 같은 결함을 다른 시나리오/다른 시점에서 중복 검증한 줄이 5건 누적. 보고서가 같은 사실을 여러 번 표시 → 사용자 입장에서 "결함 N건" 처럼 보이지만 실제로는 결함 1건이 N번 노출된 것.
+- **재현된 중복 항목**:
+  1. sc3n Part 1 (maxlength=null 5건) ↔ sc3n Part 2 (3000자 save reject 5건) — 같은 결함을 attribute / functional 2회 검증
+  2. sc3j '종료 알림 maxlength=null / 500자 OK' 2건 ↔ sc3n save reject — 같은 사실의 다른 표현
+  3. sc3k '저장 전 PC+Time 체크 결과' ↔ sc3f case 3 — 화학적 동일 결과
+  4. sc3k 'text 수동 비움 → 체크박스 ON 유지' ↔ sc3f state3 — 100% 동일 검증
+  5. sc3f / sc3m 'state1 setup 결과' 각 1건 ↔ 각자 case 3 — yaml 명세 1:1 매핑 부작용
+- **원인**:
+  1. 시나리오 신규 추가 시 기존 검증 라벨 inventory 와 교차 점검 누락 (점진 누적의 함정)
+  2. yaml 명세 항목 ≠ 검증 1건 원칙 미준수 (transitions state1/2/3 를 기계적으로 3건 검증 줄로 노출)
+  3. "추정 금지" + "결함 다 잡아야" 강박 충돌 → attribute / functional 양쪽 박는 과잉 검증
+- **수정**:
+  1. sc3n Part 1 제거 / sc3j maxlength 2줄 제거 / sc3k 의 중복 2줄 setup precondition assert 로 변환 / sc3f / sc3m state1 검증 줄 제거
+  2. yaml `resolved_2026_05_28` 에 중복 제거 결정 기록 → 다음 시나리오 추가 시 reference
+- **예방 규칙** (CLAUDE.md 차원 권장):
+  - 시나리오 신규 추가 전 `grep "scN.* —" test_scenarioN*.py` 로 기존 라벨 inventory 훑기
+  - "결함 1건 = 검증 1건" 원칙 — attribute / functional 두 각도로 잡고 싶으면 yaml inventory + functional 1건으로 분담
+  - 매 시나리오 추가 후 `last_report.json` 라벨 `uniq -c | sort -rn` 교차 점검
+- **파일**: `tests/origin_protect/test_scenario3_add.py`, `config/scan_hints/npouch_origin_protect_policy.yaml`
+
+---
+
+## [OPEN] 원본보호 정책 — 텍스트 길이 클라 가드 부재 + 서버 generic error (5 필드 + 전수 점검)
+- **날짜**: 2026-05-29 (사용자 지적 '이름에도 검증해야' 반영하여 확장)
+- **증상**: 모달 안 13개 text/textarea 입력 **전부** `maxlength=null` + `ng-maxlength=null` + `ng-pattern=null` (Chrome MCP 전수 dump). 무제한 입력 허용 → 저장 시 "서버에서 오류가 발생 하였습니다." generic 에러. 사용자가 실패 사유 알 길 없음.
+- **재현 확정 (3 필드, Chrome MCP 2026-05-29)**: `allowProcessShutdownText` / `screenWaterMarkText` / `printWaterMarkText` 각 3000자 + 저장 → 동일 server error 메시지.
+- **가드 부재만 확정, save reject 미검증 (2 필드)**: `originProtectPolicyName` / `driveLabel` — sc3n 추가 테스트가 검증.
+- **원인**: 프론트엔드 입력 검증 부재 전수. 서버 에러 메시지도 사유 미명시 (generic).
+- **권장 수정 (제품 측)**: (1) 5 필드 모두 클라 maxlength 부여, 또는 (2) 서버 응답에 한계값 명시 ("정책 이름은 최대 N자입니다").
+- **테스트 측 대응**: yaml `known_bugs_origin_protect.text_length_no_client_guard_generic_server_error` 에 full_inventory 13건 + verified/unverified 분리. sc3n 메서드 5 필드 maxlength 부재 + 3000자 저장 reject warn 재현.
+- **파일**: `config/scan_hints/npouch_origin_protect_policy.yaml`, `tests/origin_protect/test_scenario3_add.py`
+
+---
+
 ## [RESOLVED] `field_constraint_tests` — `expect_block: true` 인데 서버가 실제로 허용 → `[FAIL]` → 시나리오 2 실패
 - **날짜**: 2026-04-23
 - **증상**: strict mode violation fix 적용 후 field_constraint_tests가 정상 실행됨 → 101자 이름이 서버에 저장됨 → `expect_block: true` 기대와 불일치 → `[FAIL]` → `_assert_no_fail()` → 시나리오 2 pytest FAILED

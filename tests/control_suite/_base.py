@@ -15,13 +15,40 @@ from core.models import ScanResult, PageScanReport
 _SS_DIR = Path(__file__).parent.parent.parent / "reports" / "screenshots"
 
 
-def _ss(page, label: str) -> str | None:
-    """warn/fail 시점 스크린샷 저장 → 경로 반환."""
+def _ss(page, label: str, highlight=None) -> str | None:
+    """warn/fail 시점 스크린샷 저장 → 경로 반환.
+
+    highlight (Locator) 가 있으면 빨간 outline + 스크롤 후 전체 캡처
+    → 모달 안 어느 영역인지 시각적으로 표시.
+    """
     try:
         _SS_DIR.mkdir(parents=True, exist_ok=True)
         safe = re.sub(r"[^\w가-힣]", "_", label)[:40]
         path = _SS_DIR / f"BUG_{safe}_{int(time.time()*1000)}.png"
+        injected = False
+        if highlight is not None:
+            try:
+                highlight.first.scroll_into_view_if_needed(timeout=1000)
+                highlight.first.evaluate(
+                    "el => { el.setAttribute('data-qa-hl','1');"
+                    " el.style.outline='3px solid #ff2d2d';"
+                    " el.style.outlineOffset='2px';"
+                    " el.style.boxShadow='0 0 0 6px rgba(255,45,45,0.25)'; }"
+                )
+                injected = True
+            except Exception:
+                injected = False
         page.screenshot(path=str(path))
+        if injected:
+            try:
+                highlight.first.evaluate(
+                    "el => { el.style.outline='';"
+                    " el.style.outlineOffset='';"
+                    " el.style.boxShadow='';"
+                    " el.removeAttribute('data-qa-hl'); }"
+                )
+            except Exception:
+                pass
         return str(path)
     except Exception:
         return None
@@ -32,14 +59,14 @@ _STATUS_TO_SR = {"pass": "pass", "fail": "fail", "warn": "warn", "skip": "skip"}
 
 
 def _r(status: str, label: str, detail: str = "", sc: int = 0,
-       page=None) -> tuple[str, ScanResult]:
+       page=None, highlight=None) -> tuple[str, ScanResult]:
     """print 라인 + ScanResult 동시 생성. warn/fail 이면 스크린샷 자동 첨부.
-    sc = 시나리오 번호 (1~5)."""
+    sc = 시나리오 번호 (1~5). highlight=Locator 면 캡처에 빨간 outline 표시."""
     icon = _STATUS_ICON.get(status, "?")
     text = f"  {icon} {label}" + (f": {detail}" if detail else "")
     extra: dict = {"scenario": sc}
     if page and status in ("fail", "warn"):
-        ss_path = _ss(page, label)
+        ss_path = _ss(page, label, highlight=highlight)
         if ss_path:
             extra["screenshot"] = ss_path
     sr = ScanResult(
@@ -120,13 +147,16 @@ class ControlSuiteBase:
             if m:
                 sn = int(m.group(1))
                 sub = ord(m.group(2)) - ord("a") + 1
-                new_sc = sn * 100 + sub
-                for r in scan_results:
-                    cur = (r.extra or {}).get("scenario")
-                    if cur in (None, 0, sn):
-                        if r.extra is None:
-                            r.extra = {}
-                        r.extra["scenario"] = new_sc
+                # sn=0 (sc0 시리즈) 는 sub-numbering 안 함 — sn*100+sub=sub 가 다른 시나리오
+                # parent sc=1,2,... 와 충돌. sc=0 raw 유지 → html_reporter `0:` 키 lookup.
+                if sn != 0:
+                    new_sc = sn * 100 + sub
+                    for r in scan_results:
+                        cur = (r.extra or {}).get("scenario")
+                        if cur in (None, 0, sn):
+                            if r.extra is None:
+                                r.extra = {}
+                            r.extra["scenario"] = new_sc
         except Exception:
             pass
         report = PageScanReport(page_id=self.PAGE_ID)
@@ -153,6 +183,9 @@ class ControlSuiteBase:
         self._lines: list[str] = []
         self._srs:   list[ScanResult] = []
         self._page = None
+        # crash 시점에 hook 이 page_id 추출 가능하도록 미리 attach (사용자 지적 2026-05-29
+        # — _add 호출 전 crash 발생 시 보고서에 error 0 으로 누락 방지).
+        request.node._npouch_page_id = self.PAGE_ID
         # 시작 — page default timeout 단축 (cascade hang 시간 폭증 방지)
         try:
             if "logged_in_page" in request.fixturenames:
@@ -177,8 +210,12 @@ class ControlSuiteBase:
         except Exception:
             pass
 
-    def _add(self, status: str, label: str, detail: str = "", sc: int = 0) -> None:
+    def _add(self, status: str, label: str, detail: str = "", sc: int = 0,
+             highlight=None) -> None:
         """한 줄로 print + ScanResult 누적. 각 검증 블록 단위 호출.
+
+        highlight (optional, Playwright Locator): fail/warn 시 캡처에 빨간 outline
+        임시 주입 — 어느 영역의 이슈인지 시각적으로 표시.
 
         sub-numbering 자동 매핑 (2026-05-29 — 원본보호와 통일):
           메서드 이름 'test_scenarioNX_...' → sc = N*100 + sub_idx (a=1, b=2, ..., r=18, ...)
@@ -191,12 +228,14 @@ class ControlSuiteBase:
             if m:
                 sn = int(m.group(1))
                 sub = ord(m.group(2)) - ord("a") + 1
-                if sc in (0, sn):
+                # sn=0 은 sub-num skip (다른 시나리오 parent sc 와 충돌 방지)
+                if sn != 0 and sc in (0, sn):
                     sc = sn * 100 + sub
         except Exception:
             pass
         t, s = _r(status, label, detail, sc=sc,
-                  page=self._page if status in ("fail", "warn") else None)
+                  page=self._page if status in ("fail", "warn") else None,
+                  highlight=highlight if status in ("fail", "warn") else None)
         print(t)
         self._lines.append(t)
         self._srs.append(s)

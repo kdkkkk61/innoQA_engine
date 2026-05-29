@@ -85,6 +85,98 @@ def _format_auto_check(attrs: dict) -> str:
     return f"자동 검증 (DOM 속성 점검):\n  {body}"
 
 
+def _run_heuristic_test(page, selector: str, attrs: dict, label: str) -> tuple[str, str]:
+    """B-1-C step 2 (2026-05-29) — 신규 발견 요소의 type 별 안전 휴리스틱 동작 검증.
+
+    원칙:
+      - 읽기 + 단순 click 토글까지만. 저장 / 데이터 변경 / 종속 자동 탐색 X.
+      - 1 type 당 1 검증. 결과는 신규 발견 카드 detail 안 한 줄로 합침 (별도 카드 X).
+      - 부작용 의심 시 'warn'. 명확한 정상 동작 시 'pass'. 실패/예외 시 'warn'.
+
+    Returns:
+      (status, line) — status: "pass"/"warn"/"skip" / line: 한 줄 텍스트.
+
+    사용자 결정 (2026-05-29): 휴리스틱 자동 검증 방향 — testable_aspects 가이드 대신 즉시
+    자동 검증 결과 카드 표시.
+    """
+    t = attrs.get("type", "")
+
+    if t in ("text", "password", "email", "url", "tel", "textarea"):
+        # 클라 길이 가드 부재 검출 (sc3n 패턴과 동일 신호)
+        ml = attrs.get("maxlength")
+        if ml is None:
+            return ("warn",
+                    "휴리스틱: 클라 길이 가드 부재 (maxlength=null) — 긴 입력 시 서버 generic error 위험")
+        return ("pass", f"휴리스틱: maxlength={ml} (클라 가드 있음)")
+
+    if t == "checkbox":
+        # click 토글 가능 여부 — 데이터 변경 없음 (원상복구)
+        try:
+            loc = page.locator(selector).first
+            before = loc.is_checked()
+            loc.evaluate("el => el.click()")
+            page.wait_for_timeout(200)
+            after = loc.is_checked()
+            # 원상복구
+            loc.evaluate("el => el.click()")
+            page.wait_for_timeout(200)
+            if before == after:
+                return ("warn",
+                        f"휴리스틱: checkbox click 후 상태 미변화 ({before}→{after}) — disabled? 또는 종속 차단?")
+            return ("pass",
+                    f"휴리스틱: checkbox click 토글 정상 (초기 {before} → click {after} → 복구)")
+        except Exception as e:
+            return ("warn", f"휴리스틱: checkbox click 시도 실패 — {e!r}")
+
+    if t == "radio":
+        # name 그룹 옵션 수 검출 (selector 로부터 name 속성 읽기)
+        try:
+            name = page.locator(selector).first.get_attribute("name") or ""
+            if name:
+                cnt = page.locator(f'input[type="radio"][name="{name}"]').count()
+                return ("warn",
+                        f"휴리스틱: radio name='{name}' 그룹 {cnt}개 옵션 발견 — yaml options[] 수동 명세 권장")
+        except Exception:
+            pass
+        return ("skip", "휴리스틱: radio name 추출 실패 — 수동 점검 필요")
+
+    return ("skip", f"휴리스틱: type={t!r} — 자동 검증 패턴 미정의 (수동 점검)")
+
+
+def _build_yaml_stub(selector: str, label: str, attrs: dict) -> str:
+    """신규 발견 요소의 yaml stub 한 줄 생성 — 검수자 복붙 용도 (B-1-C step 1).
+
+    사용 흐름:
+      1. sc0 신규 기능 감지 카드 → stub 한 줄 출력
+      2. 검수자가 yaml 의 적절한 section 에 복붙
+      3. 다음 run 부터 UIScanner 가 yaml 명세 따라 자동 검증 시작
+    """
+    t = attrs.get("type", "")
+    # selector 에서 id 부분만 추출 — "input#foo" / "textarea#foo" / "#foo" → "foo"
+    pure_id = selector
+    for prefix in ("input#", "textarea#", "select#", "button#", "#"):
+        if pure_id.startswith(prefix):
+            pure_id = pure_id[len(prefix):]
+            break
+    label_esc = (label or "").replace('"', '\\"')
+
+    if t in ("text", "password", "email", "url", "tel"):
+        ml = attrs.get("maxlength")
+        ml_part = f", maxlength: {ml}" if ml is not None else ", maxlength: null  # ← 가드 부재"
+        return f'- {{id: "{pure_id}", type: "text", label: "{label_esc}"{ml_part}}}'
+    if t == "textarea":
+        return f'- {{id: "{pure_id}", type: "textarea", label: "{label_esc}"}}'
+    if t == "checkbox":
+        if attrs.get("has_toggle"):
+            return f'- {{id: "{pure_id}", type: "toggle_checkbox", label: "{label_esc}", dependent_controls: []  # ← 종속 명세 채우기}}'
+        return f'- {{id: "{pure_id}", type: "checkbox", label: "{label_esc}", default: {bool(attrs.get("checked"))}}}'
+    if t == "radio":
+        return f'# radio "{pure_id}" — name 기반 그룹화 필요. options[] 수동 작성 권장.'
+    if t in ("button", "submit"):
+        return f'- {{id: "{pure_id}", type: "button", label: "{label_esc}"}}'
+    return f'# 자동 추정 실패 — selector: {selector}, type: {t!r}'
+
+
 class UIScanner:
     """
     scan_hints yaml + known_bugs yaml을 기반으로 페이지 UI를 검사한다.
@@ -342,12 +434,25 @@ class UIScanner:
             attrs = new_attrs.get(sel) or {}
             if not register_discovery_cards:
                 continue  # phase 4: 시나리오 1 카드 등록 X (시나리오 4 카드만)
-            label_text = (
-                f'신규 기능 감지 — "{ko}" ({sel})' if ko
-                else f"신규 기능 감지 — {sel}"
-            )
+            # 라벨에 type 명시 — "[checkbox] '전체 선택' (input#listHeaderCheckBox)"
+            # 사용자 요구 (2026-05-29): "기능명 + 어떤 UI 요소 이런 식으로 표현이 맞아"
+            t_disp = (attrs.get("type") or "?")
+            if t_disp == "checkbox" and attrs.get("has_toggle"):
+                t_disp = "toggle"
+            ko_disp = f' "{ko}"' if ko else " (라벨 미추출)"
+            label_text = f"신규 기능 감지 — [{t_disp}]{ko_disp} ({sel})"
             # B-1-A 자동 검증 — 읽기 전용 (DOM 속성 점검만, 동작 검증 X)
             auto_check = _format_auto_check(attrs)
+            # B-1-C step 1 (2026-05-29) — yaml stub 자동 제안 (휴리스틱 동작 검증의 전 단계).
+            # 검수자가 보고서에서 stub 라인 복붙 → yaml 명세 추가 → 다음 run 부터 동일 type
+            # 다른 요소와 똑같이 자동 검증 시작 (B-1 시리즈의 list_page 확장).
+            yaml_stub = _build_yaml_stub(sel, ko, attrs)
+            # B-1-C step 2 (2026-05-29) — type 별 안전 휴리스틱 자동 검증.
+            # 사용자 결정: 자동 결과 카드 표시 (testable_aspects 가이드 방향 제외).
+            try:
+                heur_status, heur_line = _run_heuristic_test(self.page, sel, attrs, ko)
+            except Exception as e:
+                heur_status, heur_line = "skip", f"휴리스틱: 예외 — {e!r}"
 
             # extra에 자동 분류 정보 저장 — qa_runner phase 3 자동 채우기에 사용
             extra_data = {
@@ -356,6 +461,9 @@ class UIScanner:
                 "auto_type":    attrs.get("type", ""),
                 "auto_label":   ko,
                 "auto_maxlength": attrs.get("maxlength"),
+                "yaml_stub":    yaml_stub,
+                "heuristic_status": heur_status,
+                "heuristic_line":   heur_line,
             }
             if shared_ss:
                 extra_data["screenshot"] = shared_ss
@@ -366,7 +474,9 @@ class UIScanner:
                 detail=(
                     "DOM에 존재 / yaml 미정의\n"
                     f"{auto_check}\n"
-                    "검수자 조치: 의도된 추가면 yaml에 등록 (정식 검증 시작), 임시 요소면 무시"
+                    f"{heur_line}\n"
+                    f"yaml stub 추천 (복붙 후 다음 run 부터 자동 검증):\n  {yaml_stub}\n"
+                    "검수자 조치: stub 검토 후 yaml 적절한 section 에 추가 → 의도된 추가면 정식 검증 시작 / 임시 요소면 무시"
                 ),
                 order=9, phase=1,
                 extra=extra_data,

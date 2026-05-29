@@ -58,6 +58,7 @@ _SCENARIO_LABELS: dict[int, str] = {
 _SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
     "npouch_origin_protect": {
         # 단일 parent (공통 dict 로도 fallback 가능)
+        0: "시나리오 0: UIScanner 자동 스캔 (신규 기능 감지 + UI 패턴 검증)",
         1: "시나리오 1: UI 구조",
         2: "시나리오 2: 입력 구조",
         3: "시나리오 3: ADD 동작 검증",
@@ -84,8 +85,23 @@ _SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
         310: "시나리오 3j: free text inputs (driveLabel·종료알림 textarea)",
         311: "시나리오 3k: 워터마크 저장+재오픈 sync 복구 (text 우선)",
         312: "시나리오 3l: driveLetter 같은 값 정책 2건 공존 (도메인 의도)",
+        313: "시나리오 3m: 출력 워터마크 토큰 동작 (화면 동일 패턴)",
+        314: "시나리오 3n: 텍스트 길이 클라 가드 부재 — 5 필드 server reject",
+        315: "시나리오 3o: 토글 종속 disabled (4 토글 × 16 종속)",
+        # sc4 sub (a~i)
+        4: "시나리오 4: EDIT 모달 수정 동작 검증",
+        401: "시나리오 4a: EDIT 진입 + 저장값 정확 load",
+        402: "시나리오 4b: 이름 빈값 차단 (ADD sc3a 와 동일)",
+        403: "시나리오 4c: 이름 중복 검증 부재 결함 🔴",
+        404: "시나리오 4d: driveLetter/Label 빈값 silent revert 🟡",
+        405: "시나리오 4e: Quota 빈값 → 0 silent 변환 결함 🔴",
+        406: "시나리오 4f: 입력 마스킹 sanity (ADD 동일)",
+        407: "시나리오 4g: 워터마크 토큰 sanity (화면+출력)",
+        408: "시나리오 4h: 텍스트 길이 server reject + 4-3 패턴",
+        409: "시나리오 4i: EDIT 모달 title 결함 ⚠",
     },
     "npouch_control_suite": {
+        0: "시나리오 0: UIScanner 자동 스캔 (신규 기능 감지 + UI 패턴 검증)",
         1: "시나리오 1: UI 구조",
         2: "시나리오 2: 입력 구조",
         3: "시나리오 3: 동작 검증",
@@ -262,6 +278,18 @@ def _strip_scenario_prefix(label: str) -> str:
     return s
 
 
+def _format_num_pretty(n: int) -> str:
+    """sub-numbering num 을 사용자 친화 표기로 변환 — '313' → '3.13', '101' → '1.01'.
+
+    사용자 요구 (2026-05-29): "313 이런 식으로 되는 게 불편 — 3.01 / 3.13 식으로".
+    dict 미등록 sub-num 의 fallback 표기에 사용. dict 등록된 항목은 영향 없음.
+    """
+    if n >= 100:
+        parent, sub = n // 100, n % 100
+        return f"{parent}.{sub:02d}"
+    return str(n)
+
+
 def _scenario_label(r: ScanResult, is_list_page: bool, page_id: str = "") -> str:
     # ① extra["scenario"] 명시 태깅 우선 — qa_runner / list_page_runner가 부여
     scenario_num = (r.extra or {}).get("scenario")
@@ -272,7 +300,7 @@ def _scenario_label(r: ScanResult, is_list_page: bool, page_id: str = "") -> str
         return (page_dict.get(num)
                 or page_dict.get(scenario_num)
                 or _SCENARIO_LABELS.get(num)
-                or _SCENARIO_LABELS.get(scenario_num, f"시나리오 {scenario_num}"))
+                or _SCENARIO_LABELS.get(scenario_num, f"시나리오 {_format_num_pretty(scenario_num)}"))
 
     # ② 폴백: order 임계값 (구버전 호환 / 태깅 없는 결과)
     if is_list_page:

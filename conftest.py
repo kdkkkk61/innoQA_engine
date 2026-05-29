@@ -571,11 +571,21 @@ def pytest_runtest_makereport(item, call):
                 _crash_msg = f"{call.excinfo.typename}: {(_first[0] if _first else '')[:200]}"
             # 테스트 예외 abort = 실행 오류(error) — 제품 결함(fail) 아님.
             # ⛔ ERROR 카운트에 잡혀 BUG 높음(🔴) 과 분리됨 (2026-05-28 사용자 지적).
+            # 메서드 이름 'test_scenarioNX_...' 에서 scenario 추출 — sn=0 일 때 (sc0) 만 0 유지,
+            # 그 외는 sn*100+sub 로 sc4/sc3 등 정확한 그룹 분류 (2026-05-29 사용자 지적: crash 가
+            # sc0 그룹에 잘못 노출됨).
+            import re as _re
+            _scenario_num = 0
+            _m = _re.match(r"test_scenario(\d+)([a-z])_", item.name)
+            if _m:
+                _sn = int(_m.group(1))
+                _sub = ord(_m.group(2)) - ord("a") + 1
+                _scenario_num = 0 if _sn == 0 else (_sn * 100 + _sub)
             _crash_sr = ScanResult(
                 pattern="scenario_test", selector="",
                 label=f"[테스트 중단] {item.name}",
                 status="error", detail=_crash_msg,
-                extra={"scenario": 0, "crash": True},
+                extra={"scenario": _scenario_num, "crash": True},
             )
             _existing = getattr(item, "_scan_report", None)
             if _existing is not None:

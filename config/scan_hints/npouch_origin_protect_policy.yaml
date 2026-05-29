@@ -230,6 +230,55 @@ scenario_3_must_test_add:
           - {input: "720",  result: "360", note: "큰 값도 360 cap"}
         range: "0~360 (cap)"
 
+  # 토글 종속 disabled — Chrome MCP 직접 검증 2026-05-29 (5 토글 / 4 종속 그룹)
+  # 토글 OFF → deps 전부 disabled=true (정상 동작 확인). 사용자 미커버 갭으로 식별되어 명세화.
+  toggle_dependencies:
+    isWatchFileExtension:
+      label: "파일 감시 기능"
+      default: true
+      deps:
+        - {id: "watchFileExtensions",      role: "list_input"}
+        - {id: "watchExceptFolders",       role: "list_input"}
+        - {id: "isWatchFileHeader",        role: "child_toggle"}
+        - {id: "watchFileExtensionAddBtn", role: "list_add_btn"}
+        - {id: "watchExceptFolderAddBtn",  role: "list_add_btn"}
+      deps_defect:    # known_bug: toggle_off_tag_delete_still_clickable — selector 확정됨
+        - {selector: "i.extentionDeleteBtn", role: "tag_delete_btn",
+           note: "두 list (확장자/예외폴더) 공통 selector — Chrome MCP 재현 2026-05-29: 토글 OFF 후에도 disabled_attr=null, pointer='auto', parent_disabled=false. click 시 tag 실제 삭제됨 (tags_before=2 → tags_after=1)."}
+      verified_off_disabled: "5건 disabled=true / 1건(i.extentionDeleteBtn) disabled 안 됨 = 결함 (Chrome MCP 2026-05-29)"
+    isAllowProcessShutdownText:
+      label: "허용 프로세스 종료 시 출력 메시지 설정"
+      default: true
+      deps:
+        - {id: "allowProcessShutdownText", role: "textarea"}
+      verified_off_disabled: "1건 disabled=true"
+    isScreenWaterMark:
+      label: "화면 워터마크"
+      default: true
+      deps:
+        - {id: "screenWaterMarkText",          role: "text_input"}
+        - {id: "isScreenWaterMarkPcInfo",      role: "checkbox"}
+        - {id: "isScreenWaterMarkCurrentTime", role: "checkbox"}
+        - {id: "screenWaterMarkOpacity",       role: "numeric_capped"}
+        - {id: "screenWaterMarkDegree",        role: "numeric_capped"}
+      verified_off_disabled: "5건 모두 disabled=true"
+    isPrintWaterMark:
+      label: "출력 워터마크"
+      default: true
+      deps:
+        - {id: "printWaterMarkText",           role: "text_input"}
+        - {id: "isPrintWaterMarkPcInfo",       role: "checkbox"}
+        - {id: "isPrintWaterMarkCurrentTime",  role: "checkbox"}
+        - {id: "printWaterMarkOpacity",        role: "numeric_capped"}
+        - {id: "printWaterMarkDegree",         role: "numeric_capped"}
+      verified_off_disabled: "5건 모두 disabled=true"
+    isWatchFileHeader:
+      label: "헤더 체크 기능"
+      default: false
+      deps: []
+      verified_off_disabled: "종속 필드 없음 — 단순 child_toggle"
+      parent_toggle: "isWatchFileExtension"
+
   # 도메인 사실 — 원본보호 정책의 의도된 동작 (사용자 설명 2026-05-29)
   domain_behaviors:
     description: |
@@ -281,15 +330,17 @@ scenario_3_must_test_add:
          input: "$@% 특수문자 / 한글",
          result: "그대로 등록됨 (알림 없음) — 형식 검증 없음 (free text)",
          note: "control_suite cacheFolderInput 패턴과 유사 — 폴더 경로는 free text"}
-      - {field: "watchExceptFolders", scope: "예외 폴더 list", validation: "빈값 + 추가",
-         input: "'' (빈) + 추가 버튼",
-         message: "확장자를 입력하세요",   # ⚠ 결함!
-         modal_id: "__globalMessageModal",
-         severity: "ux_bug — 메시지 일관성 결함",
-         note: |
-           예외폴더 영역인데 '확장자' 메시지 노출 = 영역 ≠ 메시지 불일치 결함.
-           control_suite 의 URL 영역에 '폴더 경로' 메시지 노출 결함과 동일 카테고리.
-           → 별도 known_bug 섹션 참조.}
+      - field: "watchExceptFolders"
+        scope: "예외 폴더 list"
+        validation: "빈값 + 추가"
+        input: "'' (빈) + 추가 버튼"
+        message: "확장자를 입력하세요"   # ⚠ 결함!
+        modal_id: "__globalMessageModal"
+        severity: "ux_bug — 메시지 일관성 결함"
+        note: |
+          예외폴더 영역인데 '확장자' 메시지 노출 = 영역 ≠ 메시지 불일치 결함.
+          control_suite 의 URL 영역에 '폴더 경로' 메시지 노출 결함과 동일 카테고리.
+          → 별도 known_bug 섹션 참조.
 
   driveLetter_format_validation:
     description: |
@@ -361,19 +412,18 @@ scenario_3_must_test_add:
           after_pc_off:   "ABC[/TIME/]"
         verdict: "수동 텍스트 보존 — 토큰만 정확히 추가/제거 (깨끗한 동작)"
 
-      manual_token_deletion:   # ⚠ 결함 후보 — 단방향 sync
+      manual_token_deletion:   # ⚠ 결함 — 단방향 sync (Chrome MCP 직접 재검증 2026-05-29)
         description: |
-          텍스트에서 토큰 수동 삭제해도 체크박스 상태는 자동 해제되지 않음.
-          sync 방향: checkbox → text ✓ / text → checkbox ✗
-        transitions:
+          체크박스로 자동 삽입된 토큰을 텍스트에서 수동 삭제해도 체크박스는 자동 해제되지 않음.
+          sync 방향: checkbox → text ✓ (자동 토큰 삽입/제거) / text → checkbox ✗ (결함)
+        transitions:   # Chrome MCP 직접 dump 검증 2026-05-29 — 화면/출력 동일 결과
           state1_both_checked:        {text: "[/PCINFO/][/TIME/]", pc: true,  time: true}
-          state2_pc_token_removed:    {text: "[/TIME/]",           pc: true,  time: true}   # pc 그대로 true!
-          state3_all_text_cleared:    {text: "",                   pc: true,  time: true}   # 둘 다 true 유지
-        severity: "warn — 데이터 불일치 잠재"
-        consequence: |
-          사용자가 텍스트만 편집하면 체크박스 상태와 어긋남.
-          정책 저장 시 어느 값(text vs checkbox) 우선되는지 별도 검증 필요 (pending).
-          close → re-open 후 동기화 여부도 별도 검증 필요 (pending).
+          state2_pc_token_removed:    {text: "[/TIME/]",           pc: true,  time: true}   # pc/time 둘 다 ON 유지!
+          state3_all_text_cleared:    {text: "",                   pc: true,  time: true}   # pc/time 둘 다 ON 유지!
+        applies_to: "화면 워터마크 + 출력 워터마크 (Chrome MCP 직접 검증으로 동일 패턴 확인 2026-05-29)"
+        severity: "warn — 데이터 불일치 잠재 (체크박스 ↔ text 어긋남)"
+        user_judgment_2026_05_29: "이슈 맞음 — 체크박스로 만들어진 내용 지워도 체크박스 눌려있음"
+        save_behavior: "저장 시 text 우선 (체크박스 상태 무시). 재진입 시 text 토큰 기준 체크박스 재계산."
         category: "단방향 sync — UI 일관성 결함"
 
   known_bugs_origin_protect:
@@ -381,14 +431,169 @@ scenario_3_must_test_add:
     items:
       - id: "watermark_token_one_way_sync"
         symptom: |
-          워터마크 토큰 [/PCINFO/]·[/TIME/] ADD/EDIT 중 sync 방향 비대칭:
-          checkbox → text 는 자동 동기화 / text → checkbox 는 sync 안 됨.
-        severity: "warn — 일시 UI 불일치 (저장으로 해결)"
-        verified_by: "Chrome MCP 직접 검증 2026-05-28 (저장+재진입 동작까지 확인)"
-        save_recovery_verified: true
+          체크박스(PC 정보 / 현재 시각)로 자동 삽입된 워터마크 토큰을 텍스트에서
+          수동 삭제해도 체크박스 상태가 자동 해제되지 않음 (단방향 sync).
+          sync 방향: checkbox → text ✓ / text → checkbox ✗
+        severity: "warn — 데이터 불일치 잠재 (체크박스 ↔ text 어긋남)"
+        verified_by: "Chrome MCP 직접 검증 2026-05-28 / 사용자 재확정 2026-05-29"
+        user_judgment_2026_05_29: "이슈 맞음 — 체크박스로 만들어진 내용 지워도 체크박스 눌려있음"
         save_behavior: "저장 시 text 우선 (체크박스 상태 무시). 재진입 시 text 토큰 기준 체크박스 재계산."
-        related: "watermark_token_auto_insert.save_and_reopen_sync"
-        impact: "데이터 무결성에는 영향 없음 (저장 결과 일관). 사용자 UX 일시 혼란만."
+        save_recovery_verified: true
+        related: "watermark_token_auto_insert.manual_token_deletion / save_and_reopen_sync"
+        impact: "저장으로 결과 일관성은 복구되나, 편집 중 UX 혼란 + 사용자가 텍스트만 수정하면 상태 어긋남."
+
+      - id: "text_length_no_client_guard_generic_server_error"
+        symptom: |
+          모달 안 13개 text/textarea 입력 전수 점검 결과 — 전부 maxlength=null + ng-maxlength=null +
+          ng-pattern=null. 클라이언트 길이 제약 zero. 무제한 입력 허용 후 저장 시도 시 서버가
+          "서버에서 오류가 발생 하였습니다." generic 에러로 거부. 사용자에게 "왜 거부됐는지 /
+          몇 자가 한계인지" 정보 전혀 노출 안 됨.
+        full_inventory:   # Chrome MCP 직접 dump 2026-05-29 — 13개 input/textarea 전부 가드 부재
+          - {id: "originProtectPolicyName",   area: "정책 이름",              tag: "input"}
+          - {id: "driveLetter",               area: "드라이브 문자",          tag: "input",
+             note: "런타임 silent 마스킹 있음 (영문 1자) — 길이 제약은 별도 아님"}
+          - {id: "driveLabel",                area: "드라이브 레이블",        tag: "input"}
+          - {id: "originProtectDriveQuota",   area: "드라이브 용량 (Quota)",  tag: "input",
+             note: "런타임 silent 마스킹 있음 (숫자만) — 길이 제약 별도 검증 필요"}
+          - {id: "watchFileExtensions",       area: "확장자 입력",            tag: "input",
+             note: "list 입력 — 1건 등록 단위 길이 별도"}
+          - {id: "watchExceptFolders",        area: "예외 폴더 입력",         tag: "input",
+             note: "list 입력 — 1건 등록 단위 길이 별도"}
+          - {id: "allowProcessShutdownText",  area: "허용 프로세스 종료 알림", tag: "textarea"}
+          - {id: "screenWaterMarkText",       area: "화면 워터마크 텍스트",    tag: "input"}
+          - {id: "screenWaterMarkOpacity",    area: "화면 워터마크 투명도",    tag: "input",
+             note: "런타임 0~100 cap — 길이 제약 의미 없음"}
+          - {id: "screenWaterMarkDegree",     area: "화면 워터마크 각도",      tag: "input",
+             note: "런타임 0~360 cap — 길이 제약 의미 없음"}
+          - {id: "printWaterMarkText",        area: "출력 워터마크 텍스트",    tag: "input"}
+          - {id: "printWaterMarkOpacity",     area: "출력 워터마크 투명도",    tag: "input",
+             note: "런타임 0~100 cap"}
+          - {id: "printWaterMarkDegree",      area: "출력 워터마크 각도",      tag: "input",
+             note: "런타임 0~360 cap"}
+        verified_save_rejection:    # 3 필드 3000자 + 저장 → server error 재현 (Chrome MCP 2026-05-29)
+          - {id: "allowProcessShutdownText", size: 3000, result: "서버에서 오류가 발생 하였습니다."}
+          - {id: "screenWaterMarkText",      size: 3000, result: "서버에서 오류가 발생 하였습니다."}
+          - {id: "printWaterMarkText",       size: 3000, result: "서버에서 오류가 발생 하였습니다."}
+        unverified_save_rejection:  # 가드 부재 확정 / save reject 미검증
+          - {id: "originProtectPolicyName", note: "사용자 지적 2026-05-29 — 검증 필요"}
+          - {id: "driveLabel",              note: "가드 부재만 확정 — save reject 미검증"}
+        threshold_unknown: "정확한 한계값(예: 1000? 2000?) 미측정 — 별도 binary search 필요"
+        severity: "warn — UX 결함 (클라 가드 부재 + 서버 generic error 메시지)"
+        expected_behavior: |
+          (1) 클라 maxlength 또는 입력 시점 길이 제한 메시지 ("최대 N자 입력 가능"),
+          또는 (2) 서버 응답 시 사유 명시 ("정책 이름은 최대 N자입니다") 중 하나는 필요.
+        category: "client validation 부재 + server error message 일반화"
+
+      - id: "edit_name_duplicate_not_blocked"
+        severity: "🔴 HIGH — 데이터 무결성 영향 (같은 이름 정책 2건 공존 시 식별 모호)"
+        user_judgment_2026_05_29: "예상 동작이 아닌 결함 — 같은 이름으로 저장됨. ADD 차단 / EDIT 차단 부재 = 일관성 결함."
+        symptom: |
+          EDIT 모달에서 정책 이름을 기존 다른 정책 이름으로 변경 + 저장 시도 → 차단 메시지
+          노출 없이 "저장 하였습니다" 성공 → list 에 같은 이름 정책 2건 공존 상태 발생.
+          ADD 에서는 sc3b 가 "정책 이름이 이미 등록되어 있습니다." 차단 확인됨 — EDIT 에서만 차단 X.
+        verified_by: "Chrome MCP 직접 재현 2026-05-29 — [AUTO]_sc3g_normal_save → [AUTO]_sc3b_dup 으로 rename 시도 → 저장 성공 + list 에 sc3b_dup 2건 노출"
+        ux_impact: "사용자가 모르고 중복 이름 만들면 list 에서 어느 정책 클릭/수정/삭제할지 식별 불가"
+        expected_behavior: "EDIT 저장 시점에도 본인 row 제외 후 이름 중복 검증 — sc3b 메시지와 동일 차단 필요"
+        related_to: "domain_behaviors.drive_letter_duplication (도메인 의도) vs 이름 중복 (반드시 차단해야 함)"
+
+      - id: "edit_modal_title_not_updated"
+        severity: "ux_bug — 사용자 혼란 (EDIT 모달인데 제목 '정책 추가')"
+        symptom: |
+          EDIT 모달 진입 시 modal title 이 '정책 추가' 그대로 — 'ADD' 와 동일.
+          하단 버튼 라벨은 '수정' 으로 정상 표시. modal 컨테이너 (#addItemModal) 가 ADD/EDIT
+          공통 재사용이라 title 만 dynamic 업데이트 누락된 것으로 보임.
+        verified_by: "Chrome MCP 직접 확인 2026-05-29"
+        expected_behavior: "EDIT 진입 시 title '정책 수정' 으로 변경"
+
+      - id: "edit_required_validation_silent_skip_with_false_success"
+        severity: "🟡 MEDIUM — 거짓 성공 메시지 (실 데이터는 silent revert 로 안전)"
+        user_judgment_2026_05_29: "결함 맞음 — '이름 빈값 넣으면 오류를 출력하는 게 아니라 기존 내용 출력' (= 차단 메시지 부재 + 기존값 silent revert)"
+        symptom: |
+          EDIT 모달에서 필수 필드 (정책 이름 / driveLetter / driveLabel) 빈값 + 저장 →
+          "저장 하였습니다" 메시지 + 모달 자동 닫힘. 다시 EDIT 진입 시 기존값 그대로 유지 =
+          실제 저장 안 됨. 사용자가 변경했다고 생각하는데 silent revert. UX 일관성 결함 +
+          ADD sc3a "필수 입력 차단 메시지" 와 동작 불일치 (ADD 차단 vs EDIT 거짓 성공).
+        verified_by: "Chrome MCP 직접 재현 2026-05-29 — driveLetter='' + 저장 → '저장 하였습니다' + 모달 닫힘 → 재 EDIT 진입 시 driveLetter='Y' 그대로"
+        verified_fields:
+          - {id: "originProtectPolicyName", behavior: "silent revert (사용자 재확정 2026-05-29 — '오류를 출력해야 하는데 기존 내용 출력')"}
+          - {id: "driveLetter", behavior: "silent revert to 'Y' (data 안전)"}
+          - {id: "driveLabel",  behavior: "silent revert to 'Sc3gLabel' (data 안전)"}
+        excluded_fields:
+          - {id: "originProtectDriveQuota", reason: "다른 패턴 — Quota 는 빈값→0 silent 변환 실제 저장됨 (data 영향). 별도 known_bug: edit_quota_empty_silent_zero_conversion"}
+        unverified_fields:
+          - "CSU (controlSuiteId) — 동일 silent revert 패턴 추정"
+        expected_behavior: "ADD sc3a 와 동일 — '드라이브 문자를 입력해 주세요.' 차단 메시지 + 모달 안 닫힘"
+        related_to: "edit_4_3_pattern_missing — 4-3 위반 패턴 (검증 실패 시 모달 재오픈) 부재와 같은 카테고리"
+
+      - id: "edit_4_3_pattern_missing"
+        severity: "🟡 MEDIUM — UX 결함 (검증 실패 후 모달 닫힘)"
+        symptom: |
+          ADD 모달은 필수 입력 검증 실패 시 모달 안 닫힘 (사용자 수정 기회 제공).
+          EDIT 모달은 driveLetter 빈값 + 저장 → '저장 하였습니다' 거짓 메시지 + 모달 자동 닫힘.
+          사용자가 검증 실패를 인지 못 함 + 다시 정책 선택해서 EDIT 재진입 해야 함.
+        verified_by: "Chrome MCP 직접 재현 2026-05-29 — driveLetter 빈값 후 모달 자동 닫힘 확인"
+        expected_behavior: "ADD sc3a 의 4-3 패턴 동일 — 검증 실패 시 모달 안 닫힘 + 입력값 보존"
+        related_to: "edit_required_validation_silent_skip_with_false_success"
+
+      - id: "edit_quota_empty_silent_zero_conversion"
+        severity: "🔴 HIGH — 데이터 무결성 영향 (사용자 의도 없이 Quota 값 변경)"
+        symptom: |
+          EDIT 모달에서 Quota (originProtectDriveQuota) 빈값 + 저장 → "저장 하였습니다" +
+          모달 닫힘. 재 진입 시 Quota='0' 으로 실제 저장됨. ADD sc3a 의 "원본보호 드라이브
+          용량을 입력해 주세요." 차단 메시지 부재. 사용자 의도 없이 200 → 0 으로 변경됨.
+          다른 필드 (driveLetter / driveLabel) 의 silent revert 패턴 (기존값 유지) 과 다름 —
+          Quota 만 silent zero 변환 = 패턴 일관성도 결함.
+        verified_by: "Chrome MCP 직접 재현 2026-05-29 — Quota='' 저장 → 재 진입 시 '0' 확인"
+        before_value: "200 (sc3g 저장값)"
+        after_value: "0 (silent 변환 저장)"
+        expected_behavior: "ADD sc3a 와 동일 — '원본보호 드라이브 용량을 입력해 주세요.' 차단 메시지 + 모달 안 닫힘"
+        related_to: "edit_required_validation_silent_skip (driveLetter/Label 의 silent revert) — Quota 는 다른 동작 (zero 변환 + 실 저장)"
+
+      - id: "csu_picker_search_returns_zero_with_exact_keyword"
+        severity: "ux_bug — CSU picker 검색 결함 (정확한 keyword 입력해도 검색결과 0)"
+        symptom: |
+          CSU picker 검색 input 에 정확한 '[AUTO_KEEP]_sc5_step1' 입력 + 검색 버튼 →
+          "검색된 내용이 없습니다." 결과 0건. 실제 정책은 존재 (적용중 텍스트로 노출됨).
+          AngularJS ng-change watch 가 JS dispatch event 만으로 미발화 추정 또는 검색
+          keyword 의 '[' ']' 특수문자 escape 결함.
+        affected_scenario: "sc3g (정상 저장 + CSU picker) — 검색 fail → '선택된 항목 없습니다' 알림 + 정책 저장 실패"
+        verified_by: "사용자 보고서 캡처 2026-05-29 — picker 안 검색 input 에 keyword 보이지만 결과 0"
+        workaround: "_csu_search_and_select 가 검색 0건 시 input 비우고 전체 list 첫 행 fallback (코드 적용 2026-05-29)"
+        expected_behavior: "검색 input 변경 시 ng-change 즉시 발화 + partial match 결과 반환"
+
+      - id: "edit_csu_picker_radio_unchecked_on_reopen"
+        severity: "minor — UX 일관성 결함 (텍스트로만 알림, radio 미체크)"
+        symptom: |
+          EDIT 모달 진입 후 CSU '설정' 버튼 click → picker 모달 진입 시:
+            상단 텍스트: '적용중인 제어 스위트 : [AUTO_KEEP]_sc5_step1' ← 정상 표시
+            radio 20개 (page 1): 전부 unchecked ← 현재 선택 항목 radio 로 표시 안 됨
+          사용자가 picker 안에서 현재 선택 직관적으로 인지 어려움.
+        verified_by: "Chrome MCP 직접 확인 2026-05-29 — checked_count=0/20"
+        expected_behavior: "picker 진입 시 현재 controlSuiteId 와 일치하는 radio 자동 checked"
+        domain_intent_check: "회색 영역 — '새로 선택할 항목' 만 radio 로 표시하는 도메인 의도일 가능성. 사용자 결정 필요."
+
+      - id: "edit_watermark_numeric_default_inconsistent"
+        severity: "minor — ADD/EDIT 표시값 불일치 (저장 동작에는 영향 없음)"
+        symptom: |
+          워터마크 투명도/각도 4필드 (screen/print × opacity/degree) 의 default 표시:
+            ADD 신규 모달: '' (빈)
+            EDIT 진입 시: '0' (저장 시 ''→0 변환 후 load)
+          저장 결과는 동일하지만 사용자 입장에서 ADD/EDIT default 가 다른 게 일관성 결함.
+        verified_by: "Chrome MCP 직접 확인 2026-05-29 — [AUTO]_sc3g_normal_save (sc3g 가 명시 안 함) EDIT 진입 시 4 필드 모두 '0'"
+        expected_behavior: "ADD/EDIT default 통일 — 둘 다 '' 또는 둘 다 '0'"
+
+      - id: "toggle_off_tag_delete_still_clickable"
+        symptom: |
+          파일 감시기능 토글 (isWatchFileExtension) OFF 상태에서 input/추가 버튼/헤더
+          체크박스는 disabled 됐지만, 이미 등록된 확장자/예외폴더 tag 의 [X] 삭제 버튼은
+          **여전히 클릭 가능** — tag 가 실제로 삭제됨. 종속 disabled 불완전.
+        verified_by: "Chrome MCP 직접 재현 2026-05-29 — disabled_attr=null, pointer='auto', click → tags_before=2 → tags_after=1 (실제 삭제 확인)"
+        selector: "i.extentionDeleteBtn"   # 두 list (확장자/예외폴더) 공통
+        affected_lists:
+          - {section: "감시할 파일 확장자 리스트", container_id: "watchFileExtensionList"}
+          - {section: "감시할 예외 폴더 리스트",   container_id: "watchExceptFolderList"}
+        severity: "ux_bug — 종속 disabled 불완전 (입력 차단 vs 삭제 허용 일관성 결함)"
+        expected_behavior: "토글 OFF 시 tag 삭제 버튼도 disabled (입력/등록/삭제 전부 차단)"
 
       - id: "watch_except_folder_empty_wrong_message"
         symptom: |
@@ -527,6 +732,30 @@ todo:
     - "✅ 투명도/각도: 0~100 / 0~360 cap, 음수/문자 silent 제거"
     - "✅ driveLabel/종료알림 textarea: free text — 한글/특수/숫자/긴 입력 다 허용, alert 없음"
     - "✅ 도메인 사실: driveLetter 같은 값 정책 여러 개 공존 = 의도 동작 (엔파우치 정책에 1:1 등록 시점 적용). 이전 'known_bug' 분류 철회."
+    - "✅ [재확정 2026-05-29] watermark 단방향 sync = 결함 (사용자 재판정: '체크박스로 만들어진 내용 지워도 체크박스 눌려있음 = 이슈 맞음'). known_bugs 유지 / sc3f·sc3k 단방향 sync 검증은 warn."
+    - "✅ [추가 2026-05-29] 출력 워터마크 검증 누락 보강 — sc3m (토큰 자동 삽입/제거 + 단방향 sync) / sc3i 투명도·각도 2영역 분리 검증 (사용자 지적: '출력물 워터마크도 똑같은건데 왜 검증 안 해')."
+    - "✅ [Chrome MCP 재검증 2026-05-29] watermark 단방향 sync 결함 transitions 3건 (state1/2/3) 화면+출력 양쪽 동일 확인 (총 6건). PC 만 검증하던 불일치 정정 — sc3f/sc3m 에 yaml 명세 6건 다 반영."
+    - "✅ [Chrome MCP 검증 2026-05-29] 텍스트 길이 클라 가드 부재 + 서버 generic error — allowProcessShutdownText / screenWaterMarkText / printWaterMarkText 3 필드 각 3000자 저장 시 동일 'server error' 재현 (사용자 캡처 확인 + 직접 재현)."
+    - "✅ [Chrome MCP 전수 dump 2026-05-29] 모달 안 13개 input/textarea 전부 maxlength=null + ng-maxlength=null + ng-pattern=null. 정책 이름 (originProtectPolicyName) 도 가드 부재 확인 (사용자 지적 '이름에도 검증해야' 정확). sc3n 5 필드로 확장."
+    - "✅ [중복 제거 2026-05-29] sc3n 의 'attribute dump' Part 와 'save reject' Part 가 같은 결함 2회 검증이라는 사용자 지적 — Part 1 제거. yaml full_inventory 가 dump truth source, 코드는 functional save reject 5건만 검증 (10건 → 5건)."
+    - "✅ [추가 중복 제거 2026-05-29] 보고서 교차 점검으로 4건 추가 중복 식별 + 제거: (1) sc3j '종료 알림 maxlength=null / 500자 OK' 2줄 → sc3n 과 동일 사실, (2) sc3k '저장 전 PC+Time 체크 검증' → sc3f case3 과 동일, (3) sc3k 'text 수동 비움 검증' → sc3f state3 과 동일, (4) sc3f/sc3m 'state1 setup 결과 검증' → 각자 case3 과 동일. sc3k 는 setup precondition assert 로 변환 (저장+재오픈 검증만 결과로 표시)."
+    - "✅ [Chrome MCP 검증 2026-05-29] 토글 종속 disabled 5 토글 / 16 종속 — isWatchFileExtension(5건) / isAllowProcessShutdownText(1건) / isScreenWaterMark(5건) / isPrintWaterMark(5건) / isWatchFileHeader(child_toggle, deps 0). 토글 OFF → 종속 전부 disabled=true 정상 동작 확인. yaml toggle_dependencies 명세화 + sc3o 코드 자동 검증."
+    - "⚠ [사용자 캡처 2026-05-29] 파일 감시 토글 OFF 시 tag [X] 삭제 버튼은 여전히 클릭 가능 (결함) — known_bug toggle_off_tag_delete_still_clickable 등록, deps_todo 표기, sc4 MCP 검증에서 selector 확보 후 sc3o 보강 예정."
+    - "✅ [Chrome MCP 직접 재현 2026-05-29] 위 결함 selector 확보 + 재현 완료 — i.extentionDeleteBtn (두 list 공통), 토글 OFF 후 disabled_attr=null, pointer='auto', click → tags_before=2 → tags_after=1 (실제 삭제). yaml deps_defect 등록 + sc3o 검증 보강."
+    - "🔴 [Chrome MCP sc4 검증 2026-05-29 HIGH] EDIT 모달 이름 중복 검증 부재 — [AUTO]_sc3g_normal_save → [AUTO]_sc3b_dup 으로 rename 저장 성공 + list 에 sc3b_dup 2건 공존. ADD sc3b 는 차단 메시지 확인됨. known_bug edit_name_duplicate_not_blocked 등록."
+    - "⚠ [Chrome MCP sc4 검증 2026-05-29] EDIT 모달 title='정책 추가' 그대로 (수정 모드 식별 불가, UX). known_bug edit_modal_title_not_updated 등록."
+    - "⚠ [Chrome MCP sc4 검증 2026-05-29] 워터마크 투명도/각도 default 표시 불일치 — ADD '' / EDIT '0' (저장 시 ''→0 변환). known_bug edit_watermark_numeric_default_inconsistent 등록."
+    - "✅ [Chrome MCP sc4 검증 2026-05-29 정상] 행 선택+modifyItemBtn 활성화 / EDIT 모달 진입 / 5+ 필드 저장값 정확 load (이름·driveLetter·driveLabel·Quota=200·CSU=[AUTO_KEEP]_sc5_step1) / 토글 default 4건 ON / 이름 빈값 차단 메시지='정책 이름을 입력해 주세요.' (sc3a 와 동일)."
+    - "🟡 [Chrome MCP sc4 검증 2026-05-29] EDIT 거짓 성공 메시지 — driveLetter 빈값 저장 → '저장 하였습니다' + 모달 닫힘 + 실제 silent revert ('Y' 유지). known_bug edit_required_validation_silent_skip_with_false_success."
+    - "🟡 [Chrome MCP sc4 검증 2026-05-29] EDIT 4-3 위반 패턴 부재 — 검증 실패 후 모달 자동 닫힘. ADD sc3a 와 동작 불일치. known_bug edit_4_3_pattern_missing."
+    - "⚠ [Chrome MCP sc4 검증 2026-05-29] CSU picker 진입 시 radio 전부 unchecked — 적용중 텍스트로만 알림. UX 일관성 회색 영역. known_bug edit_csu_picker_radio_unchecked_on_reopen."
+    - "🔴 [Chrome MCP sc4 검증 2026-05-29 HIGH] Quota 빈값 → 0 silent 변환 + 실 저장 (사용자 의도 없이 200→0 변경). driveLetter/Label 의 silent revert 와 다른 패턴. known_bug edit_quota_empty_silent_zero_conversion."
+    - "✅ [Test infra fix 2026-05-29] _csu_select_first 의 JS click → Playwright trusted click (force=True) 교체. ng-change watch 미발화로 POST 422 발생하던 결함 fix. sc3g + _ensure_sc3g_policy fallback 정상 작동."
+    - "✅ [Test infra fix 2026-05-29] _ensure_sc3g_policy 에 list 등록 확인 + 실패 시 명시 예외 — silent fail 차단 (사용자 보고서에 'row not found' timeout 위장 결함 노출)."
+    - "🔴 [사용자 재확정 2026-05-29] EDIT 이름 중복 결함 = 예상 동작 아님 (같은 이름으로 저장됨). edit_name_duplicate_not_blocked HIGH 유지."
+    - "🟡 [사용자 재확정 2026-05-29] EDIT 이름 빈값도 silent revert 결함 — '오류 출력해야 하는데 기존 내용 출력'. originProtectPolicyName 도 verified_fields 에 추가 (driveLetter/Label 와 동일 패턴)."
+    - "✅ [Chrome MCP sc4 검증 2026-05-29 정상] 워터마크 토글 ON→OFF→ON 시 text/체크박스 값 보존 + OFF 시 disabled=true (정상 동작). D 갭 1건 해결."
+    - "✅ [Chrome MCP sc4 검증 2026-05-29 정상] driveLetter/driveLabel 빈값 저장 = silent revert (data 안전). Quota 만 silent zero (data 영향)."
   # 미해결 (다음 Chrome 세션)
   pending:
     - "각 input maxlength (DOM 속성 추출) — driveLetter 외 다른 필드"

@@ -893,6 +893,24 @@ plain_checkboxes:
     default:  false    # Chrome MCP 확인 (2026-05-12, ADD 모달 초기 상태)
     order:    55
 
+  # main_modal_lists 의 list 헤더 "전체 선택" 체크박스 3건 (2026-05-29 sc0 신규 감지로 누락 확인)
+  # 동작: list 모든 행 일괄 select. 표준 list UI 패턴 — yaml 정식 등록으로 다음 run 자동 검증 진입.
+  - selector: "input#listHeaderCheckBox"
+    label:    "[프로세스 list 헤더] 전체 선택 체크박스"
+    default:  false
+    order:    60
+    note:     "main_modal_lists.process_control.individual_process 영역"
+  - selector: "input#listTagHeaderCheckBox"
+    label:    "[태그 list 헤더] 전체 선택 체크박스"
+    default:  false
+    order:    61
+    note:     "main_modal_lists.process_control.tag 영역"
+  - selector: "input#listWebRestrictHeaderCheckBox"
+    label:    "[웹제한 list 헤더] 전체 선택 체크박스"
+    default:  false
+    order:    62
+    note:     "main_modal_lists.web_restrict 영역"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 라디오 버튼 그룹 — 자동 검증 X (yaml 등록 필수)
 # 시나리오 1 discovered_new 신규 표시만 가능 (B-1 정책).
@@ -1367,26 +1385,30 @@ web_restrict_modal:
         # 기타 프로세스 권한 (in-place text + 라디오 영역 expand 패턴)
         # Chrome MCP 확인 (2026-05-12): #optionTextBtn 클릭으로 #processAuthDiv + #otherFolderAccessAuthDiv 보임/숨김 토글
         - {id: "processAuthText",           type: "text_display", label: "기타 프로세스 권한 현재값", default_text: "읽기"}
-        - {name: "processAuth",             type: "radio",        label: "기타 프로세스 권한 (#processAuthDiv 안)",
-           tooltip: "프로세스에 등록되지 않는 프로세스가 기본폴더로 접근 시 갖게 될 권한설정 (.noticeSymbol title)",
-           options:
-             - {value: "1", label: "거부"}
-             - {value: "2", label: "읽기", default_checked: true}
-             - {value: "3", label: "쓰기"}
-          }
+        - name: "processAuth"
+          type: "radio"
+          label: "기타 프로세스 권한 (#processAuthDiv 안)"
+          tooltip: "프로세스에 등록되지 않는 프로세스가 기본폴더로 접근 시 갖게 될 권한설정 (.noticeSymbol title)"
+          options:
+            - {value: "1", label: "거부"}
+            - {value: "2", label: "읽기", default_checked: true}
+            - {value: "3", label: "쓰기"}
         - {id: "otherFolderAccessAuthText", type: "text_display", label: "타폴더 접근권한 현재값", default_text: "거부"}
-        - {name: "otherFolderAccessAuth",   type: "radio",        label: "타폴더 접근권한 (#otherFolderAccessAuthDiv 안)",
-           tooltip: "등록된 프로세스가 기본폴더 외에 다른 폴더로 접근에 대한 사용 권한 설정 (.noticeSymbol title)",
-           options:
-             - {value: "1", label: "거부", default_checked: true}
-             - {value: "2", label: "읽기"}
-             - {value: "3", label: "쓰기"}
-          }
-        - {id: "optionTextBtn",             type: "expand_button", label: "권한 옵션 펼치기 (▼)",
-           dom: "div.arrowBtnWrap > button#optionTextBtn",
-           sibling_targets: ["#processAuthDiv", "#otherFolderAccessAuthDiv"],
-           expand_behavior: "클릭 시 sibling 두 div display: none → flex (각 26px). 라디오 그룹 UI 노출."
-           note: "Chrome MCP 검증 (2026-05-12) — 사용자 흐름: isProcessOption ON → ▼ 클릭 → 권한 라디오 선택 가능"}
+        - name: "otherFolderAccessAuth"
+          type: "radio"
+          label: "타폴더 접근권한 (#otherFolderAccessAuthDiv 안)"
+          tooltip: "등록된 프로세스가 기본폴더 외에 다른 폴더로 접근에 대한 사용 권한 설정 (.noticeSymbol title)"
+          options:
+            - {value: "1", label: "거부", default_checked: true}
+            - {value: "2", label: "읽기"}
+            - {value: "3", label: "쓰기"}
+        - id: "optionTextBtn"
+          type: "expand_button"
+          label: "권한 옵션 펼치기 (▼)"
+          dom: "div.arrowBtnWrap > button#optionTextBtn"
+          sibling_targets: ["#processAuthDiv", "#otherFolderAccessAuthDiv"]
+          expand_behavior: "클릭 시 sibling 두 div display: none → flex (각 26px). 라디오 그룹 UI 노출."
+          note: "Chrome MCP 검증 (2026-05-12) — 사용자 흐름: isProcessOption ON → ▼ 클릭 → 권한 라디오 선택 가능"
 
         # 라디오 변경 → inline text 동기화 (reaction 검증)
         # Chrome MCP 한계 (2026-05-12): JS .click() 으로 ng-change watch 미동작 → trusted event 만 sync 발화.
@@ -1412,21 +1434,24 @@ web_restrict_modal:
     - section: "적용 URL"
       order: 30
       controls:
-        - {id: "isUrl",             type: "toggle_checkbox", label: "적용 URL 토글",
-           dom: "label.switch > input#isUrl",
-           dependent_controls: ["isDataDecrypt[0]", "isDataDecrypt[1]", "attachAllowUrl", "attachAllowUrlBtn"],
-           verified:
-             - "OFF: 모든 종속 disabled=true, ra0(허용 URL) checked default"
-             - "ON:  모든 종속 disabled=false"}
-        - {name: "isDataDecrypt",   type: "radio",    label: "URL 모드",
-           options:
-             - {value: "0", label: "허용 URL",       default_checked: true}
-             - {value: "1", label: "복호화 대상 지정"}
-           reaction:
-             desc: "isDataDecrypt=1 (복호화 대상 지정) 선택 → isFileUploadEncrypt 자동 checked=true + disabled=true (해제 불가)"
-             chrome_mcp_verified: 2026-05-12
-             severity: "must_test"   # 회귀 위험: 복호화-암호화 연계 깨지면 데이터 무결성 문제
-          }
+        - id: "isUrl"
+          type: "toggle_checkbox"
+          label: "적용 URL 토글"
+          dom: "label.switch > input#isUrl"
+          dependent_controls: ["isDataDecrypt[0]", "isDataDecrypt[1]", "attachAllowUrl", "attachAllowUrlBtn"]
+          verified:
+            - "OFF: 모든 종속 disabled=true, ra0(허용 URL) checked default"
+            - "ON:  모든 종속 disabled=false"
+        - name: "isDataDecrypt"
+          type: "radio"
+          label: "URL 모드"
+          options:
+            - {value: "0", label: "허용 URL", default_checked: true}
+            - {value: "1", label: "복호화 대상 지정"}
+          reaction:
+            desc: "isDataDecrypt=1 (복호화 대상 지정) 선택 → isFileUploadEncrypt 자동 checked=true + disabled=true (해제 불가)"
+            chrome_mcp_verified: 2026-05-12
+            severity: "must_test"   # 회귀 위험: 복호화-암호화 연계 깨지면 데이터 무결성 문제
         - {id: "attachAllowUrl",    type: "text",    label: "URL 입력",     placeholder: "URL을 입력하세요", depends_on: "isUrl"}
         - {id: "attachAllowUrlBtn", type: "button",  label: "URL 추가 (tag_input)"}
 
@@ -1537,12 +1562,15 @@ message_modal_dialogs:
       실제 알림 ID = registeredProcessExtentionWarning (별도 modal).
       sc3i 의 process picker 중복 검증 WARN ("메시지 미노출") 의 진짜 원인이었음.
 
-  # ─── 자동화 selector 통합 규칙 (page object 적용) ────────────────────────
-  unified_selectors:
-    sel_open:  "div#__globalMessageModal.in, div#registeredFolderWarning.in, div#nullEnteredWarning.in, div#registeredProcessExtentionWarning.in"
-    sel_body:  "div#__globalMessageModal .modal-body, div#registeredFolderWarning .modal-body-text, div#nullEnteredWarning .modal-body-text, div#nullEnteredWarning .modal-body, div#registeredProcessExtentionWarning .modal-body-text, div#registeredProcessExtentionWarning .modal-body"
-    sel_close: "div#__globalMessageModal.in button:has-text('확인'), div#registeredFolderWarning.in button.btn-default, div#nullEnteredWarning.in button.btn-default, div#registeredProcessExtentionWarning.in button.btn-default"
-    note: "4개 알림 모달 OR — NpouchControlSuitePage 의 SEL_CONFIRM_* 상수에 반영됨. 2026-05-19 본서버 검증으로 2종 추가."
+
+# ─── 자동화 selector 통합 규칙 (message_modal_dialogs 의 통합) ────────────
+# 원래 message_modal_dialogs 안에 nested 였지만 yaml 구조 위반 (sequence + mapping mix) 으로
+# top-level 분리 (2026-05-29). 코드 소비자 없음 — 문서용 메타.
+message_modal_unified_selectors:
+  sel_open:  "div#__globalMessageModal.in, div#registeredFolderWarning.in, div#nullEnteredWarning.in, div#registeredProcessExtentionWarning.in"
+  sel_body:  "div#__globalMessageModal .modal-body, div#registeredFolderWarning .modal-body-text, div#nullEnteredWarning .modal-body-text, div#nullEnteredWarning .modal-body, div#registeredProcessExtentionWarning .modal-body-text, div#registeredProcessExtentionWarning .modal-body"
+  sel_close: "div#__globalMessageModal.in button:has-text('확인'), div#registeredFolderWarning.in button.btn-default, div#nullEnteredWarning.in button.btn-default, div#registeredProcessExtentionWarning.in button.btn-default"
+  note: "4개 알림 모달 OR — NpouchControlSuitePage 의 SEL_CONFIRM_* 상수에 반영됨. 2026-05-19 본서버 검증으로 2종 추가."
 
 
 # ──────────────────────────────────────────────────────────────────────────────
