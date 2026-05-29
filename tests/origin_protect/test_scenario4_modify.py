@@ -532,3 +532,300 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                   f"yaml known_bug:edit_modal_title_not_updated",
                   sc=4, highlight=page.page.locator("#addItemModal .modal-title"))
         _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4j — 확장자/예외폴더 list EDIT 동작 (sc3d/e 대응)
+    # 중복/형식 차단 메시지 EDIT 에서도 동일 + 예외폴더 typo 결함 EDIT 재현
+    # ==================================================================
+    def test_scenario4j_list_input_edit(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4j: list 입력 EDIT 동작 ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        ext_input = page.page.locator(page.SEL_WATCH_EXT_INPUT)
+        ext_btn = page.page.locator(page.SEL_WATCH_EXT_BTN)
+
+        def _add_ext(val):
+            ext_input.fill(val)
+            page.page.wait_for_timeout(150)
+            ext_btn.first.evaluate("el => el.click()")
+            page.page.wait_for_timeout(500)
+
+        _add_ext("doc")
+        if page.is_confirm_modal_visible(timeout=500):
+            page.dismiss_confirm_modal()
+        _add_ext("doc")
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg = page.get_confirm_message()
+            ok = msg == "이미 동일한 확장자가 존재합니다."
+            self._add("pass" if ok else "fail",
+                      "sc4j — [확장자] EDIT 중복 차단 메시지 (sc3d 동일)",
+                      f"입력: 동일 'doc' / msg={msg!r}", sc=4, highlight=ext_input)
+            page.dismiss_confirm_modal()
+
+        _add_ext("@#$")
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg = page.get_confirm_message()
+            ok = ". * ; ?" in msg
+            self._add("pass" if ok else "fail",
+                      "sc4j — [확장자] EDIT 형식 차단 메시지 (sc3d 동일)",
+                      f"입력: '@#$' / msg={msg!r}", sc=4, highlight=ext_input)
+            page.dismiss_confirm_modal()
+
+        fld_input = page.page.locator(page.SEL_WATCH_EXCEPT_INPUT)
+        fld_input.fill("")
+        page.page.locator(page.SEL_WATCH_EXCEPT_BTN).first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(500)
+        if page.is_confirm_modal_visible(timeout=1500):
+            msg = page.get_confirm_message()
+            is_typo = msg == "확장자를 입력하세요"
+            self._add("warn" if is_typo else "fail",
+                      "sc4j — [예외 폴더] EDIT 빈값 → '확장자' typo 결함 재현 (sc3e 동일 known_bug)",
+                      f"입력: '' / msg={msg!r}", sc=4, highlight=fld_input)
+            page.dismiss_confirm_modal()
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4k — 워터마크 단방향 sync state2/3 결함 EDIT 재현 (sc3f/m 대응)
+    # ==================================================================
+    def test_scenario4k_watermark_single_sync_edit(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4k: 워터마크 단방향 sync EDIT (화면+출력) ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        for area, wm_text_sel, pc_sel, time_sel in [
+            ("화면 워터마크", page.SEL_SCREEN_WM_TEXT, page.SEL_SCREEN_WM_PC_INFO, page.SEL_SCREEN_WM_TIME),
+            ("출력 워터마크", page.SEL_PRINT_WM_TEXT,  page.SEL_PRINT_WM_PC_INFO,  page.SEL_PRINT_WM_TIME),
+        ]:
+            page.page.locator(wm_text_sel).fill("")
+            for sel in [pc_sel, time_sel]:
+                el = page.page.locator(sel).first
+                if not el.is_checked():
+                    el.evaluate("el => el.click()")
+                    page.page.wait_for_timeout(200)
+            page.page.locator(wm_text_sel).fill("[/TIME/]")
+            page.page.wait_for_timeout(400)
+            pc = page.page.locator(pc_sel).is_checked()
+            tm = page.page.locator(time_sel).is_checked()
+            defect = (pc is True and tm is True)
+            self._add("warn" if defect else "pass",
+                      f"sc4k — [{area}] state2 결함 EDIT — '[/PCINFO/]' 만 삭제 → PC/TIME 둘 다 ON 유지",
+                      f"text='[/TIME/]' / pc={pc}, time={tm}",
+                      sc=4, highlight=page.page.locator(pc_sel))
+            page.page.locator(wm_text_sel).fill("")
+            page.page.wait_for_timeout(400)
+            pc2 = page.page.locator(pc_sel).is_checked()
+            tm2 = page.page.locator(time_sel).is_checked()
+            defect2 = (pc2 is True and tm2 is True)
+            self._add("warn" if defect2 else "pass",
+                      f"sc4k — [{area}] state3 결함 EDIT — text 전체 비움 → PC/TIME 둘 다 ON 유지",
+                      f"text='' / pc={pc2}, time={tm2}",
+                      sc=4, highlight=page.page.locator(time_sel))
+            for sel in [pc_sel, time_sel]:
+                el = page.page.locator(sel).first
+                if el.is_checked():
+                    el.evaluate("el => el.click()")
+            page.page.locator(wm_text_sel).fill("")
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4l — 투명도/각도 cap EDIT (sc3i 대응, 화면+출력 분리)
+    # ==================================================================
+    def test_scenario4l_opacity_degree_cap_edit(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4l: 투명도/각도 cap EDIT ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+
+        def _try(loc, v):
+            loc.fill("")
+            page.page.wait_for_timeout(80)
+            loc.evaluate(
+                "(el, v) => { el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }",
+                v,
+            )
+            page.page.wait_for_timeout(250)
+            return loc.input_value()
+
+        for area, op_sel, dg_sel in [
+            ("화면 워터마크", page.SEL_SCREEN_WM_OPACITY, page.SEL_SCREEN_WM_DEGREE),
+            ("출력 워터마크", page.SEL_PRINT_WM_OPACITY,  page.SEL_PRINT_WM_DEGREE),
+        ]:
+            op = page.page.locator(op_sel)
+            dg = page.page.locator(dg_sel)
+            for inp, expected, note in [("150", "100", "100 cap"), ("-50", "50", "음수 부호 제거")]:
+                actual = _try(op, inp)
+                self._add("pass" if actual == expected else "fail",
+                          f"sc4l — [{area}] 투명도 '{inp}' → '{expected}' ({note})",
+                          f"입력: {inp!r} / 결과: {actual!r}", sc=4, highlight=op)
+            for inp, expected, note in [("720", "360", "360 cap"), ("-90", "90", "음수 부호 제거")]:
+                actual = _try(dg, inp)
+                self._add("pass" if actual == expected else "fail",
+                          f"sc4l — [{area}] 각도 '{inp}' → '{expected}' ({note})",
+                          f"입력: {inp!r} / 결과: {actual!r}", sc=4, highlight=dg)
+
+        page.page.locator(page.SEL_SCREEN_WM_OPACITY).fill("0")
+        page.page.locator(page.SEL_SCREEN_WM_DEGREE).fill("0")
+        page.page.locator(page.SEL_PRINT_WM_OPACITY).fill("0")
+        page.page.locator(page.SEL_PRINT_WM_DEGREE).fill("0")
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4m — free text 한글/특수 EDIT (sc3j 대응)
+    # ==================================================================
+    def test_scenario4m_free_text_edit(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4m: free text 한글/특수 EDIT ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        lb = page.page.locator(page.SEL_DRIVE_LABEL)
+        for inp, label in [("한글라벨", "한글"), ("$@%", "특수문자"), ("a"*200, "200자")]:
+            lb.fill(inp)
+            page.page.wait_for_timeout(150)
+            ok = lb.input_value() == inp
+            self._add("pass" if ok else "fail",
+                      f"sc4m — [드라이브 레이블] EDIT '{label}' 입력 보존 (free text)",
+                      f"입력: '{inp[:20]}'({len(inp)}자) / 보존={ok}", sc=4, highlight=lb)
+        lb.fill("Sc3gLabel")
+
+        sh = page.page.locator(page.SEL_SHUTDOWN_MSG_TEXT)
+        sh.fill("한글종료알림")
+        page.page.wait_for_timeout(150)
+        ok_sh = sh.input_value() == "한글종료알림"
+        self._add("pass" if ok_sh else "fail",
+                  "sc4m — [허용 프로세스 종료 알림] EDIT 한글 입력 (free text)",
+                  f"결과: 보존={ok_sh}", sc=4, highlight=sh)
+        sh.fill("")
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4n — 토글 종속 disabled EDIT (sc3o 대응)
+    # ==================================================================
+    def test_scenario4n_toggle_dependency_disabled_edit(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4n: 토글 종속 disabled EDIT ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        _enter_edit_modal(page, SC3G_NAME)
+        toggle_specs = [
+            ("파일 감시 기능", "isWatchFileExtension",
+             ["watchFileExtensions", "watchExceptFolders", "isWatchFileHeader",
+              "watchFileExtensionAddBtn", "watchExceptFolderAddBtn"]),
+            ("종료 알림 출력", "isAllowProcessShutdownText", ["allowProcessShutdownText"]),
+            ("화면 워터마크", "isScreenWaterMark",
+             ["screenWaterMarkText", "isScreenWaterMarkPcInfo", "isScreenWaterMarkCurrentTime",
+              "screenWaterMarkOpacity", "screenWaterMarkDegree"]),
+            ("출력 워터마크", "isPrintWaterMark",
+             ["printWaterMarkText", "isPrintWaterMarkPcInfo", "isPrintWaterMarkCurrentTime",
+              "printWaterMarkOpacity", "printWaterMarkDegree"]),
+        ]
+        for area, toggle_id, dep_ids in toggle_specs:
+            toggle_loc = page.page.locator(f"input#{toggle_id}")
+            toggle_loc.first.evaluate("el => el.click()")
+            page.page.wait_for_timeout(400)
+            disabled_states = page.page.evaluate(
+                "(ids) => ids.map(id => { const el=document.getElementById(id); "
+                "return {id, disabled: el? el.disabled : null}; })",
+                dep_ids,
+            )
+            not_disabled = [s["id"] for s in disabled_states if s["disabled"] is not True]
+            all_disabled = not not_disabled
+            self._add("pass" if all_disabled else "fail",
+                      f"sc4n — [{area}] EDIT 토글 OFF → 종속 {len(dep_ids)}건 disabled (sc3o 동일)",
+                      f"결과: {'전부 disabled' if all_disabled else 'disabled 안 됨=' + str(not_disabled)}",
+                      sc=4, highlight=page.page.locator(f"input#{dep_ids[0]}"))
+            toggle_loc.first.evaluate("el => el.click()")
+            page.page.wait_for_timeout(300)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4o — 텍스트 길이 server reject EDIT 4 필드 (sc3n 대응, sc4h 외 보강)
+    # ==================================================================
+    def test_scenario4o_text_length_edit_4fields(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4o: 텍스트 길이 server reject EDIT 4 필드 ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        SERVER_ERR = "서버에서 오류가 발생 하였습니다."
+        long_text = "X" * 3000
+        for area, sel in [
+            ("정책 이름",       page.SEL_POLICY_NAME),
+            ("드라이브 레이블", page.SEL_DRIVE_LABEL),
+            ("화면 워터마크 텍스트", page.SEL_SCREEN_WM_TEXT),
+            ("출력 워터마크 텍스트", page.SEL_PRINT_WM_TEXT),
+        ]:
+            _enter_edit_modal(page, SC3G_NAME)
+            page.page.locator(sel).fill(long_text)
+            _save_click(page)
+            msg = ""
+            if page.is_confirm_modal_visible(timeout=3000):
+                msg = page.get_confirm_message()
+                page.dismiss_confirm_modal()
+            is_generic = (msg == SERVER_ERR)
+            self._add("warn" if is_generic else ("pass" if "최대" in msg else "fail"),
+                      f"sc4o — [{area}] EDIT 3000자 → server reject (sc3n 동일 known_bug)",
+                      f"결과: msg={msg!r}", sc=4, highlight=page.page.locator(sel))
+            _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4p — driveLetter 공존 EDIT 도메인 의도 (sc3l 대응)
+    # 다른 정책 letter 를 sc3g 와 같은 letter 로 변경 → 공존 허용 검증
+    # ==================================================================
+    def test_scenario4p_drive_letter_coexist_edit(self, logged_in_page, settings):
+        print("\n━━ [원본보호 정책] 시나리오 4p: driveLetter 공존 EDIT ━━━")
+        page = NpouchOriginProtectPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        _ensure_sc3g_policy(page)
+
+        other_name = "[AUTO]_sc4p_other"
+        if not page.is_policy_exists(other_name):
+            page.open_add_modal()
+            page.page.locator(page.SEL_POLICY_NAME).fill(other_name)
+            page.page.locator(page.SEL_DRIVE_LETTER).fill("Z")
+            page.page.locator(page.SEL_DRIVE_LABEL).fill("OtherLabel")
+            page.page.locator(page.SEL_DRIVE_QUOTA).fill("100")
+            _csu_select_first(page)
+            page.page.locator(page.SEL_SUBMIT_BTN).first.evaluate("el => el.click()")
+            page.page.wait_for_timeout(1500)
+            if page.is_confirm_modal_visible():
+                page.dismiss_confirm_modal()
+            page.navigate_to()
+
+        _enter_edit_modal(page, other_name)
+        page.page.locator(page.SEL_DRIVE_LETTER).fill("Y")
+        _save_click(page)
+        msg = ""
+        if page.is_confirm_modal_visible(timeout=2000):
+            msg = page.get_confirm_message()
+            page.dismiss_confirm_modal()
+        letter_blocked = any(k in msg for k in ("드라이브", "letter", "중복", "이미"))
+        ok = "저장" in msg and not letter_blocked
+        self._add("pass" if ok else "warn",
+                  "sc4p — [드라이브 문자] EDIT 같은 letter='Y' 변경 허용 (sc3l 도메인 의도)",
+                  f"입력: {other_name} letter → 'Y' / msg={msg!r} (차단 메시지 부재 = 도메인 일치)",
+                  sc=4, highlight=page.page.locator(page.SEL_DRIVE_LETTER))
+        _safe_close_modal(page)

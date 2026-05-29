@@ -99,6 +99,13 @@ _SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
         407: "시나리오 4g: 워터마크 토큰 sanity (화면+출력)",
         408: "시나리오 4h: 텍스트 길이 server reject + 4-3 패턴",
         409: "시나리오 4i: EDIT 모달 title 결함 ⚠",
+        410: "시나리오 4j: 확장자/예외폴더 list EDIT 동작 (sc3d/e 대응)",
+        411: "시나리오 4k: 워터마크 단방향 sync state2/3 결함 EDIT (sc3f/m 대응)",
+        412: "시나리오 4l: 투명도/각도 cap EDIT (sc3i 대응 화면+출력)",
+        413: "시나리오 4m: free text 한글/특수 EDIT (sc3j 대응)",
+        414: "시나리오 4n: 토글 종속 disabled EDIT (sc3o 대응 4 토글)",
+        415: "시나리오 4o: 텍스트 길이 server reject EDIT 4 필드 (sc3n 대응)",
+        416: "시나리오 4p: driveLetter 공존 EDIT 도메인 의도 (sc3l 대응)",
     },
     "npouch_control_suite": {
         0: "시나리오 0: UIScanner 자동 스캔 (신규 기능 감지 + UI 패턴 검증)",
