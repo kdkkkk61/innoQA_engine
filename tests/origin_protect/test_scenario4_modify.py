@@ -23,6 +23,7 @@ driveLabel=Sc3gLabel, Quota=200, CSU=[AUTO_KEEP]_sc5_step1). 본 시나리오는
 """
 from pages.npouch_origin_protect_policy_page import NpouchOriginProtectPolicyPage
 from tests.origin_protect._base import OriginProtectBase
+from tests.origin_protect.test_scenario3_add import _csu_select_first as _csu_select_first_sc3
 
 
 # 공통 헬퍼 — EDIT 모달 진입
@@ -87,23 +88,10 @@ def _safe_close_modal(page):
         pass
 
 
-def _csu_select_first(page):
-    """CSU picker 첫 행 선택 — raw JS row click (Chrome MCP 검증 2026-05-29).
-
-    row.click() (raw JS) 가 ng-click directive 발화 → radio.checked + ng-model 동기화 자동.
-    """
-    page.page.locator(page.SEL_CSU_SELECT_BTN).first.evaluate("el => el.click()")
-    page.page.locator("#selectCommonPolicyItemModal.in").wait_for(
-        state="attached", timeout=5000
-    )
-    page.page.locator("#selectCommonPolicyItemModal table tbody tr").first.evaluate(
-        "el => el.click()"
-    )
-    page.page.wait_for_timeout(500)
-    page.page.locator("#selectCommonPolicyItemModal .btn-primary").first.evaluate(
-        "el => el.click()"
-    )
-    page.page.wait_for_timeout(1500)
+# _csu_select_first 는 sc3 의 통합 helper 사용 (사용자 정책 2026-05-29):
+# AUTO 검색 → KEEP 정책 매칭 / 없으면 전체 첫 행 fallback.
+# alias 로 노출해 기존 호출 코드 호환.
+_csu_select_first = _csu_select_first_sc3
 
 
 def _pick_process_in_picker(page, prefer_keyword: str = "AUTO") -> str:

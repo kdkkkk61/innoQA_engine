@@ -17,16 +17,47 @@ from tests.origin_protect._base import OriginProtectBase
 
 
 # CSU picker 단축 헬퍼 — radio 첫 행 선택 + 확인
-def _csu_select_first(page):
-    """CSU picker 첫 행 선택 — raw JS click (Chrome MCP 검증 2026-05-29).
+def _csu_select_first(page, prefer_keyword="AUTO"):
+    """CSU picker 선택 — AUTO 검색 → 매칭 첫 행 / 없으면 전체 list 첫 행 (사용자 정책 2026-05-29).
 
-    MCP 검증 사실: row.click() (raw JS) 가 ng-click directive 발화 → radio.checked=true
-    + ng-model 동기화 자동. trusted click(force=True) 는 일부 환경에서 5초 timeout.
+    동작:
+      1. picker 열기
+      2. prefer_keyword ("AUTO" default) 검색 → KEEP 정책 우선 매칭
+      3. radio 있는 row 0건 시 검색 reset → 전체 list 첫 행 fallback
+      4. 첫 행 raw JS click (ng-click directive 발화 → radio.checked + ng-model 동기화)
+      5. 확인 버튼 click
+
+    호출부 변경 없이 정책 적용 — 모든 _csu_select_first(page) 가 자동으로
+    AUTO 검색 → KEEP 우선 / 없으면 첫 행 fallback.
     """
     page.page.locator(page.SEL_CSU_SELECT_BTN).first.evaluate("el => el.click()")
     page.page.locator("#selectCommonPolicyItemModal.in").wait_for(
         state="attached", timeout=5000
     )
+    # AUTO 검색 시도 — KEEP 정책 매칭
+    try:
+        si = page.page.locator("#selectCommonPolicyItemModal input#searchText").first
+        si.fill(prefer_keyword)
+        page.page.locator("#selectCommonPolicyItemModal button.searchBtn").first.evaluate(
+            "el => el.click()"
+        )
+        page.page.wait_for_timeout(800)
+    except Exception:
+        pass
+    # radio 있는 row 0건 시 검색 reset
+    radios = page.page.locator(
+        "#selectCommonPolicyItemModal input[type='radio'][name='selectTemplate']"
+    )
+    if radios.count() == 0:
+        try:
+            si.fill("")
+            page.page.locator("#selectCommonPolicyItemModal button.searchBtn").first.evaluate(
+                "el => el.click()"
+            )
+            page.page.wait_for_timeout(800)
+        except Exception:
+            pass
+    # 첫 행 (tr) raw JS click — ng-click directive 발화
     page.page.locator("#selectCommonPolicyItemModal table tbody tr").first.evaluate(
         "el => el.click()"
     )
@@ -495,15 +526,8 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
         page.page.locator(page.SEL_DRIVE_LABEL).fill("Sc3gLabel")
         page.page.locator(page.SEL_DRIVE_QUOTA).fill("200")
 
-        # CSU picker — [AUTO_KEEP]_sc5_step1 검색 시도, 없으면 첫 행 fallback
-        try:
-            _csu_search_and_select(page, "[AUTO_KEEP]_sc5_step1")
-        except Exception:
-            # picker 미열림 또는 검색 실패 — 다시 첫 행 시도
-            try:
-                _csu_select_first(page)
-            except Exception:
-                pass
+        # CSU picker — AUTO 검색 → KEEP 매칭 / 없으면 전체 첫 행 fallback (통합 helper)
+        _csu_select_first(page, "AUTO")
         csu_bound_len = len(page.page.locator(page.SEL_CSU_ID_SPAN).inner_text().strip())
         self._add("pass" if csu_bound_len > 0 else "fail",
                   "sc3g — CSU picker 선택 → controlSuiteId span 바인딩",
