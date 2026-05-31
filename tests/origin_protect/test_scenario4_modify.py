@@ -127,7 +127,8 @@ def _pick_process_in_picker(page, prefer_keyword: str = "AUTO") -> str:
         except Exception:
             pass
         rows = page.page.locator("#globalProcessList.in table tbody tr:has(input[type='checkbox'])")
-    # 첫 행 체크박스 click + 이름 추출
+    # 첫 행 체크박스 click + 이름 추출 (row 0건 시 picker 닫기 — 막히는 현상 방지)
+    # 사용자 명시 (2026-05-29): "없으면 자동으로 맨위에꺼 유동적으로 사용"
     process_name = ""
     if rows.count() > 0:
         first = rows.first
@@ -137,11 +138,21 @@ def _pick_process_in_picker(page, prefer_keyword: str = "AUTO") -> str:
         cb = first.locator("input[type='checkbox']").first
         cb.evaluate("el => { if (!el.checked) el.click(); }")
         page.page.wait_for_timeout(300)
-    # 확인 버튼 click
-    page.page.locator("#globalProcessList.in button.btn-primary, #globalProcessList.in button:has-text('확인')").first.evaluate(
-        "el => el.click()"
-    )
-    page.page.wait_for_timeout(1500)
+        # 확인 버튼 click
+        page.page.locator("#globalProcessList.in button.btn-primary, #globalProcessList.in button:has-text('확인')").first.evaluate(
+            "el => el.click()"
+        )
+        page.page.wait_for_timeout(1500)
+    else:
+        # 비어있음 (rare) — picker 닫기
+        try:
+            page.page.locator("#globalProcessList.in button.close, "
+                              "#globalProcessList.in button[data-dismiss='modal']").first.evaluate(
+                "el => el.click()"
+            )
+            page.page.wait_for_timeout(500)
+        except Exception:
+            pass
     return process_name
 
 

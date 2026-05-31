@@ -44,7 +44,8 @@ def _csu_select_first(page, prefer_keyword="AUTO"):
         page.page.wait_for_timeout(800)
     except Exception:
         pass
-    # radio 있는 row 0건 시 검색 reset
+    # radio 있는 row 0건 시 검색 reset → 전체 list 첫 행 fallback
+    # 사용자 명시 (2026-05-29): "AUTO 없으면 자동으로 맨위에꺼 유동적으로 사용 — 막히는 현상 방지"
     radios = page.page.locator(
         "#selectCommonPolicyItemModal input[type='radio'][name='selectTemplate']"
     )
@@ -57,15 +58,28 @@ def _csu_select_first(page, prefer_keyword="AUTO"):
             page.page.wait_for_timeout(800)
         except Exception:
             pass
-    # 첫 행 (tr) raw JS click — ng-click directive 발화
-    page.page.locator("#selectCommonPolicyItemModal table tbody tr").first.evaluate(
-        "el => el.click()"
+    # 안전망 — radio 있는 row 가 있을 때만 click + confirm. row 자체 비어있으면 picker
+    # 그대로 close (막히는 현상 방지).
+    valid_rows = page.page.locator(
+        "#selectCommonPolicyItemModal table tbody tr:has(input[type='radio'][name='selectTemplate'])"
     )
-    page.page.wait_for_timeout(500)
-    page.page.locator("#selectCommonPolicyItemModal .btn-primary").first.evaluate(
-        "el => el.click()"
-    )
-    page.page.wait_for_timeout(1500)
+    if valid_rows.count() > 0:
+        valid_rows.first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(500)
+        page.page.locator("#selectCommonPolicyItemModal .btn-primary").first.evaluate(
+            "el => el.click()"
+        )
+        page.page.wait_for_timeout(1500)
+    else:
+        # 비어있음 — picker 닫기 (close 버튼 또는 ESC)
+        try:
+            page.page.locator("#selectCommonPolicyItemModal button.close, "
+                              "#selectCommonPolicyItemModal button[data-dismiss='modal']").first.evaluate(
+                "el => el.click()"
+            )
+            page.page.wait_for_timeout(500)
+        except Exception:
+            pass
 
 
 def _csu_search_and_select(page, keyword):
