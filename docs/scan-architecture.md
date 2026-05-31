@@ -210,6 +210,94 @@ request.node._npouch_page_id = self.PAGE_ID
 
 ---
 
+## 6.6) 시나리오 6 정의 + AUTO 검색 정책 (방식 B 전용 — 사용자 정책 2026-05-29)
+
+### 시나리오 6 = 페이지 lifecycle 종료 + 다음 단계 연계
+
+| 케이스 | 형태 | 동작 |
+|--------|------|------|
+| **단일 페이지 테스트** | `sc6X` (sub-num — sc6a/sc6b 등) | 페이지 내 마지막 정리 (zz_cleanup 유사) |
+| **여러 페이지 통합 테스트** | `sc6` (parent) | `[AUTO_KEEP]_` 정책을 다음 페이지로 연계 |
+
+**cleanup 흐름 (방식 B 공통):**
+- **sc1 시작**: `delete_all_test_data()` — `[AUTO]_` + `[AUTO_KEEP]_` 둘 다 cleanup (clean slate)
+- **sc2/3/4**: cleanup 없음 (이전 시나리오 정책 재사용)
+- **sc5 끝 (5c)**: `delete_all_auto_policies()` — `[AUTO]_` 만 cleanup, `[AUTO_KEEP]_` 보존 (lifecycle 종료 + 다음 연계)
+- **sc6**: `[AUTO_KEEP]_` 활용 또는 단일 페이지 마무리 정리
+
+### AUTO 검색 정책 (CSU/process/tag picker 공통)
+
+picker (다른 페이지의 정책/프로세스 선택) 호출 시 **3단계 fallback chain**:
+
+```
+1) AUTO 검색 시도 → 결과 있으면 매칭 첫 행 (KEEP 정책 우선 — sc6 연계 의도)
+2) AUTO 결과 0건 → 검색 reset → 전체 list 첫 행 (sc6 미실행 / sc1 cleanup 후 정상 fallback)
+3) 전체 list 도 비어있음 (rare) → picker close (막히는 현상 방지)
+```
+
+**핵심**: 사용자 명시 (2026-05-29) "**AUTO 없으면 자동으로 맨위 유동적 사용 — 막히는 현상 방지**".
+
+### 적용 helper 패턴 (코드 인용)
+
+`tests/origin_protect/test_scenario3_add.py:_csu_select_first` (line 20-):
+```python
+def _csu_select_first(page, prefer_keyword="AUTO"):
+    """CSU picker 선택 — AUTO 검색 → 매칭 첫 행 / 없으면 전체 list 첫 행."""
+    page.page.locator(page.SEL_CSU_SELECT_BTN).first.evaluate("el => el.click()")
+    page.page.locator("#selectCommonPolicyItemModal.in").wait_for(state="attached", timeout=5000)
+    # ① AUTO 검색 시도
+    try:
+        si = page.page.locator("#selectCommonPolicyItemModal input#searchText").first
+        si.fill(prefer_keyword)
+        page.page.locator("#selectCommonPolicyItemModal button.searchBtn").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(800)
+    except Exception:
+        pass
+    # ② radio 0건 → 검색 reset → 전체 list 첫 행
+    radios = page.page.locator("#selectCommonPolicyItemModal input[type='radio'][name='selectTemplate']")
+    if radios.count() == 0:
+        si.fill("")
+        page.page.locator("#selectCommonPolicyItemModal button.searchBtn").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(800)
+    # ③ valid_rows 확인 — 비어있으면 close 안전 종료
+    valid_rows = page.page.locator(
+        "#selectCommonPolicyItemModal table tbody tr:has(input[type='radio'][name='selectTemplate'])"
+    )
+    if valid_rows.count() > 0:
+        valid_rows.first.evaluate("el => el.click()")  # raw JS click — ng-click directive 발화
+        page.page.wait_for_timeout(500)
+        page.page.locator("#selectCommonPolicyItemModal .btn-primary").first.evaluate("el => el.click()")
+    else:
+        # rare — list 자체 비어있음, picker close
+        page.page.locator("#selectCommonPolicyItemModal button.close, ...[data-dismiss='modal']").first.evaluate("el => el.click()")
+```
+
+같은 패턴이 `_pick_process_in_picker` (`test_scenario4_modify.py:90`) 에도 적용 — process picker (multi-select 체크박스) 의 AUTO 검색 + fallback.
+
+### 새 페이지 추가 시 picker helper 작성 규칙
+
+새 페이지에 picker 추가 (예: 태그 picker, special folder picker) 시:
+
+1. **prefer_keyword 인자 default "AUTO"** — 호출부 변경 없이 정책 적용
+2. **3단계 fallback 명시**:
+   - 검색 시도 → 결과 있으면 사용
+   - 결과 0건 → 검색 reset
+   - 전체 비어있음 → 안전 종료 (close)
+3. **AngularJS ng-click 발화 보장** — raw JS `el.click()` (Playwright trusted `force=True click` 보다 안정)
+4. **timeout 명시** — picker `.in` 클래스 attached wait (5초)
+
+### 사용자 보고 — 적용 누락 경고
+
+사용자 명시 (2026-05-29): "**지금 AUTO 만들고 안 쓰고 있는 곳 있는 거 같아서**" — 새 picker helper 추가 시 위 규칙 위반 자주 발생.
+
+체크리스트 (각 picker helper 점검):
+- [ ] prefer_keyword 인자 + AUTO default
+- [ ] 검색 0건 시 검색 reset 단계 포함
+- [ ] 전체 비어있음 시 close 안전 종료
+- [ ] AngularJS ng-click 발화 (raw JS click)
+
+---
+
 ## 7) 작업 진입 전 체크리스트
 
 새 페이지 추가:
@@ -226,6 +314,18 @@ request.node._npouch_page_id = self.PAGE_ID
 - [ ] **fail/warn 검증의 `_add()` 호출에 `highlight=loc` 추가 가능 여부 점검**
 - [ ] 중복 검증 점검 — sc0 자동 ↔ sc1~6 수동 중복 시 dedup
 - [ ] **`_base.py:_setup` 에서 PAGE_ID 미리 attach 확인** (crash 시 error 등록 보장)
+
+새 picker helper 작성 (6.6절 정책 적용):
+- [ ] **prefer_keyword="AUTO" default 인자** — 호출부 변경 없이 정책 적용
+- [ ] **3단계 fallback** — AUTO 검색 → 0건 시 검색 reset → 전체 비어있음 시 close 안전 종료
+- [ ] **AngularJS ng-click 발화** — raw JS `el.click()` (Playwright trusted click 대신)
+- [ ] picker `.in` 클래스 attached wait 5초 timeout
+
+cleanup 호출 위치 (방식 B 라이프사이클):
+- [ ] **sc1 시작**: `delete_all_test_data()` (AUTO + KEEP 둘 다)
+- [ ] **sc2/3/4**: cleanup 호출 X (정책 재사용)
+- [ ] **sc5c (lifecycle 종료)**: `delete_all_auto_policies()` (AUTO 만, KEEP 보존)
+- [ ] **sc6**: 단일 페이지면 sc6X / 통합이면 KEEP 활용
 
 ---
 
