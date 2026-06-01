@@ -119,8 +119,37 @@ def _csu_search_and_select(page, keyword):
 
 
 def _save_click(page):
-    """ADD 모달 저장 버튼 클릭 (overlay 우회)."""
-    page.page.locator(page.SEL_SUBMIT_BTN).first.evaluate("el => el.click()")
+    """ADD/EDIT 모달 저장 버튼 클릭 — trusted click 필수.
+
+    Chrome MCP 검증 2026-06-01 (sc5b 결함 진단):
+      - JS `el.click()` (untrusted) → AngularJS form ng-model 동기화 단계 skip
+        → controlSuiteId 등 picker-bound ng-model 이 stale 빈값으로 submit
+        → server msg='제어 스위트를 선택해 주세요.' (UI 표시는 정상)
+      - trusted click (Locator.click(force=True)) → mouse-down 시 active element blur
+        + AngularJS digest cycle 발화 → ng-model 동기화 OK → server msg='저장 하였습니다'
+
+    overlay 처리 (메모리 보고 2026-06-01):
+      - conftest 의 qa-block-overlay 가 z-index 99998 로 trusted click 막음
+      - 모달 안 버튼이라도 overlay 가 위면 좌표 click 차단 → 모달 닫힘 없음, skip 발생
+      - 해결: overlay 의 pointer-events 잠시 'none' → trusted click → 'all' 복원
+
+    sc4 의 EDIT 메서드들은 1 필드만 변경하는 케이스 → 결함이 다른 필드 노출 안 됨.
+    sc5b 가 4 필드 fill 후 즉시 save → controlSuiteId 도 stale → 결함 노출.
+    """
+    # overlay pointer-events 임시 해제 → trusted click 가능
+    page.page.evaluate(
+        "() => { const o = document.getElementById('qa-block-overlay'); "
+        "if (o) o.style.pointerEvents = 'none'; }"
+    )
+    try:
+        # SEL_SUBMIT_BTN = "div#addItemModal button.btn-primary" 가 모달 안 여러 매치 가능
+        # (탭의 다른 primary 버튼 등) → :visible 추가하여 보이는 footer 저장 버튼만.
+        page.page.locator("div#addItemModal.in .modal-footer button.btn-primary:visible").first.click(force=True, timeout=5000)
+    finally:
+        page.page.evaluate(
+            "() => { const o = document.getElementById('qa-block-overlay'); "
+            "if (o) o.style.pointerEvents = 'all'; }"
+        )
     page.page.wait_for_timeout(1500)
 
 

@@ -93,8 +93,14 @@ class OriginProtectBase:
     def _ensure_session_cleanup(self, page) -> None:
         """session 시작 [AUTO]_ + [AUTO_KEEP]_ 일괄 정리 (1회).
 
-        TODO: page 클래스에 delete_all_test_data() 메서드 구현 후 활성화.
-              현재는 페이지 자체 cleanup helper 가 없어 no-op (sc1 추가 시 보강).
+        사용자 설계 (2026-05-29):
+          - sc1 시작: AUTO + AUTO_KEEP 둘 다 cleanup (clean slate, 중복 이름 방지)
+          - sc2/3/4: cleanup 없음
+          - sc5c: AUTO 만 cleanup, KEEP 보존
+
+        보고서에 cleanup 행위 명시 (사용자 보고 2026-06-01):
+          - 이전: print 만 → 보고서에 cleanup 행위 표시 안 됨
+          - 수정: _add 호출하여 sc=1 로 보고서에 명시
         """
         if OriginProtectBase._SESSION_CLEANUP_DONE:
             return
@@ -103,12 +109,20 @@ class OriginProtectBase:
                 page.page.wait_for_timeout(500)
                 before = [n for n in page.get_policy_names()
                           if n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]")]
-                if before:
-                    print(f"[session cleanup] 원본보호 시작 잔여 {len(before)}건: {before}")
                 deleted = page.delete_all_test_data()
-                print(f"[session cleanup] 원본보호 삭제 {deleted}건")
+                # 보고서 명시 — sc1 의 첫 _add 로 cleanup 행위 노출
+                if hasattr(self, "_add"):
+                    self._add("pass",
+                              "sc1 — session 시작 cleanup ([AUTO] + [AUTO_KEEP] 일괄 삭제, clean slate)",
+                              f"잔여: {len(before)}건 {before} / deleted={deleted} (sc3 ADD 중복 방지)",
+                              sc=1)
+                else:
+                    print(f"[session cleanup] 원본보호 잔여 {len(before)}건 / 삭제 {deleted}건")
         except Exception as e:
-            print(f"[session cleanup] 원본보호 예외: {e!r}")
+            if hasattr(self, "_add"):
+                self._add("warn", "sc1 — session cleanup 예외", f"예외: {e!r}", sc=1)
+            else:
+                print(f"[session cleanup] 원본보호 예외: {e!r}")
         OriginProtectBase._SESSION_CLEANUP_DONE = True
 
     def _attach(self, scan_results: list[ScanResult]) -> None:

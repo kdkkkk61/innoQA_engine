@@ -64,15 +64,26 @@ def _enter_edit_modal(page, name: str):
 
 
 def _save_click(page):
-    """EDIT 모달 저장 버튼 click (overlay 우회)."""
+    """EDIT 모달 저장 버튼 — trusted click 필수 (Chrome MCP 검증 2026-06-01).
+
+    JS btn.click() → AngularJS form ng-model 동기화 skip → controlSuiteId stale 빈값
+    → server msg='제어 스위트를 선택해 주세요.' 결함.
+    Locator.click(force=True) = trusted mouse click → ng-model 동기화 OK.
+
+    overlay 처리: qa-block-overlay 가 좌표 click 차단 → pointer-events 잠시 해제 후 복원.
+    """
     page.page.evaluate(
-        """() => {
-            const m = document.querySelector('#addItemModal.in');
-            const btn = Array.from(m.querySelectorAll('button'))
-                .filter(b => b.offsetParent && b.classList.contains('btn-primary'))[0];
-            if (btn) btn.click();
-        }"""
+        "() => { const o = document.getElementById('qa-block-overlay'); "
+        "if (o) o.style.pointerEvents = 'none'; }"
     )
+    try:
+        # modal-footer 의 보이는 버튼만 — 탭 안의 다른 primary 버튼 false positive 방지
+        page.page.locator("#addItemModal.in .modal-footer button.btn-primary:visible").first.click(force=True, timeout=5000)
+    finally:
+        page.page.evaluate(
+            "() => { const o = document.getElementById('qa-block-overlay'); "
+            "if (o) o.style.pointerEvents = 'all'; }"
+        )
     page.page.wait_for_timeout(1500)
 
 

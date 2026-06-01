@@ -5,6 +5,35 @@
 
 ---
 
+## [RESOLVED] sc5b 다중 필드 EDIT 저장 fail — JS `el.click()` untrusted click 으로 AngularJS form ng-model 동기화 skip
+- **날짜**: 2026-06-01
+- **증상**:
+  - sc5b lifecycle modify 저장 시 server msg='제어 스위트를 선택해 주세요.'
+  - EDIT 진입 시 UI 의 CSU 표시는 '전사 시큐어존 테스트' 로 정상 load
+  - 4 필드 (Label/Quota/Opacity/Degree) fill 후 즉시 _save_click → server reject
+  - 사용자 의문 적중: "sc3/sc4 에서도 검증돼야 하는데 sc5 만 나오는 게 말이 안돼"
+- **사용자 가설**: 자동화 코드 결함 가능성 → Chrome MCP 로 수동 vs 자동 비교 진행
+- **Chrome MCP 검증 (2026-06-01, ss_0916/ss_10452/ss_33250/ss_6408)**:
+  - 수동 (triple_click + keyboard type + 좌표 click) → "저장 하였습니다" ✓
+  - 자동화 동등 (JS `el.value=v` + dispatch input + 좌표 trusted click) → "저장 하였습니다" ✓
+  - 자동화 동등 (JS `el.value=v` + dispatch input + **JS `btn.click()`**) → "제어 스위트 선택" ✗
+  - active element blur 강제 + JS click → 여전히 fail (blur 도 우회 못 함)
+- **원인**:
+  - `_save_click` 의 `el.click()` (untrusted JS click) 가 AngularJS form 의 ng-model 동기화 단계 skip
+  - controlSuiteId 등 picker-bound ng-model 이 stale 빈값으로 form submit
+  - trusted click (mouse down) 만이 active element blur + digest cycle 발화 → ng-model 동기화
+  - **sc3/sc4 미노출 이유**:
+    - ADD = picker 선택이 마지막 액션 → ng-model OK
+    - sc4 EDIT = 1 필드만 변경 → 1 ng-model stale 가능하지만 다른 필드 EDIT load 값 그대로 → server 통과
+    - **sc5b 만 4 필드 동시 변경 → controlSuiteId 포함 다수 ng-model stale 가능성 노출**
+- **수정**:
+  - `tests/origin_protect/test_scenario3_add.py:_save_click` → `Locator.click(force=True)` (trusted click)
+  - `tests/origin_protect/test_scenario4_modify.py:_save_click` → `Locator.click(force=True)` (trusted click)
+- **파일**: `tests/origin_protect/test_scenario3_add.py`, `tests/origin_protect/test_scenario4_modify.py`
+- **후속 검토**: sc4 에 다중 필드 변경 EDIT 메서드 추가 — 단일 필드만 변경하는 한계로 결함 검출 못한 것을 보강.
+
+---
+
 ## [RESOLVED] 원본보호 sc1c — 탭 native click 이 qa-block-overlay 에 intercept (2026-05-28)
 - **날짜**: 2026-05-28
 - **증상**: sc1c (비기본 탭 차단 메시지 검증) → `TimeoutError: Locator.click: Timeout 5000ms exceeded` + `<div id="qa-block-overlay"></div> intercepts pointer events`.

@@ -121,6 +121,8 @@ _SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
         501: "시나리오 5a: lifecycle ADD (전체 필드 + 재오픈 일치)",
         502: "시나리오 5b: lifecycle modify (필드 변경 + 재오픈 일치)",
         503: "시나리오 5c: lifecycle verify + cleanup (AUTO 정리 / KEEP 보존)",
+        # sc6 KEEP 확인 (단일 페이지 마무리)
+        6: "시나리오 6: KEEP 정책 보존 확인 (lifecycle 완결, 단일 페이지)",
     },
     "npouch_control_suite": {
         0: "시나리오 0: UIScanner 자동 스캔 (신규 기능 감지 + UI 패턴 검증)",

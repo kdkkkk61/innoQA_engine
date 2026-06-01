@@ -205,8 +205,9 @@ _NPOUCH_CLASS_TO_PAGE: dict[str, str] = {v: k for k, v in _NPOUCH_PAGE_TO_CLASS.
 _NPOUCH_PAGE_TO_FILE: dict[str, str] = {
     "npouch_operation_process": "test_npouch.py",
     "npouch_tag":               "test_npouch_tag.py",
-    "npouch_control_suite":     "test_npouch_control_suite.py",
-    "npouch_origin_protect":    "test_npouch.py",
+    # 디렉토리 매핑 — tests/<디렉토리>/ 안의 모든 test_scenario*.py 실행
+    "npouch_control_suite":     "control_suite",
+    "npouch_origin_protect":    "origin_protect",
     "npouch_policy":            "test_npouch.py",
 }
 
@@ -396,8 +397,14 @@ def start():
             str(BASE_DIR / "tests" / _NPOUCH_PAGE_TO_FILE.get(pid, "test_npouch.py"))
             for pid in page_ids
         ))
-        class_names = [_NPOUCH_PAGE_TO_CLASS.get(pid, pid) for pid in page_ids]
-        k_filter = " or ".join(class_names)
+        # 디렉토리 매핑된 page (control_suite/origin_protect) 는 -k 필터 skip
+        # — 디렉토리 자체가 page 분리, 클래스명 prefix 가 매핑값과 불일치 (TestOriginProtectScenario*)
+        _dir_pages = {"npouch_control_suite", "npouch_origin_protect"}
+        if all(pid in _dir_pages for pid in page_ids):
+            k_filter = ""
+        else:
+            class_names = [_NPOUCH_PAGE_TO_CLASS.get(pid, pid) for pid in page_ids]
+            k_filter = " or ".join(class_names)
     else:
         # 그 외: 범용 test_scan_pages.py — page_id 그대로 -k 필터
         test_files = [str(BASE_DIR / "tests" / "test_scan_pages.py")]
@@ -415,8 +422,9 @@ def start():
         *test_files,        # 제품별 테스트 파일 선택 (복수 지원)
         "-v", "-s",
         "--timeout=300",    # 테스트 1개당 최대 5분 — Chromium hang 시 강제 종료
-        "-k", k_filter,
     ]
+    if k_filter:
+        cmd.extend(["-k", k_filter])
     env["PYTHONUNBUFFERED"] = "1"
 
     def _run():
