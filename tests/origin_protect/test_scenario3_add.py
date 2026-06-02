@@ -41,7 +41,7 @@ def _csu_select_first(page, prefer_keyword="AUTO"):
         page.page.locator("#selectCommonPolicyItemModal button.searchBtn").first.evaluate(
             "el => el.click()"
         )
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
     except Exception:
         pass
     # radio 있는 row 0건 시 검색 reset → 전체 list 첫 행 fallback
@@ -55,7 +55,7 @@ def _csu_select_first(page, prefer_keyword="AUTO"):
             page.page.locator("#selectCommonPolicyItemModal button.searchBtn").first.evaluate(
                 "el => el.click()"
             )
-            page.page.wait_for_timeout(800)
+            page.page.wait_for_timeout(150)
         except Exception:
             pass
     # 안전망 — radio 있는 row 가 있을 때만 click + confirm. row 자체 비어있으면 picker
@@ -65,11 +65,11 @@ def _csu_select_first(page, prefer_keyword="AUTO"):
     )
     if valid_rows.count() > 0:
         valid_rows.first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(500)
+        page.page.wait_for_timeout(200)
         page.page.locator("#selectCommonPolicyItemModal .btn-primary").first.evaluate(
             "el => el.click()"
         )
-        page.page.wait_for_timeout(1500)
+        page.page.wait_for_timeout(200)
     else:
         # 비어있음 — picker 닫기 (close 버튼 또는 ESC)
         try:
@@ -77,7 +77,7 @@ def _csu_select_first(page, prefer_keyword="AUTO"):
                               "#selectCommonPolicyItemModal button[data-dismiss='modal']").first.evaluate(
                 "el => el.click()"
             )
-            page.page.wait_for_timeout(500)
+            page.page.wait_for_timeout(200)
         except Exception:
             pass
 
@@ -97,7 +97,7 @@ def _csu_search_and_select(page, keyword):
     si = page.page.locator("#selectCommonPolicyItemModal input#searchText").first
     si.fill(keyword)
     page.page.locator("#selectCommonPolicyItemModal button.searchBtn").first.evaluate("el => el.click()")
-    page.page.wait_for_timeout(800)
+    page.page.wait_for_timeout(150)
     # radio 있는 row 만 count — message row ("검색된 내용이 없습니다.") 제외
     radios = page.page.locator(
         "#selectCommonPolicyItemModal input[type='radio'][name='selectTemplate']"
@@ -106,16 +106,16 @@ def _csu_search_and_select(page, keyword):
         # 검색 결과 0건 — 검색 reset + 전체 list 첫 행 fallback
         si.fill("")
         page.page.locator("#selectCommonPolicyItemModal button.searchBtn").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
     # radio 있는 tr 중 첫 행 click — AngularJS ng-click 핸들러 발화
     valid_rows = page.page.locator(
         "#selectCommonPolicyItemModal table tbody tr:has(input[type='radio'][name='selectTemplate'])"
     )
     if valid_rows.count() > 0:
         valid_rows.first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(300)
+        page.page.wait_for_timeout(150)
     page.page.locator("#selectCommonPolicyItemModal .btn-primary").first.evaluate("el => el.click()")
-    page.page.wait_for_timeout(1500)
+    page.page.wait_for_timeout(200)
 
 
 def _save_click(page):
@@ -150,7 +150,7 @@ def _save_click(page):
             "() => { const o = document.getElementById('qa-block-overlay'); "
             "if (o) o.style.pointerEvents = 'all'; }"
         )
-    page.page.wait_for_timeout(1500)
+    page.page.wait_for_timeout(200)
 
 
 class TestOriginProtectScenario3Add(OriginProtectBase):
@@ -286,7 +286,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
         ]
         for label, val in invalid_cases:
             dl.fill(val)
-            page.page.wait_for_timeout(500)
+            page.page.wait_for_timeout(200)
             if page.is_confirm_modal_visible(timeout=1500):
                 msg = page.get_confirm_message()
                 after_value = dl.input_value()
@@ -306,7 +306,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
         ]
         for label, inp, expected_val in valid_cases:
             dl.fill(inp)
-            page.page.wait_for_timeout(300)
+            page.page.wait_for_timeout(150)
             actual = dl.input_value()
             self._add("pass" if actual == expected_val else "fail",
                       f"sc3c — driveLetter valid '{label}' (대문자 변환)",
@@ -332,7 +332,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
             ext_inp.fill(val)
             page.page.wait_for_timeout(150)
             add_btn.first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(500)
+            page.page.wait_for_timeout(200)
 
         # 1) 다중 구분자 'asd;sdf;dfg' → 3건 일괄 등록 (알림 없음)
         _add_ext("asd;sdf;dfg")
@@ -402,7 +402,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
             inp.fill(val)
             page.page.wait_for_timeout(150)
             add_btn.first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(500)
+            page.page.wait_for_timeout(200)
 
         # 1) 정상 폴더 'C:\\Temp' → 등록
         _add_folder("C:\\Temp")
@@ -466,7 +466,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
 
         def _click_cb(loc):
             loc.first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(400)
+            page.page.wait_for_timeout(200)
 
         # 1) 초기 text 빈값
         self._add("pass" if wm.input_value() == "" else "fail",
@@ -525,7 +525,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
         _click_cb(tm)
         # state2: [/PCINFO/] 만 수동 삭제 → text='[/TIME/]', pc/time 유지 (단방향 sync 결함)
         wm.fill("[/TIME/]")
-        page.page.wait_for_timeout(400)
+        page.page.wait_for_timeout(200)
         s2_text, s2_pc, s2_time = wm.input_value(), pc.is_checked(), tm.is_checked()
         s2_defect = (s2_pc is True and s2_time is True)
         self._add("warn" if s2_defect else "pass",
@@ -535,7 +535,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
                   sc=3, highlight=pc)
         # state3: text 전체 비움 → pc/time 둘 다 ON 유지 (단방향 sync 결함)
         wm.fill("")
-        page.page.wait_for_timeout(400)
+        page.page.wait_for_timeout(200)
         s3_text, s3_pc, s3_time = wm.input_value(), pc.is_checked(), tm.is_checked()
         s3_defect = (s3_pc is True and s3_time is True)
         self._add("warn" if s3_defect else "pass",
@@ -611,9 +611,9 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
 
         def _try(v):
             quota.fill("")
-            page.page.wait_for_timeout(80)
+            page.page.wait_for_timeout(150)
             quota.evaluate(f"(el, v) => {{ el.value = v; el.dispatchEvent(new Event('input',{{bubbles:true}})); el.dispatchEvent(new Event('change',{{bubbles:true}})); }}", v)
-            page.page.wait_for_timeout(250)
+            page.page.wait_for_timeout(200)
             return quota.input_value()
 
         cases = [
@@ -655,9 +655,9 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
 
         def _try(loc, v):
             loc.fill("")
-            page.page.wait_for_timeout(80)
+            page.page.wait_for_timeout(150)
             loc.evaluate(f"(el, v) => {{ el.value = v; el.dispatchEvent(new Event('input',{{bubbles:true}})); el.dispatchEvent(new Event('change',{{bubbles:true}})); }}", v)
-            page.page.wait_for_timeout(250)
+            page.page.wait_for_timeout(200)
             return loc.input_value()
 
         op_cases = [
@@ -759,9 +759,9 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
         page.page.locator(page.SEL_DRIVE_QUOTA).fill("100")
         _csu_select_first(page)
         page.page.locator(page.SEL_SCREEN_WM_PC_INFO).first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(400)
+        page.page.wait_for_timeout(200)
         page.page.locator(page.SEL_SCREEN_WM_TIME).first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(400)
+        page.page.wait_for_timeout(200)
         before_text = page.page.locator(page.SEL_SCREEN_WM_TEXT).input_value()
         before_pc = page.page.locator(page.SEL_SCREEN_WM_PC_INFO).is_checked()
         before_time = page.page.locator(page.SEL_SCREEN_WM_TIME).is_checked()
@@ -774,7 +774,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
 
         # 수동으로 text 비움 (setup 만 — 결함 재현 검증은 sc3f state3 가 담당)
         page.page.locator(page.SEL_SCREEN_WM_TEXT).fill("")
-        page.page.wait_for_timeout(300)
+        page.page.wait_for_timeout(150)
 
         # 저장
         _save_click(page)
@@ -786,7 +786,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
         search = page.page.locator(page.SEL_SEARCH_INPUT)
         search.fill(NAME)
         page.page.locator("button#searchBtn").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(1500)
+        page.page.wait_for_timeout(200)
         row = page.page.locator("table tbody tr").first
         td = row.locator("td").first
         td.evaluate("""el => {
@@ -794,9 +794,9 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
             el.dispatchEvent(new MouseEvent(ev, {bubbles:true,cancelable:true,view:window,button:0}))
           );
         }""")
-        page.page.wait_for_timeout(500)
+        page.page.wait_for_timeout(200)
         page.page.locator("button#modifyItemBtn").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(1500)
+        page.page.wait_for_timeout(200)
 
         # 3) EDIT 재진입 상태 확인 — text 우선 (text='') / 체크박스 재계산 (false)
         if not page.page.locator(page.SEL_MODAL_OPEN).count():
@@ -825,7 +825,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
             if si.count() > 0 and si.input_value():
                 si.fill("")
                 page.page.locator("button#searchBtn").first.evaluate("el => el.click()")
-                page.page.wait_for_timeout(500)
+                page.page.wait_for_timeout(200)
         except Exception:
             pass
 
@@ -903,7 +903,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
 
         def _click_cb(loc):
             loc.first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(400)
+            page.page.wait_for_timeout(200)
 
         # 1) 초기 text 빈값
         self._add("pass" if wm.input_value() == "" else "fail",
@@ -958,7 +958,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
         _click_cb(tm)
         # state2: '[/PCINFO/]' 만 수동 삭제 → 단방향 sync 결함
         wm.fill("[/TIME/]")
-        page.page.wait_for_timeout(400)
+        page.page.wait_for_timeout(200)
         s2_text, s2_pc, s2_time = wm.input_value(), pc.is_checked(), tm.is_checked()
         s2_defect = (s2_pc is True and s2_time is True)
         self._add("warn" if s2_defect else "pass",
@@ -968,7 +968,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
                   sc=3, highlight=pc)
         # state3: text 전체 비움 → 단방향 sync 결함
         wm.fill("")
-        page.page.wait_for_timeout(400)
+        page.page.wait_for_timeout(200)
         s3_text, s3_pc, s3_time = wm.input_value(), pc.is_checked(), tm.is_checked()
         s3_defect = (s3_pc is True and s3_time is True)
         self._add("warn" if s3_defect else "pass",
@@ -1026,7 +1026,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
             # 대상 필드 3000자 (이름·레이블은 위에서 처리, 나머지는 여기서)
             if target_sel not in (page.SEL_POLICY_NAME, page.SEL_DRIVE_LABEL):
                 page.page.locator(target_sel).fill(long_text)
-            page.page.wait_for_timeout(300)
+            page.page.wait_for_timeout(150)
             _save_click(page)
             msg = ""
             if page.is_confirm_modal_visible(timeout=3000):
@@ -1087,7 +1087,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
             toggle_loc = page.page.locator(f"input#{toggle_id}")
             # default ON 가정 — 토글 클릭으로 OFF
             toggle_loc.first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(400)
+            page.page.wait_for_timeout(200)
 
             # 종속 필드 disabled 상태 dump
             disabled_states = page.page.evaluate(
@@ -1106,7 +1106,7 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
 
             # 다시 ON 복구 — 다음 토글 검증에 영향 없도록
             toggle_loc.first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(300)
+            page.page.wait_for_timeout(150)
 
         # 추가 검증 (Chrome MCP 직접 재현 2026-05-29): 파일 감시 토글 OFF 시 tag [X]
         # (i.extentionDeleteBtn) 가 disabled 안 되고 실제 click 시 tag 삭제됨 = 결함 재현.
@@ -1115,21 +1115,21 @@ class TestOriginProtectScenario3Add(OriginProtectBase):
         ext_input = page.page.locator(page.SEL_WATCH_EXT_INPUT)
         ext_input.fill("txt")
         page.page.locator(page.SEL_WATCH_EXT_BTN).first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(400)
+        page.page.wait_for_timeout(200)
         fld_input = page.page.locator(page.SEL_WATCH_EXCEPT_INPUT)
         fld_input.fill("C:\\Temp_sc3o")
         page.page.locator(page.SEL_WATCH_EXCEPT_BTN).first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(400)
+        page.page.wait_for_timeout(200)
 
         # 토글 OFF
         page.page.locator(page.SEL_WATCH_EXT_TOGGLE).first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(400)
+        page.page.wait_for_timeout(200)
 
         # tag [X] click 시도 → 삭제되면 결함 재현 (warn)
         before_cnt = page.page.locator("#addItemModal i.extentionDeleteBtn").count()
         if before_cnt > 0:
             page.page.locator("#addItemModal i.extentionDeleteBtn").first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(400)
+            page.page.wait_for_timeout(200)
         after_cnt = page.page.locator("#addItemModal i.extentionDeleteBtn").count()
         defect_reproduced = (before_cnt > 0 and after_cnt < before_cnt)
         self._add("warn" if defect_reproduced else "pass",

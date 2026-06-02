@@ -1,24 +1,24 @@
 """
-pages/npouch_origin_protect_policy_page.py — nPouch 원본보호 정책 페이지
+pages/npouch_policy_page.py — nPouch 엔파우치 정책 페이지
 
-엔파우치 > 원본보호 정책
+엔파우치 > 엔파우치 정책
 scan_mode: modal_form
 모달: div#addItemModal.modal-wrap.in  (동적 생성/제거 방식)
-탭: 기본 설정 / 허용 프로세스 / 예외처리 프로세스 / 실행차단 프로세스
+탭: 정책 정보 / PDF문서 보호 기능 설정
 
 [의존성]
-- 제어 스위트 (managerControlSuite) 가 먼저 존재해야 정책 생성 가능
+- 원본보호 정책 (managerNpouchOriginProtectPolicy) 이 먼저 존재해야 원본보호 옵션 선택 가능
 """
 from pages.base_page import BasePage
 
 
-class NpouchOriginProtectPolicyPage(BasePage):
+class NpouchPolicyPage(BasePage):
 
     # ── 네비게이션 ────────────────────────────────────────────────
-    SEL_APP_SETTING_ICON  = "a[data-menuid='managerAppSetting']"
-    SEL_APP_SETTING_LIST  = "ul.managerAppSettingList"
-    SEL_NPOUCH_HEADER     = "a.managerNpouch"
-    SEL_MENU_ITEM         = "a[data-menuid='managerNpouchOriginProtectPolicy']"
+    SEL_APP_SETTING_ICON = "a[data-menuid='managerAppSetting']"
+    SEL_APP_SETTING_LIST = "ul.managerAppSettingList"
+    SEL_NPOUCH_HEADER    = "a.managerNpouch"
+    SEL_MENU_ITEM        = "a[data-menuid='managerNpouchPolicy']"
 
     # ── 목록 버튼 ─────────────────────────────────────────────────
     SEL_ADD_BTN    = "button#addItemBtn"
@@ -33,44 +33,68 @@ class NpouchOriginProtectPolicyPage(BasePage):
     # ── 모달 ─────────────────────────────────────────────────────
     SEL_MODAL      = "div#addItemModal"
     SEL_MODAL_OPEN = "div#addItemModal.in"
-    # 기본 설정 탭
-    SEL_POLICY_NAME      = "input#originProtectPolicyName"
-    SEL_DRIVE_LETTER     = "input#driveLetter"
-    SEL_DRIVE_LABEL      = "input#driveLabel"
-    SEL_DRIVE_QUOTA      = "input#originProtectDriveQuota"
-    # 제어 스위트 선택 (버튼 + 결과 span)
-    SEL_CSU_SELECT_BTN   = "div#addItemModal button.addBtn.smallBtn.addTemplate"
-    SEL_CSU_ID_SPAN      = "span#controlSuiteId"
-    # 프로세스 사용 체크박스
-    SEL_ALLOW_PROCESS    = "input#isAllowProcess"
-    SEL_EXCEPT_PROCESS   = "input#isExceptProcess"
-    SEL_BLOCK_PROCESS    = "input#isBlockProcess"
-    # 파일 감시
-    SEL_WATCH_EXT_TOGGLE = "input#isWatchFileExtension"
-    SEL_WATCH_EXT_INPUT  = "input#watchFileExtensions"
-    SEL_WATCH_EXT_BTN    = "button#watchFileExtensionAddBtn"
-    SEL_WATCH_HEADER     = "input#isWatchFileHeader"
-    SEL_WATCH_EXCEPT_INPUT = "input#watchExceptFolders"
-    SEL_WATCH_EXCEPT_BTN   = "button#watchExceptFolderAddBtn"
-    # 종료 메시지
-    SEL_SHUTDOWN_MSG_TOGGLE = "input#isAllowProcessShutdownText"
-    SEL_SHUTDOWN_MSG_TEXT   = "textarea#allowProcessShutdownText"
-    # 화면 워터마크
-    SEL_SCREEN_WM         = "input#isScreenWaterMark"
-    SEL_SCREEN_WM_TEXT    = "input#screenWaterMarkText"
-    SEL_SCREEN_WM_PC_INFO = "input#isScreenWaterMarkPcInfo"
-    SEL_SCREEN_WM_TIME    = "input#isScreenWaterMarkCurrentTime"
-    SEL_SCREEN_WM_OPACITY = "input#screenWaterMarkOpacity"
-    SEL_SCREEN_WM_DEGREE  = "input#screenWaterMarkDegree"
-    # 출력물 워터마크
-    SEL_PRINT_WM         = "input#isPrintWaterMark"
-    SEL_PRINT_WM_TEXT    = "input#printWaterMarkText"
-    SEL_PRINT_WM_PC_INFO = "input#isPrintWaterMarkPcInfo"
-    SEL_PRINT_WM_TIME    = "input#isPrintWaterMarkCurrentTime"
-    SEL_PRINT_WM_OPACITY = "input#printWaterMarkOpacity"
-    SEL_PRINT_WM_DEGREE  = "input#printWaterMarkDegree"
-    # 재위탁
-    SEL_SECOND_TAKEOUT   = "input#isSecondTakeout"
+
+    # [정책 정보 탭] 기본 필드
+    SEL_POLICY_NAME         = "input#npPolicyName"
+    SEL_CERT_URL            = "input#readFileCertificateUrl"
+    SEL_VALIDATE_SSL        = "input#isValidateSslCert"
+    SEL_MAX_READ_COUNT      = "input#isMaxReadCount"
+    SEL_MAX_READ_COUNT_VAL  = "input#maxReadCount"
+    SEL_MAX_READ_DAY        = "input#isMaxReadDay"
+    SEL_MAX_READ_DAY_VAL    = "input#maxReadDay"
+    # 비밀번호 정책
+    SEL_PW_MIN              = "input#passwordMinDigit"
+    SEL_PW_MAX              = "input#passwordMaxDigit"
+    SEL_PW_SAME_LETTER      = "input#passwordSameLetterCount"
+    SEL_PW_CONTINUE_LETTER  = "input#passwordContinueLetterCount"
+    SEL_PW_NUMBER           = "input#isPasswordNumberLetter"
+    SEL_PW_SPECIAL          = "input#isPasswordSpecialLetter"
+    # 뷰어 앱
+    SEL_INCLUDE_READER      = "input#includeReaderApp"
+    SEL_NOT_INCLUDE_READER  = "input#notIncludeReaderApp"
+    # 원본보호 정책
+    SEL_ORIGIN_PROTECT      = "input#isOriginProtectPolicy"
+    SEL_ORIGIN_PROTECT_BTN  = "button#addNpouchOriginProtectPolicyBtn"
+    # 인쇄 옵션
+    SEL_PRINT_OPTION        = "input#isPrintOption"
+    SEL_PRINT_X             = "input#isPrintX"
+    SEL_PRINT_O             = "input#isPrintO"
+    SEL_ALLOW_PRINT_BRAND   = "textarea#allowPrintBrandText"
+    SEL_EXCEPT_PRINT_PORT   = "textarea#exceptPrintPortText"
+    # 생성 파일 카운트
+    SEL_FILE_COUNT_TOGGLE   = "input#isNpPackageFileCreateFileCount"
+    SEL_FILE_COUNT_VAL      = "input#npPackageFileCreateFileCount"
+    # 기타
+    SEL_SERVER_AUTH         = "input#isServerAuthToRead"
+    SEL_COLLECT_LOCATION    = "input#isCollectLocationInfo"
+    SEL_ALLOW_OFFLINE       = "input#isAllowOfflineViewing"
+    SEL_DENY_OFFLINE        = "input#isDenyOfflineViewing"
+    SEL_EXT_FILTER          = "input#isExtensionFilter"
+    SEL_EXT_INCLUDE         = "input#includeFileExtension"
+    SEL_EXT_EXCEPT          = "input#exceptFileExtension"
+    SEL_EXT_INPUT           = "input#extensions"
+    SEL_EXT_ADD_BTN         = "button#addExtensions"
+    SEL_LOGO_IMG            = "input#logoImges"
+    SEL_HTML_DOC_NAME       = "input#htmlDocumentName"
+    SEL_HTML_CONTACT        = "input#htmlContactNumber"
+    SEL_CUSTOM_OPTION       = "input#customOptionText"
+
+    # [PDF 보호 탭]
+    SEL_PDF_PROTECT         = "input#isPdfProtect"
+    SEL_PDF_PRINT           = "input#isPdfPrint"
+    SEL_PDF_WATERMARK       = "input#isPdfWaterMark"
+    SEL_SHOOT_PREVENT_WM    = "input#isShootPreventWaterMark"
+    SEL_SHOOT_WM_TEXT       = "input#shootPreventWaterMarkText"
+    SEL_SHOOT_WM_PC_INFO    = "input#shootPreventWaterMarkPcInfo"
+    SEL_SHOOT_WM_TIME       = "input#shootPreventWaterMarkCurrentTime"
+    SEL_SHOOT_WM_OPACITY    = "input#shootPreventWaterMarkOpacity"
+    SEL_PDF_WM_MAIN         = "input#isPdfWaterMarkMain"
+    SEL_PDF_WM_TEXT         = "input#pdfWaterMarkAddText"
+    SEL_PDF_WM_SIZE         = "input#pdfWaterMarkAddTextSize"
+    SEL_PDF_WM_OPACITY      = "input#pdfWaterMarkAddTextOpacity"
+    SEL_PDF_WM_DEGREE       = "input#pdfWaterMarkAddTextDegree"
+    SEL_PDF_WM_COLOR        = "input#pdfWaterMarkAddTextColor"
+
     # 모달 버튼
     SEL_SUBMIT_BTN = "div#addItemModal button.btn-primary"
     SEL_CANCEL_BTN = "div#addItemModal button.btn-default"
@@ -85,18 +109,18 @@ class NpouchOriginProtectPolicyPage(BasePage):
     _TIMEOUT_STALE = 1_000
 
     _HASH_PAGE_SIZE = (
-        "#!/managerNpouchOriginProtectPolicy"
-        "?pageNo=1&pageSize=100&searchText="
+        "#!/managerNpouchPolicy"
+        "?pageNo=1&pageSize=100&searchText=&startIndex=0&sortIndex=0&sortOrder=0"
     )
 
     # ── 네비게이션 ────────────────────────────────────────────────
 
     def navigate_to(self) -> None:
-        """원본보호 정책 페이지로 이동."""
+        """엔파우치 정책 페이지로 이동."""
         self._dismiss_stale_confirm_modal()
         self._close_modal_if_open()
 
-        if ("NpouchOriginProtectPolicy" in self.page.url
+        if ("managerNpouchPolicy?" in self.page.url
                 and "pageSize=100" in self.page.url
                 and self.is_visible(self.SEL_ADD_BTN)):
             return
@@ -170,11 +194,8 @@ class NpouchOriginProtectPolicyPage(BasePage):
         raise Exception(f"행 선택 실패 (3회): {name}")
 
     def check_policy_row(self, name: str) -> None:
-        # [AUTO]_ 또는 [AUTO_KEEP]_ 둘 다 허용 (사용자 보고 2026-06-01 결함 fix)
-        # 이전: '[AUTO]' 만 허용 → '[AUTO_KEEP]_X'.startswith('[AUTO]') = False
-        # → delete_all_test_data 의 [AUTO_KEEP] cleanup 실패 (silent skip) → KEEP 잔존
-        if not (name.startswith("[AUTO]") or name.startswith("[AUTO_KEEP]")):
-            raise Exception("테스트 정책([AUTO]/[AUTO_KEEP] 접두사)만 조작 가능합니다")
+        if not name.startswith("[AUTO]"):
+            raise Exception("테스트 정책([AUTO] 접두사)만 조작 가능합니다")
         checkbox = (
             self.page.locator(self.SEL_TABLE_ROW)
             .filter(has_text=name).first
@@ -190,7 +211,6 @@ class NpouchOriginProtectPolicyPage(BasePage):
     # ── 탭 전환 ──────────────────────────────────────────────────
 
     def activate_tab(self, tab_text: str) -> None:
-        """모달 탭 전환. ul.nav li a 텍스트 기준."""
         tab_sel = f"div#addItemModal ul.nav li a:has-text('{tab_text}')"
         tab = self.page.locator(tab_sel).first
         tab.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
@@ -199,9 +219,8 @@ class NpouchOriginProtectPolicyPage(BasePage):
 
     # ── CRUD ──────────────────────────────────────────────────────
 
-    def add_policy(self, name: str, drive_letter: str = "Z",
-                   drive_label: str = "NPouch") -> str:
-        """원본보호 정책 추가. [AUTO] 접두사 필수. 실제 생성된 이름 반환."""
+    def add_policy(self, name: str) -> str:
+        """엔파우치 정책 추가. [AUTO] 접두사 필수. 실제 생성된 이름 반환."""
         if not name.startswith("[AUTO]"):
             raise Exception("테스트 정책([AUTO] 접두사)만 생성 가능합니다")
 
@@ -214,8 +233,6 @@ class NpouchOriginProtectPolicyPage(BasePage):
             )
             self.page.wait_for_timeout(200)
             self.fill(self.SEL_POLICY_NAME, actual_name[0])
-            self.fill(self.SEL_DRIVE_LETTER, drive_letter)
-            self.fill(self.SEL_DRIVE_LABEL, drive_label)
             self.click_attached(self.SEL_SUBMIT_BTN)
             for suffix in range(2, 11):
                 try:
@@ -249,34 +266,16 @@ class NpouchOriginProtectPolicyPage(BasePage):
 
         return actual_name[0]
 
-    def delete_all_auto_policies(self) -> int:
-        """[AUTO]_ 만 삭제, [AUTO_KEEP]_ 보존 (control_suite 패턴 일치)."""
-        deleted = 0
-        for name in [n for n in self.get_policy_names()
-                     if n.startswith("[AUTO]") and not n.startswith("[AUTO_KEEP]")]:
+    def delete_all_auto_policies(self) -> None:
+        for name in [n for n in self.get_policy_names() if n.startswith("[AUTO]")]:
             try:
                 self.delete_policy(name)
-                deleted += 1
             except Exception:
                 pass
-        return deleted
-
-    def delete_all_test_data(self) -> int:
-        """[AUTO]_ + [AUTO_KEEP]_ 모두 삭제 — session 시작 clean slate 용 (control_suite 패턴)."""
-        deleted = 0
-        for name in [n for n in self.get_policy_names()
-                     if n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]")]:
-            try:
-                self.delete_policy(name)
-                deleted += 1
-            except Exception:
-                pass
-        return deleted
 
     def delete_policy(self, name: str) -> None:
-        # [AUTO]_ 또는 [AUTO_KEEP]_ 접두사만 삭제 허용 (KEEP 도 session cleanup 대상).
-        if not (name.startswith("[AUTO]") or name.startswith("[AUTO_KEEP]")):
-            raise Exception("테스트 정책([AUTO]/[AUTO_KEEP] 접두사)만 삭제 가능합니다")
+        if not name.startswith("[AUTO]"):
+            raise Exception("테스트 정책([AUTO] 접두사)만 삭제 가능합니다")
 
         def _attempt():
             self.check_policy_row(name)
@@ -304,7 +303,7 @@ class NpouchOriginProtectPolicyPage(BasePage):
 
     # ── UIScanner 인터페이스 ──────────────────────────────────────
 
-    AUTO_NAME_PREFIX = "[AUTO]_opp"
+    AUTO_NAME_PREFIX = "[AUTO]_npp"
 
     def open_add_modal(self) -> None:
         self.click(self.SEL_ADD_BTN)
@@ -323,46 +322,6 @@ class NpouchOriginProtectPolicyPage(BasePage):
         self.click_attached(self.SEL_CANCEL_BTN)
         self.wait_for(self.SEL_ADD_BTN)
 
-    # ── 확인 모달 (전역 알림) 헬퍼 — control_suite 패턴 복제 ──────────
-    def is_confirm_modal_visible(self, timeout: int = 1500) -> bool:
-        """__globalMessageModal 알림 노출 여부 (attached 대기 포함)."""
-        try:
-            self.page.locator(self.SEL_CONFIRM_MODAL).first.wait_for(
-                state="attached", timeout=timeout
-            )
-            return True
-        except Exception:
-            return False
-
-    def get_confirm_message(self) -> str:
-        """알림 메시지 텍스트."""
-        loc = self.page.locator(
-            "div#__globalMessageModal .modal-body, div#__globalMessageModal .modal-body-text"
-        )
-        cnt = loc.count()
-        for i in range(cnt):
-            try:
-                t = loc.nth(i).inner_text().strip()
-                if t:
-                    return t
-            except Exception:
-                continue
-        return ""
-
-    def dismiss_confirm_modal(self) -> None:
-        """알림 '확인' 클릭 + 닫힘 대기."""
-        try:
-            self.click_attached(self.SEL_CONFIRM_BTN)
-        except Exception:
-            # fallback — JS click (좌표 무관)
-            self.page.locator(self.SEL_CONFIRM_BTN).first.evaluate("el => el.click()")
-        try:
-            self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
-                state="detached", timeout=self._TIMEOUT_MODAL
-            )
-        except Exception:
-            pass
-
     def save_policy(self, name: str) -> None:
         self.fill(self.SEL_POLICY_NAME, name)
         self.click_attached(self.SEL_SUBMIT_BTN)
@@ -379,7 +338,7 @@ class NpouchOriginProtectPolicyPage(BasePage):
         self.wait_for(self.SEL_ADD_BTN)
 
     def get_verify_values(self, saved_name: str) -> dict:
-        return {"input#originProtectPolicyName": saved_name}
+        return {"input#npPolicyName": saved_name}
 
     def save_edit_modal(self) -> None:
         self.click_attached(self.SEL_SUBMIT_BTN)

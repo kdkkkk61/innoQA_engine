@@ -285,7 +285,9 @@ def _expected_vs_actual(r: ScanResult) -> tuple[str, str]:
 
     # ④ 포맷 없음 — 상태별 기본값
     if r.status in ("warn", "known_bug"):
-        return "버그 (낮음)", det
+        # 라벨 🔴 면 "버그 (높음)" 으로 격상 (사용자 보고 2026-06-01 모순 fix)
+        severity_label = "버그 (높음)" if "🔴" in (r.label or "") else "버그 (낮음)"
+        return severity_label, det
     if r.status == "skip":
         return "해당 없음", det
     return "정상 동작", det
@@ -339,10 +341,21 @@ def _scenario_label(r: ScanResult, is_list_page: bool, page_id: str = "") -> str
 
 # ── HTML 조각 생성 ─────────────────────────────────────────────────
 
+def _count_label_high(items) -> int:
+    """라벨에 🔴 있는 항목 갯수 — status=warn 이지만 라벨 의도 HIGH 로 표시된 결함.
+    (사용자 보고 2026-06-01: 항목별 심각도 = "높음" 인데 카운트는 warn — 모순 fix)
+    """
+    return sum(1 for r in items if "🔴" in (r.label or ""))
+
+
 def _render_summary_card(page_id: str, report: PageScanReport) -> str:
     label  = _PAGE_LABELS.get(page_id, page_id)
-    p, f   = len(report.passed), len(report.failed)
-    k, e   = len(report.known_bugs), len(report.errors)
+    # 라벨 🔴 인 warn 항목 → fail 카운트로 격상 (심각도 일관성)
+    warn_high = _count_label_high(report.known_bugs)
+    p      = len(report.passed)
+    f      = len(report.failed) + warn_high
+    k      = len(report.known_bugs) - warn_high
+    e      = len(report.errors)
     total  = p + f + k + e
     status = "🔴 BUG 높음 있음" if f > 0 else ("🟡 BUG 낮음 있음" if k > 0 else ("⛔ 실행 오류" if e > 0 else "🟢 정상"))
     # data-page-id: finalize 후 JS가 수동 이슈 카운트를 업데이트할 때 사용
@@ -525,7 +538,21 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             scenario   = _scenario_label(r, is_list, page_id)
             steps      = _reproduce_steps(r)
             expected, actual = _expected_vs_actual(r)
-            severity   = "높음" if r.status in ("fail", "error") else "낮음"
+            # 심각도 + 아이콘 결정 — status + 라벨/시나리오의 🔴/🟡 의도 반영 (사용자 보고 2026-06-01)
+            # 이전: status 만 — fail/error→높음/빨강 else 낮음/노랑
+            # → sc4c 처럼 known_bug 로 warn 처리됐는데 라벨 🔴 (높음 의도) 인 경우 모순
+            # 수정: 라벨에 🔴 있으면 status 무관하게 "높음" + 빨강 아이콘 (라벨/아이콘/심각도 일관성)
+            _label_text = (r.label or "") + " " + (scenario or "")
+            if "🔴" in _label_text:
+                severity = "높음"
+                # warn/known_bug 인데 라벨 🔴 면 빨강 아이콘으로 격상
+                if r.status in ("warn", "known_bug"):
+                    badge = '<span class="badge bug-high">&#x1F534; BUG</span>'
+                    css = "bug-high"
+            elif r.status in ("fail", "error"):
+                severity = "높음"
+            else:
+                severity = "낮음"
             ss_path    = r.extra.get("screenshot") if r.extra else None
             ss_html    = ""
             if ss_path:
@@ -757,8 +784,10 @@ def generate_html_report(
 
     # ── 전체 카운트 ───────────────────────────────────────────────
     total_p = sum(len(r.passed)     for _, r in reports)
-    total_f = sum(len(r.failed)     for _, r in reports)
-    total_k = sum(len(r.known_bugs) for _, r in reports)
+    # 라벨 🔴 인 warn 항목들은 fail 카운트로 격상 (심각도 일관성, 사용자 보고 2026-06-01)
+    total_warn_high = sum(_count_label_high(r.known_bugs) for _, r in reports)
+    total_f = sum(len(r.failed)     for _, r in reports) + total_warn_high
+    total_k = sum(len(r.known_bugs) for _, r in reports) - total_warn_high
     total_e = sum(len(r.errors)     for _, r in reports)
     overall = "🔴 결함 있음" if (total_f + total_e) > 0 else ("🟡 버그 추적 중" if total_k > 0 else "🟢 전체 정상")
 

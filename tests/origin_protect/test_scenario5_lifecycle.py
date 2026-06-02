@@ -189,12 +189,12 @@ class TestOriginProtectScenario5Lifecycle(OriginProtectBase):
         # 이전 run 잔존 정책 — 풀세팅 보장 위해 삭제 후 재생성
         # (idempotent skip 은 이전 불완전 상태 그대로 둬서 sc5b/c 검증 의미 없게 됨)
         if page.is_policy_exists(NAME):
-            # delete_policy 는 [AUTO]_ 가드만 허용 → [AUTO_KEEP]_ 삭제 Exception
-            # → delete_all_test_data() 사용 ([AUTO] + [AUTO_KEEP] 둘 다 정리, 일반 정책 무관)
-            page.delete_all_test_data()
-            page.page.wait_for_timeout(500)
-            self._add("pass", "sc5a — 이전 잔존 정책 삭제 (풀세팅 보장)",
-                      f"입력: {NAME} / 결과: delete_all_test_data 로 KEEP 포함 정리 후 재생성", sc=5)
+            # 자기 KEEP 정책만 삭제 (사용자 우려 2026-06-01: sc5a 가 다른 AUTO 영향 X)
+            # check_policy_row 가드 fix (2026-06-01) 후 delete_policy 가 [AUTO_KEEP] 도 처리 OK
+            page.delete_policy(NAME)
+            page.page.wait_for_timeout(200)
+            self._add("pass", "sc5a — 이전 잔존 KEEP 정책만 삭제 (풀세팅 보장)",
+                      f"입력: {NAME} / 결과: 자기 KEEP 만 정리 후 재생성 (다른 AUTO 영향 X)", sc=5)
 
         v = self.ON_VALUES
         # ADD 모달 — 필수 5
@@ -249,7 +249,7 @@ class TestOriginProtectScenario5Lifecycle(OriginProtectBase):
 
         # 재오픈 일치 검증 — list 등록 + EDIT 진입 + 모든 필드 확인
         page.navigate_to()
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         exists = page.is_policy_exists(NAME)
         self._add("pass" if exists else "fail",
                   "sc5a — lifecycle 정책 list 등록 확인",
@@ -350,7 +350,7 @@ class TestOriginProtectScenario5Lifecycle(OriginProtectBase):
 
         # 재오픈 일치 검증
         page.navigate_to()
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         _enter_edit_modal(page, NAME)
         loaded = self._dump_dom(page)
         self._verify_loaded(page, loaded, self.OFF_VALUES, scope="5b")
@@ -386,7 +386,7 @@ class TestOriginProtectScenario5Lifecycle(OriginProtectBase):
 
         # 2) cleanup — AUTO 만 정리, AUTO_KEEP 보존
         page.navigate_to()
-        page.page.wait_for_timeout(500)
+        page.page.wait_for_timeout(200)
         before_names = page.get_policy_names()
         before_auto = [n for n in before_names if n.startswith("[AUTO]") and not n.startswith("[AUTO_KEEP]")]
         before_keep = [n for n in before_names if n.startswith("[AUTO_KEEP]")]
@@ -394,7 +394,7 @@ class TestOriginProtectScenario5Lifecycle(OriginProtectBase):
         deleted = page.delete_all_auto_policies()
 
         page.navigate_to()
-        page.page.wait_for_timeout(500)
+        page.page.wait_for_timeout(200)
         after_names = page.get_policy_names()
         after_auto = [n for n in after_names if n.startswith("[AUTO]") and not n.startswith("[AUTO_KEEP]")]
         after_keep = [n for n in after_names if n.startswith("[AUTO_KEEP]")]

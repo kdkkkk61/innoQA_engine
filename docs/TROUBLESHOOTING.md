@@ -5,6 +5,20 @@
 
 ---
 
+## [RESOLVED] [AUTO_KEEP] 정책 cleanup 실패 — check_policy_row 가드가 [AUTO] 만 허용
+- **날짜**: 2026-06-01
+- **증상**: sc1 의 session cleanup 호출 후에도 `[AUTO_KEEP]_sc5_origin_protect` 잔존 → 사용자가 수동 삭제
+- **사용자 보고**: "아무리봐도 auto킵은 안지워, 지우는 로직이 없어"
+- **원인**: `pages/npouch_origin_protect_policy_page.py:check_policy_row` 의 가드
+  - 이전: `if not name.startswith("[AUTO]"): raise Exception(...)`
+  - `[AUTO_KEEP]_X`.startswith(`[AUTO]`) = False (괄호 다음 `_` vs `]` 다름)
+  - `delete_policy([AUTO_KEEP]_X)` → `check_policy_row` 가드에서 Exception
+  - `delete_all_test_data` 의 `try/except` 가 silent 잡음 → [AUTO_KEEP] 잔존
+- **수정**: `check_policy_row` 가드를 `[AUTO]` OR `[AUTO_KEEP]` 둘 다 허용
+- **파일**: `pages/npouch_origin_protect_policy_page.py:172~`
+
+---
+
 ## [RESOLVED] sc5b 다중 필드 EDIT 저장 fail — JS `el.click()` untrusted click 으로 AngularJS form ng-model 동기화 skip
 - **날짜**: 2026-06-01
 - **증상**:

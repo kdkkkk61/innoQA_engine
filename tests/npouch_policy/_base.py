@@ -1,10 +1,14 @@
-"""nPouch 원본보호 정책 — 공유 base class + ScanResult 헬퍼.
+"""nPouch 엔파우치 정책 — 공유 base class + ScanResult 헬퍼.
 
-제어 스위트(tests/control_suite/_base.py) 패턴 복제.
-각 시나리오 파일 (test_scenario1..6, test_zz_cleanup) 이 OriginProtectBase 상속.
+origin_protect/_base.py 패턴 복제 (사용자 명령 2026-06-01).
+각 시나리오 파일 (test_scenario0..6) 이 NpouchPolicyBase 상속.
 
-의존성: 제어 스위트 [AUTO_KEEP]_sc5_step1 (sc5 lifecycle 종료 후 보존 정책) 을
-       원본보호 정책 ADD 시 CSU select 로 연계.
+cleanup 정책 (origin_protect 동일):
+  - sc1 시작: AUTO + AUTO_KEEP 둘 다 cleanup (clean slate)
+  - sc2/3/4: cleanup 없음
+  - sc5c: AUTO 만 cleanup, KEEP 보존 (sc6 / 다음 페이지 연계)
+
+의존성: 원본보호 정책 [AUTO_KEEP]_sc5_origin_protect 를 정책 ADD 시 원본보호 정책 선택으로 연계.
 """
 import re
 import time
@@ -14,16 +18,12 @@ from pathlib import Path
 from core.models import ScanResult, PageScanReport
 
 
-# ── 스크린샷 헬퍼 (control_suite _base 와 동일) ────────────────────
+# ── 스크린샷 헬퍼 (origin_protect _base 와 동일) ────────────────
 _SS_DIR = Path(__file__).parent.parent.parent / "reports" / "screenshots"
 
 
 def _ss(page, label: str, highlight=None) -> str | None:
-    """fail/warn 캡처 — highlight (Locator) 가 있으면 빨간 outline + 스크롤 후 전체 캡처.
-
-    highlight 가 None 이면 기존 동작 (전체 페이지). 모달 안 검증처럼 어느 영역인지
-    시각적으로 명확해야 하는 경우 호출부에서 locator 를 넘긴다.
-    """
+    """fail/warn 캡처 — highlight (Locator) 있으면 빨간 outline + 스크롤 후 캡처."""
     try:
         _SS_DIR.mkdir(parents=True, exist_ok=True)
         safe = re.sub(r"[^\w가-힣]", "_", label)[:40]
@@ -31,7 +31,6 @@ def _ss(page, label: str, highlight=None) -> str | None:
         injected = False
         if highlight is not None:
             try:
-                # 보이는 영역으로 스크롤 + 빨간 outline 임시 주입
                 highlight.first.scroll_into_view_if_needed(timeout=1000)
                 highlight.first.evaluate(
                     "el => { el.setAttribute('data-qa-hl','1');"
@@ -82,27 +81,23 @@ def _r(status: str, label: str, detail: str = "", sc: int = 0,
     return text, sr
 
 
-class OriginProtectBase:
-    """nPouch 원본보호 정책 시나리오 공통 base."""
+class NpouchPolicyBase:
+    """nPouch 엔파우치 정책 시나리오 공통 base."""
 
-    PAGE_ID = "npouch_origin_protect"
+    PAGE_ID = "npouch_policy"
 
-    # session-level cleanup 1회 flag (control_suite 와 별도 영역)
+    # session-level cleanup 1회 flag (origin_protect 와 별도 영역)
     _SESSION_CLEANUP_DONE = False
 
     def _ensure_session_cleanup(self, page) -> None:
         """session 시작 [AUTO]_ + [AUTO_KEEP]_ 일괄 정리 (1회).
 
-        사용자 설계 (2026-05-29):
-          - sc1 시작: AUTO + AUTO_KEEP 둘 다 cleanup (clean slate, 중복 이름 방지)
+        사용자 설계 (origin_protect 동일):
+          - sc1 시작: AUTO + AUTO_KEEP 둘 다 cleanup (clean slate)
           - sc2/3/4: cleanup 없음
           - sc5c: AUTO 만 cleanup, KEEP 보존
-
-        보고서에 cleanup 행위 명시 (사용자 보고 2026-06-01):
-          - 이전: print 만 → 보고서에 cleanup 행위 표시 안 됨
-          - 수정: _add 호출하여 sc=1 로 보고서에 명시
         """
-        if OriginProtectBase._SESSION_CLEANUP_DONE:
+        if NpouchPolicyBase._SESSION_CLEANUP_DONE:
             return
         try:
             if hasattr(page, "delete_all_test_data"):
@@ -110,31 +105,28 @@ class OriginProtectBase:
                 before = [n for n in page.get_policy_names()
                           if n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]")]
                 deleted = page.delete_all_test_data()
-                # 보고서 명시 — sc1 의 첫 _add 로 cleanup 행위 노출
                 if hasattr(self, "_add"):
                     self._add("pass",
                               "sc1 — session 시작 cleanup ([AUTO] + [AUTO_KEEP] 일괄 삭제, clean slate)",
                               f"잔여: {len(before)}건 {before} / deleted={deleted} (sc3 ADD 중복 방지)",
                               sc=1)
                 else:
-                    print(f"[session cleanup] 원본보호 잔여 {len(before)}건 / 삭제 {deleted}건")
+                    print(f"[session cleanup] nPouch 정책 잔여 {len(before)}건 / 삭제 {deleted}건")
         except Exception as e:
             if hasattr(self, "_add"):
                 self._add("warn", "sc1 — session cleanup 예외", f"예외: {e!r}", sc=1)
             else:
-                print(f"[session cleanup] 원본보호 예외: {e!r}")
-        OriginProtectBase._SESSION_CLEANUP_DONE = True
+                print(f"[session cleanup] nPouch 정책 예외: {e!r}")
+        NpouchPolicyBase._SESSION_CLEANUP_DONE = True
 
     def _attach(self, scan_results: list[ScanResult]) -> None:
-        # 자동 sub-num 재태깅 안전망 — _add 우회 호출 cover (control_suite 와 동일 패턴)
+        # 자동 sub-num 재태깅 안전망
         try:
             nm = self._request.node.name
             m = re.match(r"test_scenario(\d+)([a-z])_", nm)
             if m:
                 sn = int(m.group(1))
                 sub = ord(m.group(2)) - ord("a") + 1
-                # sn=0 (sc0 시리즈) 는 sub-numbering 안 함 — sn*100+sub=sub 가 다른 시나리오
-                # parent sc=1,2,... 와 충돌. sc=0 raw 유지 → html_reporter `0:` 키 lookup.
                 if sn != 0:
                     new_sc = sn * 100 + sub
                     for r in scan_results:
@@ -158,8 +150,6 @@ class OriginProtectBase:
         self._lines: list[str] = []
         self._srs:   list[ScanResult] = []
         self._page = None
-        # crash 시점에 hook 이 page_id 추출 가능하도록 미리 attach (사용자 지적 2026-05-29
-        # — _add 호출 전 crash 발생 시 ScanResult 어디에도 안 잡힘 → error 카운트 0).
         request.node._npouch_page_id = self.PAGE_ID
         try:
             if "logged_in_page" in request.fixturenames:
@@ -177,9 +167,6 @@ class OriginProtectBase:
                 p.set_default_timeout(30000)
                 p.reload(wait_until="domcontentloaded", timeout=15000)
                 p.wait_for_timeout(200)
-                # Bootstrap modal 잔존물 강제 cleanup (사용자 보고 2026-05-29 sc3k FAIL —
-                # backdrops=2 잔존으로 sc3l click intercept). reload 후에도 modal-backdrop /
-                # body padding-right 잔존 케이스 fix.
                 try:
                     p.evaluate(
                         "() => { "
@@ -195,21 +182,13 @@ class OriginProtectBase:
 
     def _add(self, status: str, label: str, detail: str = "", sc: int = 0,
              highlight=None) -> None:
-        """sub-numbering + ScanResult 누적.
-
-        highlight (optional, Playwright Locator): fail/warn 시 캡처에서 해당
-        요소에 빨간 outline 임시 주입 → 어느 영역의 이슈인지 시각적으로 표시.
-        모달 안 검증처럼 영역 구분이 필요한 곳에서만 넘기면 된다.
-        """
-        # sub-numbering — 메서드 이름 'test_scenarioNX_...' 에서 자동 추출 → sc = N*100 + sub
-        # (sn*100 체계: a~z 전부 안전 — sc3j/sc3k 같은 j/k 도 충돌 없음)
+        """sub-numbering + ScanResult 누적."""
         try:
             nm = self._request.node.name
             m = re.match(r"test_scenario(\d+)([a-z])_", nm)
             if m:
                 sn = int(m.group(1))
                 sub = ord(m.group(2)) - ord("a") + 1
-                # sn=0 은 sub-num skip (다른 시나리오 parent sc 와 충돌 방지)
                 if sn != 0 and sc in (0, sn):
                     sc = sn * 100 + sub
         except Exception:
@@ -220,4 +199,6 @@ class OriginProtectBase:
         print(t)
         self._lines.append(t)
         self._srs.append(s)
+        # 매 _add 호출 시 _attach — hook 이 call 단계에서 _scan_report 잡을 수 있게
+        # (origin_protect _base.py:223 패턴, 사용자 보고 2026-06-01 HTML 보고서 누락 fix)
         self._attach(self._srs)

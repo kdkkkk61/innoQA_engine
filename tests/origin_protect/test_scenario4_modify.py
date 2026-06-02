@@ -43,13 +43,13 @@ def _enter_edit_modal(page, name: str):
         if si.count() > 0 and si.input_value():
             si.fill("")
             page.page.locator("button#searchBtn").first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(800)
+            page.page.wait_for_timeout(150)
     except Exception:
         pass
     # ① list 첫 행이 DOM 에 attached 될 때까지 대기 (최대 10초)
     page.page.locator(page.SEL_TABLE_ROW).first.wait_for(state="attached", timeout=10000)
     # ② AngularJS 비동기 list 렌더 안정화 추가 wait
-    page.page.wait_for_timeout(800)
+    page.page.wait_for_timeout(150)
     # ③ 정책 row 자체 attached 확인 (없으면 명시 예외 — silent stuck 차단)
     target_row = page.page.locator(page.SEL_TABLE_ROW).filter(has_text=name).first
     try:
@@ -60,7 +60,7 @@ def _enter_edit_modal(page, name: str):
             f"_ensure_sc3g_policy 실패 또는 cleanup race 가능성."
         )
     page.open_modify_modal(name)
-    page.page.wait_for_timeout(800)  # EDIT 모달 진입 안정화
+    page.page.wait_for_timeout(150)  # EDIT 모달 진입 안정화
 
 
 def _save_click(page):
@@ -84,7 +84,7 @@ def _save_click(page):
             "() => { const o = document.getElementById('qa-block-overlay'); "
             "if (o) o.style.pointerEvents = 'all'; }"
         )
-    page.page.wait_for_timeout(1500)
+    page.page.wait_for_timeout(200)
 
 
 SC3G_NAME = "[AUTO]_sc3g_normal_save"
@@ -123,7 +123,7 @@ def _pick_process_in_picker(page, prefer_keyword: str = "AUTO") -> str:
         page.page.locator("#globalProcessList.in button i.fa-search, #globalProcessList.in button.searchBtn").first.evaluate(
             "el => (el.closest('button') || el).click()"
         )
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
     except Exception:
         pass
     # 검색 결과 0건 시 검색 비우고 fallback
@@ -134,7 +134,7 @@ def _pick_process_in_picker(page, prefer_keyword: str = "AUTO") -> str:
             page.page.locator("#globalProcessList.in button i.fa-search, #globalProcessList.in button.searchBtn").first.evaluate(
                 "el => (el.closest('button') || el).click()"
             )
-            page.page.wait_for_timeout(800)
+            page.page.wait_for_timeout(150)
         except Exception:
             pass
         rows = page.page.locator("#globalProcessList.in table tbody tr:has(input[type='checkbox'])")
@@ -148,12 +148,12 @@ def _pick_process_in_picker(page, prefer_keyword: str = "AUTO") -> str:
         )
         cb = first.locator("input[type='checkbox']").first
         cb.evaluate("el => { if (!el.checked) el.click(); }")
-        page.page.wait_for_timeout(300)
+        page.page.wait_for_timeout(150)
         # 확인 버튼 click
         page.page.locator("#globalProcessList.in button.btn-primary, #globalProcessList.in button:has-text('확인')").first.evaluate(
             "el => el.click()"
         )
-        page.page.wait_for_timeout(1500)
+        page.page.wait_for_timeout(200)
     else:
         # 비어있음 (rare) — picker 닫기
         try:
@@ -161,7 +161,7 @@ def _pick_process_in_picker(page, prefer_keyword: str = "AUTO") -> str:
                               "#globalProcessList.in button[data-dismiss='modal']").first.evaluate(
                 "el => el.click()"
             )
-            page.page.wait_for_timeout(500)
+            page.page.wait_for_timeout(200)
         except Exception:
             pass
     return process_name
@@ -181,7 +181,7 @@ def _add_process_to_tab(page, tab_name: str, proc_type: str, description: str = 
         }""",
         tab_name,
     )
-    page.page.wait_for_timeout(600)
+    page.page.wait_for_timeout(150)
     # + 버튼
     page.page.evaluate(
         """(pt) => {
@@ -190,7 +190,7 @@ def _add_process_to_tab(page, tab_name: str, proc_type: str, description: str = 
         }""",
         proc_type,
     )
-    page.page.wait_for_timeout(1500)
+    page.page.wait_for_timeout(200)
     # "프로세스 선택" 버튼
     page.page.evaluate(
         """() => {
@@ -202,7 +202,7 @@ def _add_process_to_tab(page, tab_name: str, proc_type: str, description: str = 
             }
         }"""
     )
-    page.page.wait_for_timeout(1500)
+    page.page.wait_for_timeout(200)
     # picker — AUTO 검색 / 첫 행 fallback
     proc_name = _pick_process_in_picker(page, "AUTO")
     # 설명 입력
@@ -222,7 +222,7 @@ def _add_process_to_tab(page, tab_name: str, proc_type: str, description: str = 
             }""",
             description,
         )
-        page.page.wait_for_timeout(300)
+        page.page.wait_for_timeout(150)
     # 등록
     page.page.evaluate(
         """() => {
@@ -234,7 +234,7 @@ def _add_process_to_tab(page, tab_name: str, proc_type: str, description: str = 
             }
         }"""
     )
-    page.page.wait_for_timeout(1500)
+    page.page.wait_for_timeout(200)
     # 결과 확인
     sub_msg = ""
     if page.is_confirm_modal_visible(timeout=1000):
@@ -277,7 +277,7 @@ def _ensure_sc3g_policy(page):
                 f"_ensure_sc3g_policy 저장 실패 — server msg: {msg!r}"
             )
     page.navigate_to()
-    page.page.wait_for_timeout(800)
+    page.page.wait_for_timeout(150)
 
 
 class TestOriginProtectScenario4Modify(OriginProtectBase):
@@ -357,7 +357,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
         if "저장" in msg and "오류" not in msg:
             # silent revert 패턴 의심 — 다시 진입해서 이름 보존 여부 확인
             page.navigate_to()
-            page.page.wait_for_timeout(500)
+            page.page.wait_for_timeout(200)
             reverted = page.is_policy_exists(SC3G_NAME)
             self._add("warn" if reverted else "fail",
                       "sc4b — [정책 이름] EDIT 이름 빈값 silent revert + 거짓 성공 메시지 🟡 (known_bug)",
@@ -404,7 +404,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
             page.page.locator(page.SEL_DRIVE_QUOTA).fill("100")
             _csu_select_first(page)
             page.page.locator(page.SEL_SUBMIT_BTN).first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(1500)
+            page.page.wait_for_timeout(200)
             if page.is_confirm_modal_visible():
                 page.dismiss_confirm_modal()
             page.navigate_to()
@@ -433,7 +433,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
             return  # 결함 재현 안 됐으면 rename 안 일어남 — 원상복구 불필요
 
         page.navigate_to()
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         try:
             # JS 로 latest mtime row 직접 click + tActive 적용
             clicked = page.page.evaluate(
@@ -459,10 +459,10 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 }""",
                 other_name,
             )
-            page.page.wait_for_timeout(500)
+            page.page.wait_for_timeout(200)
             # modifyItemBtn click → EDIT 모달
             page.page.locator(page.SEL_MODIFY_BTN).first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(1500)
+            page.page.wait_for_timeout(200)
             # 이름 복구
             page.page.locator(page.SEL_POLICY_NAME).fill(SC3G_NAME)
             _save_click(page)
@@ -570,12 +570,12 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
         for sel, inp, expected, desc in cases:
             loc = page.page.locator(sel)
             loc.fill("")
-            page.page.wait_for_timeout(80)
+            page.page.wait_for_timeout(150)
             loc.evaluate(
                 "(el, v) => { el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }",
                 inp,
             )
-            page.page.wait_for_timeout(250)
+            page.page.wait_for_timeout(200)
             actual = loc.input_value()
             self._add("pass" if actual == expected else "fail",
                       f"sc4f — EDIT 입력 마스킹 — {desc}",
@@ -608,13 +608,13 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
         ]:
             page.page.locator(wm_text_sel).fill("")
             page.page.locator(pc_sel).first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(300)
+            page.page.wait_for_timeout(150)
             v1 = page.page.locator(wm_text_sel).input_value()
             self._add("pass" if v1 == "[/PCINFO/]" else "fail",
                       f"sc4g — [{area}] PC 체크 → '[/PCINFO/]' (EDIT = ADD)",
                       f"결과: {v1!r}", sc=4, highlight=page.page.locator(wm_text_sel))
             page.page.locator(time_sel).first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(300)
+            page.page.wait_for_timeout(150)
             v2 = page.page.locator(wm_text_sel).input_value()
             self._add("pass" if v2 == "[/PCINFO/][/TIME/]" else "fail",
                       f"sc4g — [{area}] TIME 추가 → '[/PCINFO/][/TIME/]'",
@@ -700,7 +700,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
             ext_input.fill(val)
             page.page.wait_for_timeout(150)
             ext_btn.first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(500)
+            page.page.wait_for_timeout(200)
 
         _add_ext("doc")
         if page.is_confirm_modal_visible(timeout=500):
@@ -726,7 +726,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
         fld_input = page.page.locator(page.SEL_WATCH_EXCEPT_INPUT)
         fld_input.fill("")
         page.page.locator(page.SEL_WATCH_EXCEPT_BTN).first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(500)
+        page.page.wait_for_timeout(200)
         if page.is_confirm_modal_visible(timeout=1500):
             msg = page.get_confirm_message()
             is_typo = msg == "확장자를 입력하세요"
@@ -759,7 +759,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                     el.evaluate("el => el.click()")
                     page.page.wait_for_timeout(200)
             page.page.locator(wm_text_sel).fill("[/TIME/]")
-            page.page.wait_for_timeout(400)
+            page.page.wait_for_timeout(200)
             pc = page.page.locator(pc_sel).is_checked()
             tm = page.page.locator(time_sel).is_checked()
             defect = (pc is True and tm is True)
@@ -768,7 +768,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                       f"text='[/TIME/]' / pc={pc}, time={tm}",
                       sc=4, highlight=page.page.locator(pc_sel))
             page.page.locator(wm_text_sel).fill("")
-            page.page.wait_for_timeout(400)
+            page.page.wait_for_timeout(200)
             pc2 = page.page.locator(pc_sel).is_checked()
             tm2 = page.page.locator(time_sel).is_checked()
             defect2 = (pc2 is True and tm2 is True)
@@ -798,12 +798,12 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
 
         def _try(loc, v):
             loc.fill("")
-            page.page.wait_for_timeout(80)
+            page.page.wait_for_timeout(150)
             loc.evaluate(
                 "(el, v) => { el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }",
                 v,
             )
-            page.page.wait_for_timeout(250)
+            page.page.wait_for_timeout(200)
             return loc.input_value()
 
         for area, op_sel, dg_sel in [
@@ -888,7 +888,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
         for area, toggle_id, dep_ids in toggle_specs:
             toggle_loc = page.page.locator(f"input#{toggle_id}")
             toggle_loc.first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(400)
+            page.page.wait_for_timeout(200)
             disabled_states = page.page.evaluate(
                 "(ids) => ids.map(id => { const el=document.getElementById(id); "
                 "return {id, disabled: el? el.disabled : null}; })",
@@ -901,7 +901,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                       f"결과: {'전부 disabled' if all_disabled else 'disabled 안 됨=' + str(not_disabled)}",
                       sc=4, highlight=page.page.locator(f"input#{dep_ids[0]}"))
             toggle_loc.first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(300)
+            page.page.wait_for_timeout(150)
         _safe_close_modal(page)
 
     # ==================================================================
@@ -957,7 +957,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
             page.page.locator(page.SEL_DRIVE_QUOTA).fill("100")
             _csu_select_first(page)
             page.page.locator(page.SEL_SUBMIT_BTN).first.evaluate("el => el.click()")
-            page.page.wait_for_timeout(1500)
+            page.page.wait_for_timeout(200)
             if page.is_confirm_modal_visible():
                 page.dismiss_confirm_modal()
             page.navigate_to()
@@ -1001,7 +1001,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 }""",
                 tab_name,
             )
-            page.page.wait_for_timeout(600)
+            page.page.wait_for_timeout(150)
             active = page.page.evaluate(
                 """() => {
                     const a = document.querySelector('#addItemModal.in ul li.active');
@@ -1037,7 +1037,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 (t.querySelector('a') || t).click();
             }"""
         )
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         # + 버튼 (data-process-type="ALLOW_PROCESS")
         plus_clicked = page.page.evaluate(
             """() => {
@@ -1046,7 +1046,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 return 'no_btn';
             }"""
         )
-        page.page.wait_for_timeout(1500)
+        page.page.wait_for_timeout(200)
         # sub-modal 진입 확인
         sub_open = page.page.evaluate(
             """() => {
@@ -1075,8 +1075,12 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                     return 'no_btn';
                 }"""
             )
-            page.page.wait_for_timeout(1500)
-            picker_open = page.page.locator("#globalProcessList.in").count() > 0
+            # picker 열림까지 정확한 wait (시간 단축 후 100ms 부족 → wait_for 사용)
+            try:
+                page.page.locator("#globalProcessList.in").wait_for(state="attached", timeout=3000)
+                picker_open = True
+            except Exception:
+                picker_open = False
             picker_count = page.page.evaluate(
                 """() => {
                     const p = document.querySelector('#globalProcessList.in');
@@ -1100,7 +1104,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                     }
                 }"""
             )
-            page.page.wait_for_timeout(500)
+            page.page.wait_for_timeout(200)
             # sub-modal 닫기
             page.page.evaluate(
                 """() => {
@@ -1112,7 +1116,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                     }
                 }"""
             )
-            page.page.wait_for_timeout(500)
+            page.page.wait_for_timeout(200)
         _safe_close_modal(page)
 
     # ==================================================================
@@ -1147,7 +1151,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 }""",
                 tab_name,
             )
-            page.page.wait_for_timeout(600)
+            page.page.wait_for_timeout(150)
 
             # + 버튼 click
             page.page.evaluate(
@@ -1157,7 +1161,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 }""",
                 proc_type,
             )
-            page.page.wait_for_timeout(1500)
+            page.page.wait_for_timeout(200)
 
             # "프로세스 선택" 버튼 click
             page.page.evaluate(
@@ -1170,7 +1174,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                     }
                 }"""
             )
-            page.page.wait_for_timeout(1500)
+            page.page.wait_for_timeout(200)
 
             # picker 첫 행 (target_process_idx) 체크 + 확인
             page.page.evaluate(
@@ -1188,7 +1192,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 }""",
                 target_process_idx,
             )
-            page.page.wait_for_timeout(1500)
+            page.page.wait_for_timeout(200)
 
             # sub-modal 의 "등록" 버튼
             msg = ""
@@ -1203,7 +1207,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                         }
                     }"""
                 )
-                page.page.wait_for_timeout(1500)
+                page.page.wait_for_timeout(200)
             except Exception:
                 pass
 
@@ -1235,7 +1239,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                         }
                     }"""
                 )
-                page.page.wait_for_timeout(500)
+                page.page.wait_for_timeout(200)
 
         # 결과 — 같은 프로세스가 3 탭에 다 등록되면 결함 (배타성 위반)
         defect_reproduced = len(registered_tabs) >= 2
@@ -1266,17 +1270,30 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 if (t) (t.querySelector('a') || t).click();
             }"""
         )
-        page.page.wait_for_timeout(800)
-        # 태그 sub-tab click
-        tag_clicked = page.page.evaluate(
-            """() => {
-                const modal = document.querySelector('#addItemModal.in');
-                const tags = Array.from(modal.querySelectorAll('a, li, button')).filter(el => el.textContent.trim() === '태그' && el.offsetParent);
-                if (tags[0]) { tags[0].click(); return 'clicked'; }
-                return 'not_found';
-            }"""
+        page.page.wait_for_timeout(150)
+        # 태그 sub-tab click — overlay 우회 + trusted click (사용자 지적 2026-06-01)
+        # 이전: JS el.click() (untrusted) → AngularJS sub-tab 전환 핸들러 미발화 → tActive 안 붙음
+        page.page.evaluate(
+            "() => { const o = document.getElementById('qa-block-overlay'); "
+            "if (o) o.style.pointerEvents = 'none'; }"
         )
-        page.page.wait_for_timeout(800)
+        tag_clicked = "not_found"
+        try:
+            tag_loc = page.page.locator(
+                "#addItemModal.in ul a:has-text('태그'), "
+                "#addItemModal.in ul li:has-text('태그') a, "
+                "#addItemModal.in [role='tab']:has-text('태그')"
+            ).filter(has_not_text="추가").first  # '태그 추가' 버튼 제외
+            tag_loc.click(force=True, timeout=3000)
+            tag_clicked = "clicked"
+        except Exception as e:
+            tag_clicked = f"fail:{type(e).__name__}"
+        finally:
+            page.page.evaluate(
+                "() => { const o = document.getElementById('qa-block-overlay'); "
+                "if (o) o.style.pointerEvents = 'all'; }"
+            )
+        page.page.wait_for_timeout(250)
         # 태그 sub-tab 활성화 확인
         tag_active = page.page.evaluate(
             """() => {
@@ -1333,7 +1350,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 if (t) (t.querySelector('a') || t).click();
             }"""
         )
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         gm_open = page.page.locator("#__globalMessageModal.in").count() > 0
         active_tab = page.page.evaluate(
             """() => {
@@ -1397,7 +1414,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 if (t) (t.querySelector('a') || t).click();
             }"""
         )
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         before_count = page.page.locator(
             "#addItemModal.in table tbody tr:has(input[type='checkbox'])"
         ).count()
@@ -1416,7 +1433,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                     }
                 }"""
             )
-            page.page.wait_for_timeout(1500)
+            page.page.wait_for_timeout(200)
             if page.is_confirm_modal_visible(timeout=1000):
                 page.dismiss_confirm_modal()
         after_count = page.page.locator(
@@ -1448,7 +1465,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 if (t) (t.querySelector('a') || t).click();
             }"""
         )
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         page.page.evaluate(
             """() => {
                 const modal = document.querySelector('#addItemModal.in');
@@ -1456,7 +1473,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 if (tags[0]) tags[0].click();
             }"""
         )
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         page.page.evaluate(
             """() => {
                 const plus = document.querySelectorAll('#addItemModal.in i.fa-plus');
@@ -1466,7 +1483,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 }
             }"""
         )
-        page.page.wait_for_timeout(1500)
+        page.page.wait_for_timeout(200)
         modals_open = page.page.evaluate(
             """() => {
                 return Array.from(document.querySelectorAll('.modal-wrap.in,.modal.in'))
@@ -1487,7 +1504,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 }
             }"""
         )
-        page.page.wait_for_timeout(500)
+        page.page.wait_for_timeout(200)
         _safe_close_modal(page)
 
     # ==================================================================
@@ -1509,7 +1526,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 if (t) (t.querySelector('a') || t).click();
             }"""
         )
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         page.page.evaluate(
             """() => {
                 const modal = document.querySelector('#addItemModal.in');
@@ -1517,7 +1534,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 if (tags[0]) tags[0].click();
             }"""
         )
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         before_count = page.page.locator(
             "#addItemModal.in [id*='Tag'] tbody tr:has(input[type='checkbox'])"
         ).count()
@@ -1536,7 +1553,7 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                     }
                 }"""
             )
-            page.page.wait_for_timeout(1500)
+            page.page.wait_for_timeout(200)
             if page.is_confirm_modal_visible(timeout=1000):
                 page.dismiss_confirm_modal()
         after_count = page.page.locator(
@@ -1568,14 +1585,14 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 if (t) (t.querySelector('a') || t).click();
             }"""
         )
-        page.page.wait_for_timeout(800)
+        page.page.wait_for_timeout(150)
         page.page.evaluate(
             """() => {
                 const btn = document.querySelector('#addItemModal.in button[data-process-type="ALLOW_PROCESS"]');
                 if (btn) btn.click();
             }"""
         )
-        page.page.wait_for_timeout(1500)
+        page.page.wait_for_timeout(200)
 
         for inp, label in [("한글설명", "한글"), ("$@%*^&", "특수문자"), ("X"*3000, "3000자")]:
             page.page.evaluate(
@@ -1621,5 +1638,5 @@ class TestOriginProtectScenario4Modify(OriginProtectBase):
                 }
             }"""
         )
-        page.page.wait_for_timeout(500)
+        page.page.wait_for_timeout(200)
         _safe_close_modal(page)
