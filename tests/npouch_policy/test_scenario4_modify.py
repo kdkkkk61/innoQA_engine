@@ -443,13 +443,32 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
         _ensure_sc3l_policy(page)
 
         targets = [
-            ("정책 이름", page.SEL_POLICY_NAME),
+            ("정책 이름",              page.SEL_POLICY_NAME),
             ("열람 파일 인증 서버 URL", page.SEL_CERT_URL),
-            ("HTML 문서 제목", page.SEL_HTML_DOC_NAME),
+            ("허용 인쇄 브랜드",       page.SEL_ALLOW_PRINT_BRAND),
+            ("제외 인쇄 포트",         page.SEL_EXCEPT_PRINT_PORT),
+            ("HTML 문서 제목",         page.SEL_HTML_DOC_NAME),
+            ("HTML 연락처",            page.SEL_HTML_CONTACT),
+            ("커스텀 옵션값",          page.SEL_CUSTOM_OPTION),
+            ("바둑판 워터마크 문구",   page.SEL_SHOOT_WM_TEXT),
+            ("중앙 워터마크 표시 내용", page.SEL_CENTER_WM_TEXT),
         ]
         text_3000 = "X" * 3000
+        pdf_text_selectors = {page.SEL_SHOOT_WM_TEXT, page.SEL_CENTER_WM_TEXT}
         for label, sel in targets:
             _enter_edit_modal(page, SC3L_NAME)
+            # PDF 탭 텍스트는 탭 진입 + 워터마크 토글 ON (입력 가능 상태)
+            if sel in pdf_text_selectors:
+                page.activate_tab("PDF문서 보호 기능 설정")
+                page.page.evaluate(
+                    """() => {
+                        ['isPdfProtect','isPdfWaterMark','isShootPreventWaterMark','isPdfWaterMarkMain'].forEach(id => {
+                            const el = document.getElementById(id);
+                            if (el && !el.checked) el.click();
+                        });
+                    }"""
+                )
+                page.page.wait_for_timeout(200)
             page.page.locator(sel).fill(text_3000)
             _save_click(page)
             msg = ""
