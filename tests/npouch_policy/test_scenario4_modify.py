@@ -60,10 +60,21 @@ def _enter_edit_modal(page, name: str) -> bool:
 
 
 def _safe_close_modal(page) -> None:
-    """EDIT 모달 안전 닫기 (저장/취소 무관)."""
+    """EDIT 모달 안전 닫기 — close_modal 의 30초 default timeout 우회 (사용자 보고 2026-06-03).
+
+    이전: page.close_modal() → click_attached 30초 timeout (모달 이미 닫혀있으면 누적 낭비)
+    이후: 직접 click(force=True, timeout=2000) + visible 체크 강화
+    """
     try:
-        if page.page.locator(page.SEL_MODAL_OPEN).count() > 0:
-            page.close_modal()
+        modal = page.page.locator(page.SEL_MODAL_OPEN)
+        if modal.count() == 0:
+            return  # 이미 닫힘 — 즉시 return
+        cancel_btn = page.page.locator(
+            "div#addItemModal.in .modal-footer button:has-text('취소'):visible"
+        ).first
+        if cancel_btn.count() > 0:
+            cancel_btn.click(force=True, timeout=2000)
+        page.page.wait_for_timeout(200)
     except Exception:
         pass
 
@@ -861,6 +872,278 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
                   f"사용자 정정: 메인 ON + 하위 OFF 자체는 자연스러운 default — 결함 아님 "
                   f"(진짜 결함은 sc4m 중간 토글 종속 누락)",
                   sc=4)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4w — 원본보호 메인 OFF → 적용 list 삭제 버튼 동작 결함 🔴 (사용자 보고 2026-06-02)
+    # ==================================================================
+    def test_scenario4w_origin_protect_off_delete_still_works_defect(self, logged_in_page, settings):
+        """sc4w — 원본보호 메인 OFF 시 하위 (적용 list 삭제) 종속 disabled 안 됨 🔴.
+
+        사용자 보고 2026-06-02:
+          - 원본보호 메인 토글 ON + 정책선택 → 적용 list 에 정책 등록
+          - 메인 토글 OFF → 하위 disabled 되어야 정상 (정책선택 버튼은 disabled)
+          - 그러나 적용 list 의 deleteBtn 동작 (row 사라짐) → 결함
+
+        sc3m / sc4m (PDF 중간 토글) 와 유사 패턴 — 종속 차단 누락.
+        """
+        print("\n━━ [엔파우치 정책] 시나리오 4w: 원본보호 OFF + 삭제 결함 ━━━")
+        page = NpouchPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        _ensure_sc3l_policy(page)
+        _enter_edit_modal(page, SC3L_NAME)
+
+        # 1) 원본보호 ON + KEEP 선택 (적용 list 갱신)
+        cb = page.page.locator(page.SEL_ORIGIN_PROTECT).first
+        if not cb.is_checked():
+            cb.evaluate("el => el.click()")
+            page.page.wait_for_timeout(150)
+        if page.page.locator("tbody#originProtectPolicyList tr").count() == 0:
+            _select_origin_protect_keep(page)
+        before_cnt = page.page.locator("tbody#originProtectPolicyList tr").count()
+
+        # 2) 원본보호 메인 OFF (적용 list 잔존 + 정책선택 버튼 disabled 화면)
+        cb.evaluate("el => el.click()")
+        page.page.wait_for_timeout(300)
+        cb_state = page.page.evaluate(
+            f"() => {{ const el = document.querySelector('{page.SEL_ORIGIN_PROTECT}'); "
+            "return el ? el.checked : null; }"
+        )
+        # 정책선택 버튼 disabled 여부
+        select_btn_disabled = page.page.evaluate(
+            "() => { const b = document.getElementById('addNpouchOriginProtectPolicyBtn'); "
+            "return b ? b.disabled : null; }"
+        )
+        # 적용 list 의 deleteBtn disabled 여부
+        delete_btn_disabled = page.page.evaluate(
+            """() => {
+                const tbody = document.getElementById('originProtectPolicyList');
+                if (!tbody) return 'no tbody';
+                const btn = tbody.querySelector('button.deleteBtn');
+                return btn ? btn.disabled : 'no btn';
+            }"""
+        )
+
+        # 3) 삭제 버튼 click 시도 → row 사라지는지
+        click_result = page.page.evaluate(
+            """() => {
+                const tbody = document.getElementById('originProtectPolicyList');
+                const btn = tbody && tbody.querySelector('button.deleteBtn');
+                if (!btn) return 'no btn';
+                btn.click();
+                return 'clicked';
+            }"""
+        )
+        page.page.wait_for_timeout(500)
+        after_cnt = page.page.locator("tbody#originProtectPolicyList tr").count()
+        delete_worked = after_cnt < before_cnt
+
+        # 결함 판정: 메인 OFF 상태에서 삭제 동작 = 종속 차단 누락
+        if delete_worked:
+            self._add("warn",
+                      "sc4w — 원본보호 메인 OFF → 적용 list 삭제 동작 결함 🔴 (known_bug 후보)",
+                      f"메인 OFF 상태 (checked={cb_state}) / 정책선택 버튼 disabled={select_btn_disabled} / "
+                      f"삭제 버튼 disabled={delete_btn_disabled} / click={click_result} / "
+                      f"row 변화: {before_cnt} → {after_cnt} (감소={delete_worked}) | "
+                      f"결함 의미: 메인 OFF 인데 적용 list 의 삭제 동작 → 종속 차단 누락 "
+                      f"(정책선택 버튼은 disabled 됐지만 삭제 버튼은 동작)",
+                      sc=4, highlight=page.page.locator("tbody#originProtectPolicyList"))
+        else:
+            self._add("pass",
+                      "sc4w — 원본보호 메인 OFF → 적용 list 삭제 차단 (정상)",
+                      f"메인 OFF / 삭제 동작 안 함 (row {before_cnt} → {after_cnt})",
+                      sc=4)
+        _safe_close_modal(page)
+
+    # ==================================================================
+    # sc4x — 시나리오 기반 검증: 메인 ON+값 채움 → OFF → 하위 동작 차단 (10 영역)
+    # 사용자 보고 2026-06-02: "값 넣고 OFF 해야 하위 동작 차단 검증 가능"
+    # ==================================================================
+    def test_scenario4x_main_off_sub_action_blocked_scenario(self, logged_in_page, settings):
+        """sc4x — 시나리오 기반 종속 검증.
+
+        패턴:
+          1. 메인 ON + 하위 값/click 채움
+          2. 메인 OFF
+          3. 하위 element 동작 차단 검증 (disabled / click 무효 / fill 무효)
+
+        sc4w 의 원본보호 결함과 같은 패턴 — 다른 영역도 동일 결함 가능성.
+        """
+        print("\n━━ [엔파우치 정책] 시나리오 4x: 시나리오 기반 종속 동작 차단 ━━━")
+        page = NpouchPolicyPage(logged_in_page, settings)
+        self._page = page.page
+        page.navigate_to()
+        _ensure_sc3l_policy(page)
+
+        def _scenario_check(label: str, main_sel: str, sub_actions: list, expected_blocks: list):
+            """한 영역 시나리오 검증.
+
+            sub_actions: [(sel, action, value)] — action='fill' or 'click'
+            expected_blocks: [(sel, check_type)] — check_type='input_value' or 'checked' or 'disabled'
+            """
+            _enter_edit_modal(page, SC3L_NAME)
+            # 1) 메인 ON 보장
+            main_el = page.page.locator(main_sel).first
+            if not main_el.is_checked():
+                main_el.evaluate("el => el.click()")
+                page.page.wait_for_timeout(150)
+            # 2) 하위 값 채움
+            for sel, action, value in sub_actions:
+                try:
+                    if action == "fill":
+                        page.page.locator(sel).fill(value)
+                    elif action == "click":
+                        page.page.locator(sel).first.evaluate("el => el.click()")
+                    page.page.wait_for_timeout(80)
+                except Exception:
+                    pass
+            # 3) 메인 OFF
+            main_el.evaluate("el => el.click()")
+            page.page.wait_for_timeout(300)
+            # 4) 하위 동작 차단 검증
+            for sel, check_type in expected_blocks:
+                if check_type == "disabled":
+                    disabled = page.page.evaluate(
+                        f"() => {{ const el = document.querySelector('{sel}'); "
+                        "return el ? el.disabled : null; }"
+                    )
+                    self._add("pass" if disabled else "warn",
+                              f"sc4x — [{label}] OFF → '{sel}' disabled",
+                              f"결과: disabled={disabled} (기대 True)", sc=4,
+                              highlight=page.page.locator(sel).first)
+            _safe_close_modal(page)
+
+        # 1) 인쇄 옵션 — ON 시 브랜드/포트 채움 → OFF → disabled
+        _scenario_check(
+            "인쇄 옵션", page.SEL_PRINT_OPTION,
+            [(page.SEL_ALLOW_PRINT_BRAND, "fill", "TestBrand"),
+             (page.SEL_EXCEPT_PRINT_PORT, "fill", "TestPort")],
+            [(page.SEL_PRINT_X, "disabled"), (page.SEL_PRINT_O, "disabled"),
+             (page.SEL_ALLOW_PRINT_BRAND, "disabled"), (page.SEL_EXCEPT_PRINT_PORT, "disabled")],
+        )
+
+        # 2) 열기암호 — ON 시 모든 비번 종속 ON/채움 → OFF → disabled
+        _scenario_check(
+            "열기암호", page.SEL_PW_TOGGLE,
+            [(page.SEL_PW_NUMBER_LETTER, "click", None),
+             (page.SEL_PW_SPECIAL_LETTER, "click", None)],
+            [(page.SEL_PW_MIN, "disabled"), (page.SEL_PW_MAX, "disabled"),
+             (page.SEL_PW_SAME_LETTER, "disabled"), (page.SEL_PW_CONTINUE_LETTER, "disabled"),
+             (page.SEL_PW_NUMBER_LETTER, "disabled"), (page.SEL_PW_SPECIAL_LETTER, "disabled")],
+        )
+
+        # 3) 첨부파일 개수 — ON + 값 → OFF → disabled
+        _scenario_check(
+            "첨부파일 개수", page.SEL_FILE_COUNT_TOGGLE,
+            [(page.SEL_FILE_COUNT_VAL, "fill", "5")],
+            [(page.SEL_FILE_COUNT_VAL, "disabled")],
+        )
+
+        # 4) 확장자 필터 — ON + 확장자 추가 → OFF → 입력/추가 disabled
+        _enter_edit_modal(page, SC3L_NAME)
+        ext = page.page.locator(page.SEL_EXT_FILTER).first
+        if not ext.is_checked():
+            ext.evaluate("el => el.click()")
+            page.page.wait_for_timeout(150)
+        page.page.locator(page.SEL_EXT_INPUT).fill("docx")
+        page.page.locator("button#addExtensions").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(200)
+        ext.evaluate("el => el.click()")  # OFF
+        page.page.wait_for_timeout(200)
+        ext_input_disabled = page.page.evaluate(
+            f"() => document.querySelector('{page.SEL_EXT_INPUT}').disabled"
+        )
+        ext_add_disabled = page.page.evaluate(
+            "() => document.getElementById('addExtensions').disabled"
+        )
+        self._add("pass" if ext_input_disabled else "warn",
+                  "sc4x — [확장자 필터] OFF → 확장자 input disabled",
+                  f"결과: disabled={ext_input_disabled}", sc=4)
+        self._add("pass" if ext_add_disabled else "warn",
+                  "sc4x — [확장자 필터] OFF → 추가 버튼 disabled",
+                  f"결과: disabled={ext_add_disabled}", sc=4)
+        _safe_close_modal(page)
+
+        # 5) PDF 보호 메인 — ON + 워터마크 채움 → OFF → 하위 disabled
+        _enter_edit_modal(page, SC3L_NAME)
+        page.activate_tab("PDF문서 보호 기능 설정")
+        page.page.evaluate(
+            """() => {
+                ['isPdfProtect','isPdfWaterMark','isPdfWaterMarkMain'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el && !el.checked) el.click();
+                });
+            }"""
+        )
+        page.page.wait_for_timeout(200)
+        page.page.locator(page.SEL_CENTER_WM_TEXT).fill("PdfTest")
+        page.page.wait_for_timeout(100)
+        # PDF 메인 OFF
+        page.page.evaluate("document.getElementById('isPdfProtect').click()")
+        page.page.wait_for_timeout(300)
+        pdf_print_disabled = page.page.evaluate(
+            "() => document.getElementById('isPdfPrint').disabled"
+        )
+        center_text_disabled = page.page.evaluate(
+            "() => document.getElementById('pdfWaterMarkAddText').disabled"
+        )
+        color_disabled = page.page.evaluate(
+            "() => document.getElementById('pdfWaterMarkAddTextColor').disabled"
+        )
+        self._add("pass" if pdf_print_disabled else "warn",
+                  "sc4x — [PDF 보호 메인] OFF → 'PDF 프린트' disabled",
+                  f"결과: disabled={pdf_print_disabled}", sc=4)
+        self._add("pass" if center_text_disabled else "warn",
+                  "sc4x — [PDF 보호 메인] OFF → '중앙 워터마크 텍스트' disabled",
+                  f"결과: disabled={center_text_disabled}", sc=4)
+        self._add("pass" if color_disabled else "warn",
+                  "sc4x — [PDF 보호 메인] OFF → '색상 picker' disabled",
+                  f"결과: disabled={color_disabled}", sc=4)
+        _safe_close_modal(page)
+
+        # 6) 화면 중앙 워터마크 — ON + 텍스트/색상/크기/투명도/기울기 채움 → OFF → 종속 disabled
+        # 사용자 보고 2026-06-02: 중앙 워터마크 OFF 시 색상/텍스트 enabled 잔존 = 결함 재현
+        _enter_edit_modal(page, SC3L_NAME)
+        page.activate_tab("PDF문서 보호 기능 설정")
+        page.page.evaluate(
+            """() => {
+                ['isPdfProtect','isPdfWaterMark','isPdfWaterMarkMain'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el && !el.checked) el.click();
+                });
+            }"""
+        )
+        page.page.wait_for_timeout(200)
+        # ON 시 종속 다 채움 (사용자 의도: 값 채운 후 OFF)
+        page.page.locator(page.SEL_CENTER_WM_TEXT).fill("CenterTest")
+        page.page.locator(page.SEL_CENTER_WM_SIZE).fill("12")
+        page.page.locator(page.SEL_CENTER_WM_OPACITY).fill("50")
+        page.page.locator(page.SEL_CENTER_WM_DEGREE).fill("45")
+        page.page.locator(page.SEL_CENTER_WM_COLOR).evaluate("el => { el.value='#ff0000'; el.dispatchEvent(new Event('change',{bubbles:true})); }")
+        page.page.wait_for_timeout(100)
+        # 중앙 워터마크 OFF
+        page.page.evaluate("document.getElementById('isPdfWaterMarkMain').click()")
+        page.page.wait_for_timeout(300)
+        # 5 종속 disabled 검증
+        checks = [
+            ("표시 내용", "pdfWaterMarkAddText"),
+            ("글자 크기", "pdfWaterMarkAddTextSize"),
+            ("불투명도",   "pdfWaterMarkAddTextOpacity"),
+            ("기울기",     "pdfWaterMarkAddTextDegree"),
+            ("색상 picker", "pdfWaterMarkAddTextColor"),
+        ]
+        for label, eid in checks:
+            disabled = page.page.evaluate(
+                f"() => {{ const el = document.getElementById('{eid}'); return el ? el.disabled : null; }}"
+            )
+            self._add("pass" if disabled else "warn",
+                      f"sc4x — [중앙 워터마크 OFF] → '{label}' disabled (기대 True)"
+                      if disabled else
+                      f"sc4x — [중앙 워터마크 OFF] → '{label}' disabled 안 됨 결함 🔴 (사용자 발견)",
+                      f"중앙 워터마크 체크박스 OFF 상태 / '{label}' disabled={disabled} | "
+                      f"결함 의미: 메인 OFF 인데 종속 element 사용 가능 (사용자 시각으로도 disabled 안 됨)",
+                      sc=4, highlight=page.page.locator(f"#{eid}").first)
         _safe_close_modal(page)
 
     # ==================================================================

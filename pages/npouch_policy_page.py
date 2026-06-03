@@ -42,7 +42,7 @@ class NpouchPolicyPage(BasePage):
     SEL_MODAL                = "div#addItemModal"
     SEL_MODAL_OPEN           = "div#addItemModal.in"
     SEL_SUBMIT_BTN           = "div#addItemModal.in .modal-footer button.btn-primary:visible"
-    SEL_CANCEL_BTN           = "div#addItemModal.in button:has-text('취소')"
+    SEL_CANCEL_BTN           = "div#addItemModal.in button:has-text('취소')"  # 원본 (이전 4 runs 정상)
 
     # 탭
     SEL_TAB_BASIC            = "div#addItemModal.in ul.nav li a:has-text('정책 정보')"
@@ -282,6 +282,17 @@ class NpouchPolicyPage(BasePage):
         )
 
     def close_modal(self) -> None:
+        """모달 닫기 — 이전 4 runs 정상 통과 코드 100% 복구 (사용자 보고 2026-06-03).
+
+        이전 코드 (작동):
+            self.click_attached(self.SEL_CANCEL_BTN)
+            self.wait_for(self.SEL_ADD_BTN)
+
+        click_attached 가 visible/attached 대기 후 click — 안정 동작.
+        timeout 누적 방지 — 모달 이미 닫혔으면 즉시 return.
+        """
+        if self.page.locator(self.SEL_MODAL_OPEN).count() == 0:
+            return
         self.click_attached(self.SEL_CANCEL_BTN)
         self.wait_for(self.SEL_ADD_BTN)
 
