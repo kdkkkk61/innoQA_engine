@@ -397,10 +397,14 @@ def start():
             str(BASE_DIR / "tests" / _NPOUCH_PAGE_TO_FILE.get(pid, "test_npouch.py"))
             for pid in page_ids
         ))
-        # 디렉토리 매핑된 page (control_suite/origin_protect) 는 -k 필터 skip
-        # — 디렉토리 자체가 page 분리, 클래스명 prefix 가 매핑값과 불일치 (TestOriginProtectScenario*)
+        # 디렉토리 매핑된 page (control_suite/origin_protect/npouch_policy) 가 하나라도 있으면
+        # -k 필터 skip — 디렉토리 패턴의 클래스명 (TestScenario*, TestOriginProtect*) 가
+        # 매핑값 (TestNpouchControlSuite, TestNpouchOriginProtect) 과 불일치 → match 0건 → deselect
+        # 사용자 보고 2026-06-03: 5 페이지 체크해도 control_suite/origin_protect 누락.
+        # 해결: 디렉토리 페이지 포함 시 -k 필터 자체 skip → test_files path 가 page 분리.
         _dir_pages = {"npouch_control_suite", "npouch_origin_protect", "npouch_policy"}
-        if all(pid in _dir_pages for pid in page_ids):
+        has_dir = any(pid in _dir_pages for pid in page_ids)
+        if has_dir:
             k_filter = ""
         else:
             class_names = [_NPOUCH_PAGE_TO_CLASS.get(pid, pid) for pid in page_ids]
@@ -430,7 +434,7 @@ def start():
     def _run():
         import re as _re
         # 시나리오 N: ... 헤더 감지 (일반 실행)
-        _SC_RE   = _re.compile(r'시나리오\s+(\d+)\s*[:\uff1a]\s*(.+)')
+        _SC_RE   = _re.compile(r'시나리오\s+(\d+)[a-z]?\s*[:\uff1a]\s*(.+)')
         # [SKIP] 시나리오 N: ... — 해당 없음 (skip 출력)
         _SKIP_RE = _re.compile(r'[[SKIP]]\s*시나리오\s+(\d+)')
 
@@ -477,13 +481,21 @@ def start():
 
                 # ── 현재 스캔 중인 페이지 감지 ──────────────────────────────
                 # test_scan_pages.py: "test_page_scan[page_id]"
-                # test_npouch.py:     "::TestNpouchXxx::"
+                # test_npouch.py:     "test_npouch.py::" (단일 파일)
+                # 디렉토리 패턴:     "tests/control_suite/" / "tests\control_suite\"
+                #                    (단일 클래스명 매핑 불가 — 디렉토리 안 다중 클래스)
                 for pid in page_ids:
                     detected = False
                     if product_id == "npouch":
-                        cls = _NPOUCH_PAGE_TO_CLASS.get(pid, "")
-                        if cls and f"::{cls}::" in line:
-                            detected = True
+                        file_or_dir = _NPOUCH_PAGE_TO_FILE.get(pid, "")
+                        if file_or_dir.endswith(".py"):
+                            # 단일 파일: "test_npouch.py::" 또는 "test_npouch.py "
+                            if f"{file_or_dir}::" in line or f"{file_or_dir} " in line:
+                                detected = True
+                        elif file_or_dir:
+                            # 디렉토리: "tests/<dir>/" 또는 "tests\<dir>\"
+                            if f"/{file_or_dir}/" in line or f"\\{file_or_dir}\\" in line:
+                                detected = True
                     else:
                         if f"test_page_scan[{pid}]" in line:
                             detected = True
@@ -523,11 +535,17 @@ def start():
                             if existing:
                                 existing["status"] = "running"
                             else:
-                                sc_list.append({
+                                # sc_num 오름차순 정렬 insert (sc0 가 sc1 앞으로 가도록)
+                                new_sc = {
                                     "num":    sc_num,
                                     "label":  f"시나리오 {sc_num}: {sc_label}",
                                     "status": "running",
-                                })
+                                }
+                                insert_at = next(
+                                    (i for i, s in enumerate(sc_list) if s["num"] > sc_num),
+                                    len(sc_list)
+                                )
+                                sc_list.insert(insert_at, new_sc)
                             log.info(f"  [{current_page}] 시나리오 {sc_num} 시작: {sc_label}")
 
                 # ── pytest 결과 줄 감지 ─────────────────────────────────────
@@ -535,7 +553,12 @@ def start():
                 # test_npouch.py:     페이지 1개 = 시나리오 5개 → 모든 시나리오 done 시 페이지 완료
                 if current_page:
                     bare        = line.strip()
-                    in_summary  = ("test_page_scan" in line) or ("test_npouch" in line)
+                    in_summary  = (
+                        ("test_page_scan" in line) or ("test_npouch" in line) or
+                        ("/control_suite/" in line) or ("\\control_suite\\" in line) or
+                        ("/origin_protect/" in line) or ("\\origin_protect\\" in line) or
+                        ("/npouch_policy/" in line) or ("\\npouch_policy\\" in line)
+                    )
                     is_passed   = bare == "PASSED"
                     is_failed   = bare == "FAILED" or (in_summary and line.lstrip().startswith("FAILED"))
 

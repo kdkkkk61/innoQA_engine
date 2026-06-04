@@ -8,7 +8,11 @@
 """
 from pages.npouch_origin_protect_policy_page import NpouchOriginProtectPolicyPage
 from tests.origin_protect._base import OriginProtectBase
-from tests.origin_protect.test_scenario5_lifecycle import TestOriginProtectScenario5Lifecycle
+# pytest 가 import 된 Test* 클래스를 또 수집하지 않도록 alias 사용
+# (alias 없이 import 시 sc6 파일에서 sc5 클래스가 재수집돼 sc5a/b/c 가 2회 실행됨)
+from tests.origin_protect.test_scenario5_lifecycle import (
+    TestOriginProtectScenario5Lifecycle as _Sc5Lifecycle,
+)
 
 
 class TestOriginProtectScenario6KeepVerify(OriginProtectBase):
@@ -22,7 +26,7 @@ class TestOriginProtectScenario6KeepVerify(OriginProtectBase):
         page.navigate_to()
         self._ensure_session_cleanup(page)
 
-        NAME = TestOriginProtectScenario5Lifecycle.LIFECYCLE_NAME
+        NAME = _Sc5Lifecycle.LIFECYCLE_NAME
         exists = page.is_policy_exists(NAME)
         self._add("pass" if exists else "fail",
                   "sc6 — KEEP 정책 보존 확인 (lifecycle 완결)",

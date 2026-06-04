@@ -27,13 +27,40 @@ def _load_hints(page_id: str) -> dict:
 # ── 스크린샷 저장 ─────────────────────────────────────────────────
 _SS_DIR = Path(__file__).parent.parent / "reports" / "screenshots"
 
-def _ss(page, label: str) -> str | None:
-    """warn/fail 시점 스크린샷 저장 → 경로 반환. 실패하면 None."""
+def _ss(page, label: str, highlight=None) -> str | None:
+    """warn/fail 시점 스크린샷 저장 → 경로 반환. 실패하면 None.
+
+    highlight (Locator) 가 있으면 빨간 outline 임시 주입 + 스크롤 후 캡처 → 복원.
+    None 이면 기존 동작 (viewport 캡처). origin_protect _ss 와 동일 헬퍼.
+    """
     try:
         _SS_DIR.mkdir(parents=True, exist_ok=True)
         safe = re.sub(r"[^\w가-힣]", "_", label)[:40]
         path = _SS_DIR / f"BUG_{safe}_{int(time.time()*1000)}.png"
+        injected = False
+        if highlight is not None:
+            try:
+                highlight.first.scroll_into_view_if_needed(timeout=1000)
+                highlight.first.evaluate(
+                    "el => { el.setAttribute('data-qa-hl','1');"
+                    " el.style.outline='3px solid #ff2d2d';"
+                    " el.style.outlineOffset='2px';"
+                    " el.style.boxShadow='0 0 0 6px rgba(255,45,45,0.25)'; }"
+                )
+                injected = True
+            except Exception:
+                injected = False
         page.screenshot(path=str(path))
+        if injected:
+            try:
+                highlight.first.evaluate(
+                    "el => { el.style.outline='';"
+                    " el.style.outlineOffset='';"
+                    " el.style.boxShadow='';"
+                    " el.removeAttribute('data-qa-hl'); }"
+                )
+            except Exception:
+                pass
         return str(path)
     except Exception:
         return None
@@ -54,14 +81,15 @@ _SAVE_SUCCESS_KEYWORDS = ("하시겠습니까", "저장 하였습니다", "저�
 
 
 def _r(status: str, label: str, detail: str = "", sc: int = 0,
-       page=None) -> tuple[str, ScanResult]:
+       page=None, highlight=None) -> tuple[str, ScanResult]:
     """print용 문자열 + ScanResult 동시 생성.
-    page 전달 시 warn/fail 이면 스크린샷 자동 저장 → extra["screenshot"] 첨부."""
+    page 전달 시 warn/fail 이면 스크린샷 자동 저장 → extra["screenshot"] 첨부.
+    highlight (Locator) 전달 시 캡처에 빨간 outline 표시 (origin_protect 와 동일)."""
     icon = _STATUS_ICON.get(status, "?")
     text = f"  {icon} {label}" + (f": {detail}" if detail else "")
     extra: dict = {"scenario": sc}
     if page and status in ("fail", "warn"):
-        ss_path = _ss(page, label)
+        ss_path = _ss(page, label, highlight=highlight)
         if ss_path:
             extra["screenshot"] = ss_path
     sr = ScanResult(
@@ -110,6 +138,12 @@ class TestNpouchOperationProcess:
         print(f"\n\n━━ [{self.PAGE_NAME}] 시나리오 1: UI 구조 ━━━━━━━━━━━━━━━━━━━━━━━━")
         page = self.p.page
         lines, srs = [], []
+
+        # sc1 시작 — clean slate ([AUTO] + [AUTO_KEEP] 일괄 삭제)
+        try:
+            self.p.cleanup_with_keep()
+        except Exception:
+            pass
 
         # 탭 전환 — 해당 없음 (단일 뷰)
         t, s = _r("skip", "탭 전환", "단일 뷰 페이지 — 탭 없음", sc=1)
@@ -220,9 +254,13 @@ class TestNpouchOperationProcess:
             t, s = _r("pass" if val == "" else "warn", f"{label} — 초기값",
                       f"입력: 초기 상태 / 결과: {val!r}", sc=2)
             lines.append(t); srs.append(s)
+            # DOM maxlength 는 사실 정보만 (None = client 제한 없음).
+            # 실제 길이 검증 결함은 overflow_scan 이 입력+저장+서버응답으로 잡음 (중복 warn 제거).
             ml = page.locator(sel).first.get_attribute("maxlength")
-            t, s = _r("warn" if ml is None else "pass", f"{label} — DOM maxlength",
-                      f"입력: maxlength 속성 확인 / 결과: {ml!r}", sc=2)
+            t, s = _r("pass", f"{label} — DOM maxlength",
+                      f"결과: {ml!r}"
+                      + (" (client 제한 없음 — 길이 검증은 글자수 제한 스캔 참조)" if ml is None else ""),
+                      sc=2)
             lines.append(t); srs.append(s)
 
         # SHA2 추가 정보
@@ -242,7 +280,8 @@ class TestNpouchOperationProcess:
             expected_empty = "프로세스 이름을 입력해 주세요."
             t, s = _r("pass" if msg == expected_empty else "warn",
                       "프로세스 이름(*) — 빈 값 제출 경고",
-                      f"입력: 이름 비운 채 제출 / 결과: {msg!r}", sc=2)
+                      f"입력: 이름 비운 채 제출 / 결과: {msg!r}", sc=2,
+                      page=p.page if msg != expected_empty else None)
             lines.append(t); srs.append(s)
             p.dismiss_confirm_modal()
             p.wait_for_confirm_modal_closed()
@@ -267,31 +306,72 @@ class TestNpouchOperationProcess:
             _ov_search = _ov_prefix.rstrip("_")
             _ov_error_at   = None   # 첫 서버 오류 발생 길이
             _ov_any_saved  = False  # 하나라도 저장됐으면 cleanup 필요
+            _ov_ss         = None   # 에러 모달 스크린샷 경로
+            # 비-이름 필드는 유효 processName 먼저 채워야 함
+            # (이름 빈값이면 "프로세스 이름을 입력해 주세요" 가 먼저 떠 필드 길이검증 못 함)
+            _ov_is_name  = (field_def.get("id") == "processName")
+            _ov_name_val = _ov_prefix + (field_def.get("id") or "fld")  # 저장 시 검색용 이름 ([AUTO]_ov_sign 등)
             for _ov_len in _OV_LENS:
                 _ov_remain = max(0, _ov_len - len(_ov_prefix))
-                _ov_value  = _ov_prefix + "A" * _ov_remain
+                if _ov_is_name:
+                    _ov_value = _ov_prefix + "A" * _ov_remain   # 긴 값 자체가 이름
+                else:
+                    _ov_value = "A" * _ov_len                    # 긴 값 = 대상 필드 (이름은 별도)
                 try:
                     p.open_add_modal()
+                    if not _ov_is_name:
+                        # 유효 이름 먼저 채움 (검색 가능한 짧은 이름)
+                        p.page.locator(p.SEL_PROCESS_NAME).first.evaluate(
+                            "(el, v) => { el.value = v; el.dispatchEvent(new Event('input', {bubbles:true})); }",
+                            _ov_name_val
+                        )
                     p.page.locator(_ov_sel).first.evaluate(
                         "(el, v) => { el.value = v; el.dispatchEvent(new Event('input', {bubbles:true})); }",
                         _ov_value
                     )
                     p.page.wait_for_timeout(200)
                     p.try_submit()
-                    p.page.wait_for_timeout(600)
-                    if p.is_confirm_modal_visible():
+                    # 서버 응답 모달 출현까지 대기 — 긴 값(1001자 등)은 서버 처리가 600ms 보다 느림.
+                    # 즉시 count() 검사 시 느린 500 에러 모달을 놓쳐 '저장됨' 으로 오판 (사용자 보고 2026-06-04).
+                    _ov_modal = False
+                    try:
+                        p.page.locator(p.SEL_CONFIRM_MODAL).wait_for(
+                            state="attached", timeout=6000
+                        )
+                        _ov_modal = True
+                    except Exception:
+                        _ov_modal = False
+                    if _ov_modal:
                         msg_ov = p.get_modal_message()
-                        if any(kw in msg_ov for kw in _SAVE_SUCCESS_KEYWORDS):
+                        # 에러 키워드 먼저 검사 — "오류가 발생 하였습니다" 가 success "하였습니다" 에 오분류되는 것 방지
+                        _ov_is_err = ("오류" in msg_ov) or ("실패" in msg_ov) or ("에러" in msg_ov)
+                        if (not _ov_is_err) and any(kw in msg_ov for kw in _SAVE_SUCCESS_KEYWORDS):
                             p.click_attached(p.SEL_CONFIRM_BTN)
                             p.wait_for_confirm_modal_closed()
                             p.wait_for(p.SEL_ADD_BTN)
                             _ov_any_saved = True
                         else:
+                            # "서버에서 오류가 발생 하였습니다" 등 → 글자수 제한 지점
+                            # 에러 모달 떠 있는 동안 캡처 (dismiss 전) — 문제 필드 빨간 하이라이트 (헬퍼 위임)
+                            _ov_ss = _ss(p.page, f"{_ov_label}_{_ov_len}자_서버오류",
+                                         highlight=p.page.locator(_ov_sel))
                             p.dismiss_confirm_modal()
                             p.wait_for_confirm_modal_closed()
                             _ov_error_at = _ov_len
                     else:
-                        _ov_any_saved = True
+                        # 모달 안 뜸 — 재검색으로 실제 저장 여부 확인 (no-modal=저장 가정 금지)
+                        try:
+                            p.search_item(_ov_search)
+                            p.page.wait_for_timeout(300)
+                            _saved_now = any(
+                                n.startswith(_ov_search) for n in p.get_item_names()
+                            )
+                        except Exception:
+                            _saved_now = False
+                        if _saved_now:
+                            _ov_any_saved = True
+                        else:
+                            _ov_error_at = _ov_len
                 except Exception:
                     _ov_error_at = _ov_len
                 finally:
@@ -310,10 +390,16 @@ class TestNpouchOperationProcess:
             if _ov_error_at:
                 prev = [l for l in _OV_LENS if l < _ov_error_at]
                 if prev:
-                    detail_ov = str(prev[-1]) + "자 허용, " + str(_ov_error_at) + "자 이상 입력 시 서버 오류"
+                    detail_ov = (str(prev[-1]) + "자 허용, " + str(_ov_error_at)
+                                 + "자 이상 입력 시 generic '서버에서 오류가 발생' 응답 "
+                                 "(graceful 글자수 검증 메시지 부재 — known_bug)")
                 else:
-                    detail_ov = str(_ov_error_at) + "자 이상 입력 시 서버 오류"
-                t, s = _r("pass", _ov_label, detail_ov, sc=2)
+                    detail_ov = (str(_ov_error_at) + "자 이상 입력 시 generic '서버에서 오류가 발생' 응답 "
+                                 "(graceful 글자수 검증 메시지 부재 — known_bug)")
+                # generic 500 = 일반 결함 (🔴 높음 아님) → 일반 warn + 캡처
+                t, s = _r("warn", _ov_label, detail_ov, sc=2)
+                if _ov_ss:
+                    s.extra["screenshot"] = _ov_ss   # 에러 모달 캡처 첨부 (defect 카드에 렌더링)
             else:
                 detail_ov = (str(_OV_LENS[-1]) + "자까지 입력 가능 "
                              "— 서버 측 글자수 제한 없음 (known issue)")
@@ -906,6 +992,12 @@ class TestNpouchOperationProcess:
             except Exception:
                 pass
 
+        # sc5 마무리 — AUTO 일괄 삭제 (AUTO_KEEP 보존)
+        try:
+            p.delete_all_auto_items()
+        except Exception:
+            pass
+
         for r in lines: print(r)
         self._attach(srs)
         _assert_no_fail(lines, "시나리오 5")
@@ -921,42 +1013,34 @@ class TestNpouchOperationProcess:
         p = self.p
         lines, srs = [], []
 
-        _SUITE = "[AUTO]_np_proc_suite"
+        # AUTO_KEEP_ prefix — sc1 cleanup 시 보존, 세션 간 잔존
+        _SUITE = "[AUTO_KEEP]_sc6_np_proc_suite"
 
-        # 기존 suite 항목 정리 (재실행 대비 중복 방지 — 항상 실행)
-        try:
-            p.search_item(_SUITE)
-            if _SUITE in p.get_item_names():
-                p.delete_item(_SUITE)
-        except Exception:
-            pass
+        # AUTO_KEEP 잔존 — 정리 안 함 (세션 간 보존이 의도).
+        # 이미 잔존 여부만 미리 검색해 둠 (이후 add 분기에 활용).
+        p.search_item(_SUITE)
+        _already_exists = _SUITE in p.get_item_names()
         p._restore_page_size()
 
-        # 연계 테스트 존재 여부 자동 감지
-        _test_dir = Path(__file__).parent
-        _consumer_files = [
-            f for f in _test_dir.glob("test_npouch_*.py")
-            if _SUITE in f.read_text(encoding="utf-8", errors="ignore")
-        ]
-        if not _consumer_files:
-            t, s = _r("skip", f"{_SUITE} — 연계 테스트 없음",
-                      "다른 test_npouch_*.py 에서 이 프로세스를 참조하는 파일 없음 — 설정 스킵", sc=6)
-            lines.append(t); srs.append(s)
-            for r in lines: print(r)
-            self._attach(srs)
-            return
+        # 연계 검증은 같은 세션 안 태그 sc6 cross-page 에서 수행 — 항상 진행
+        # (이전 _consumer_files 자동 감지 skip 제거 — sc6 self-contained 검증 활성화)
 
-        # 연계 항목 생성 — 태그 관리 테스트(시나리오 6)에서 등록할 프로세스
+        # 연계 항목 — 잔존 시 그대로 활용, 없으면 생성 (fail 시 자동 screenshot)
         try:
-            p.add_item(_SUITE)
-            p.search_item(_SUITE)
-            exists = _SUITE in p.get_item_names()
-            t, s = _r("pass" if exists else "fail",
-                      "연계 프로세스 생성 — 목록 확인",
-                      f"입력: {_SUITE!r} 생성 / 결과: {'목록에 존재' if exists else '없음'}", sc=6)
+            if _already_exists:
+                t, s = _r("pass", "연계 프로세스 잔존 — 재사용",
+                          f"입력: {_SUITE!r} 이미 존재 / 결과: AUTO_KEEP 잔존 활용", sc=6)
+            else:
+                p.add_item(_SUITE)
+                p.search_item(_SUITE)
+                exists = _SUITE in p.get_item_names()
+                t, s = _r("pass" if exists else "fail",
+                          "연계 프로세스 생성 — 목록 확인",
+                          f"입력: {_SUITE!r} 생성 / 결과: {'목록에 존재' if exists else '없음'}",
+                          sc=6, page=(None if exists else p.page))
             lines.append(t); srs.append(s)
         except Exception as e:
-            t, s = _r("fail", "연계 프로세스 생성", str(e), sc=6)
+            t, s = _r("fail", "연계 프로세스 생성", str(e), sc=6, page=p.page)
             lines.append(t); srs.append(s)
 
         # 삭제하지 않고 종료 — 태그 관리 시나리오 6에서 사용

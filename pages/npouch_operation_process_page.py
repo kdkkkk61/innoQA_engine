@@ -113,9 +113,9 @@ class NpouchOperationProcessPage(BasePage):
 
     def add_item(self, name: str, sha2: str = "", sign: str = "",
                  exec_path: str = "", description: str = "") -> None:
-        """운용 프로세스 추가. [AUTO] 접두사 필수."""
-        if not name.startswith("[AUTO]"):
-            raise Exception("테스트 항목([AUTO] 접두사)만 생성 가능합니다")
+        """운용 프로세스 추가. [AUTO]_ 또는 [AUTO_KEEP]_ 접두사 필수."""
+        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")):
+            raise Exception("테스트 항목([AUTO]_ 또는 [AUTO_KEEP]_ 접두사)만 생성 가능합니다")
 
         self.open_add_modal()
 
@@ -143,25 +143,55 @@ class NpouchOperationProcessPage(BasePage):
         self.search_item(name)
 
     def delete_all_auto_items(self) -> None:
-        """[AUTO] 접두사 항목 모두 삭제."""
-        self.search_item("[AUTO]")
-        auto_names = [n for n in self.get_item_names() if n.startswith("[AUTO]")]
-        for name in auto_names:
+        """[AUTO]_ 접두사만 일괄 삭제 — [AUTO_KEEP]_* 는 보존.
+        용도: 시나리오 5 마무리 — KEEP 잔존 + AUTO 정리.
+        참조 잠금 차단 시 [AUTO]_DELME_ rename (제외 대상이라 무한루프 안 됨).
+        """
+        self.search_item("[AUTO")
+        while True:
+            names = [
+                n for n in self.get_item_names()
+                if n.startswith("[AUTO]_") and not n.startswith("[AUTO]_DELME_")
+            ]
+            if not names:
+                break
             try:
-                self.delete_item(name)
-                self.search_item("[AUTO]")
+                self._delete_or_rename(names[0])
             except Exception:
-                pass
+                break
         self._restore_page_size()
 
-    def delete_item(self, name: str) -> None:
-        """항목 삭제. [AUTO] 접두사 필수."""
-        if not name.startswith("[AUTO]"):
-            raise Exception("테스트 항목([AUTO] 접두사)만 삭제 가능합니다")
+    def cleanup_with_keep(self) -> None:
+        """[AUTO]_ + [AUTO_KEEP]_ 일괄 삭제 — clean slate.
+        용도: 시나리오 1 시작 전 — 이전 세션 잔존 정리.
+        참조 잠금 차단 시 [AUTO]_DELME_ rename (테스터 수동 정리, 무한루프 방지 제외).
+        """
+        self.search_item("[AUTO")
+        while True:
+            names = [
+                n for n in self.get_item_names()
+                if (n.startswith("[AUTO]_") or n.startswith("[AUTO_KEEP]_"))
+                and not n.startswith("[AUTO]_DELME_")
+            ]
+            if not names:
+                break
+            try:
+                self._delete_or_rename(names[0])
+            except Exception:
+                break
+        self._restore_page_size()
 
-        # 검색으로 행 노출
-        self.search_item(name)
-        self.page.wait_for_timeout(300)
+    def delete_item(self, name: str, _skip_search: bool = False) -> None:
+        """항목 삭제. [AUTO]_ 또는 [AUTO_KEEP]_ 접두사 필수.
+        _skip_search=True: 검색 단계 생략 (bulk cleanup 에서 사용).
+        """
+        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")):
+            raise Exception("테스트 항목([AUTO]_ 또는 [AUTO_KEEP]_ 접두사)만 삭제 가능합니다")
+
+        if not _skip_search:
+            # 검색으로 행 노출
+            self.search_item(name)
+            self.page.wait_for_timeout(300)
 
         row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
         checkbox = row.locator(self.SEL_CHECKBOX).first
@@ -189,6 +219,61 @@ class NpouchOperationProcessPage(BasePage):
             row.wait_for(state="detached", timeout=self._TIMEOUT_TABLE)
         except Exception:
             pass
+
+    def rename_item(self, old_name: str, new_name: str) -> None:
+        """수정 모달에서 이름 변경 후 저장. cleanup 차단 시 [AUTO]_DELME_ 마킹용."""
+        self.open_modify_modal(old_name)
+        self.page.locator(self.SEL_PROCESS_NAME).first.fill(new_name)
+        self.page.wait_for_timeout(150)
+        self.click_attached(self.SEL_SUBMIT_BTN)
+        self._handle_confirm_modal()
+        self.wait_for(self.SEL_ADD_BTN)
+
+    def _delete_or_rename(self, name: str) -> str:
+        """삭제 시도 → 참조 잠금 차단 시 [AUTO]_DELME_ 로 rename (테스터 수동 정리용).
+        반환: 'deleted' | 'renamed'. _skip_search 전제 (cleanup 루프에서 검색 1회 후 호출).
+
+        제품 2단계 동작 (Chrome 검증 2026-06-04):
+          1) 삭제 → "삭제 하시겠습니까?" confirm → 확인
+          2) 서버 검증 → 참조 시 "할당 되어 있습니다" 차단 (확인만) / 미참조 시 삭제 완료
+        """
+        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
+        checkbox = row.locator(self.SEL_CHECKBOX).first
+        if not checkbox.is_checked():
+            self._toggle_overlay(False)
+            try:
+                checkbox.click()
+            finally:
+                self._toggle_overlay(True)
+
+        self.click(self.SEL_DELETE_BTN)
+        # 1단계: "삭제 하시겠습니까?" → 확인 클릭
+        self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+            state="attached", timeout=self._TIMEOUT_MODAL
+        )
+        self.click_attached(self.SEL_CONFIRM_BTN)
+        self.page.wait_for_timeout(700)
+        # 2단계: 서버 응답 — 차단 모달 있으면 참조 잠금 → rename
+        if self.page.locator(self.SEL_CONFIRM_MODAL).count() > 0:
+            msg2 = self.page.locator(self.SEL_MODAL_MSG).first.inner_text().strip()
+            if ("할당" in msg2) or ("사용" in msg2) or ("참조" in msg2):
+                self.click_attached(self.SEL_CONFIRM_BTN)
+                try:
+                    self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+                        state="detached", timeout=self._TIMEOUT_TABLE
+                    )
+                except Exception:
+                    pass
+                base = name.replace("[AUTO_KEEP]_", "").replace("[AUTO]_", "")
+                self.rename_item(name, f"[AUTO]_DELME_{base}")
+                return "renamed"
+            # 그 외 응답 모달 (성공 등) → dismiss
+            self.click_attached(self.SEL_CONFIRM_BTN)
+        try:
+            self.wait_for(self.SEL_ADD_BTN)
+        except Exception:
+            pass
+        return "deleted"
 
     def open_modify_modal(self, name: str) -> None:
         """행 선택 → 수정 버튼 클릭 → 모달 열림 대기."""

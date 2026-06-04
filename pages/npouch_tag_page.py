@@ -44,7 +44,21 @@ class NpouchTagPage(BasePage):
     SEL_PROC_LIST_CB      = "input[name='selectProcess']"
     SEL_PROC_LIST_ALL_CB  = "input#mainListHeaderCheckBox"
     SEL_PROC_LIST_CONFIRM = "div#globalProcessList button.btn-primary"
-    SEL_PROC_LIST_SEARCH  = "input#searchNameText"   # 프로세스 명 검색
+    # 프로세스 명 검색 — origin_protect 패턴 (id 변경 대응, fallback 다중)
+    # 사용자 보고 2026-06-03: 옛 id 'searchNameText' DOM 에 없음 (제품 UI 변경)
+    SEL_PROC_LIST_SEARCH  = (
+        "div#globalProcessList input#searchText, "
+        "div#globalProcessList input#searchNameText, "
+        "div#globalProcessList input[type='search'], "
+        "div#globalProcessList input[placeholder]"
+    )
+    # 검색 실행 버튼 — input 옆 돋보기. AngularJS — ng-model 만 update 시 적용 안 됨, 명시 클릭 필요
+    SEL_PROC_LIST_SEARCH_BTN = (
+        "div#globalProcessList button[ng-click*='search'], "
+        "div#globalProcessList button.btn-search, "
+        "div#globalProcessList i.fa-search, "
+        "div#globalProcessList span.glyphicon-search"
+    )
 
     # ── 확인 모달 (전역) ─────────────────────────────────────────
     SEL_CONFIRM_MODAL = "div#__globalMessageModal.in"
@@ -123,8 +137,8 @@ class NpouchTagPage(BasePage):
 
     def add_item(self, name: str) -> None:
         """태그 추가. [AUTO] 접두사 필수."""
-        if not name.startswith("[AUTO]"):
-            raise Exception("테스트 항목([AUTO] 접두사)만 생성 가능합니다")
+        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")):
+            raise Exception("테스트 항목([AUTO]_ 또는 [AUTO_KEEP]_ 접두사)만 생성 가능합니다")
 
         self.open_add_modal()
         self.fill(self.SEL_TAG_NAME, name)
@@ -152,8 +166,8 @@ class NpouchTagPage(BasePage):
 
     def add_item_with_desc(self, name: str, desc: str) -> None:
         """태그 추가 (이름 + 설명). [AUTO] 접두사 필수."""
-        if not name.startswith("[AUTO]"):
-            raise Exception("테스트 항목([AUTO] 접두사)만 생성 가능합니다")
+        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")):
+            raise Exception("테스트 항목([AUTO]_ 또는 [AUTO_KEEP]_ 접두사)만 생성 가능합니다")
 
         self.open_add_modal()
         self.fill(self.SEL_TAG_NAME, name)
@@ -168,25 +182,55 @@ class NpouchTagPage(BasePage):
         self.search_item(name)
 
     def delete_all_auto_items(self) -> None:
-        """[AUTO] 접두사 태그 모두 삭제."""
-        self.search_item("[AUTO]")
-        auto_names = [n for n in self.get_item_names() if n.startswith("[AUTO]")]
-        for name in auto_names:
+        """[AUTO]_ 접두사 태그 일괄 삭제 — [AUTO_KEEP]_* 는 보존.
+        용도: 시나리오 5 마무리 — KEEP 잔존 + AUTO 정리.
+        참조 잠금 차단 시 [AUTO]_DELME_ rename (제외 대상이라 무한루프 안 됨).
+        """
+        self.search_item("[AUTO")
+        while True:
+            names = [
+                n for n in self.get_item_names()
+                if n.startswith("[AUTO]_") and not n.startswith("[AUTO]_DELME_")
+            ]
+            if not names:
+                break
             try:
-                self.delete_item(name)
-                self.search_item("[AUTO]")
+                self._delete_or_rename(names[0])
             except Exception:
-                pass
+                break
         self._restore_page_size()
 
-    def delete_item(self, name: str) -> None:
-        """태그 삭제. [AUTO] 접두사 필수."""
-        if not name.startswith("[AUTO]"):
-            raise Exception("테스트 항목([AUTO] 접두사)만 삭제 가능합니다")
+    def cleanup_with_keep(self) -> None:
+        """[AUTO]_ + [AUTO_KEEP]_ 일괄 삭제 — clean slate.
+        용도: 시나리오 1 시작 전 — 이전 세션 잔존 정리.
+        참조 잠금 차단 시 [AUTO]_DELME_ rename (테스터 수동 정리, 무한루프 방지 제외).
+        """
+        self.search_item("[AUTO")
+        while True:
+            names = [
+                n for n in self.get_item_names()
+                if (n.startswith("[AUTO]_") or n.startswith("[AUTO_KEEP]_"))
+                and not n.startswith("[AUTO]_DELME_")
+            ]
+            if not names:
+                break
+            try:
+                self._delete_or_rename(names[0])
+            except Exception:
+                break
+        self._restore_page_size()
 
-        # 검색으로 행 노출
-        self.search_item(name)
-        self.page.wait_for_timeout(300)
+    def delete_item(self, name: str, _skip_search: bool = False) -> None:
+        """태그 삭제. [AUTO] 접두사 필수.
+        _skip_search=True: 검색 단계 생략 (bulk cleanup 에서 사용).
+        """
+        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")):
+            raise Exception("테스트 항목([AUTO]_ 또는 [AUTO_KEEP]_ 접두사)만 삭제 가능합니다")
+
+        if not _skip_search:
+            # 검색으로 행 노출
+            self.search_item(name)
+            self.page.wait_for_timeout(300)
 
         row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
         checkbox = row.locator(self.SEL_CHECKBOX).first
@@ -214,6 +258,60 @@ class NpouchTagPage(BasePage):
             row.wait_for(state="detached", timeout=self._TIMEOUT_TABLE)
         except Exception:
             pass
+
+    def rename_item(self, old_name: str, new_name: str) -> None:
+        """수정 모달에서 태그 이름 변경 후 저장. cleanup 차단 시 [AUTO]_DELME_ 마킹용."""
+        self.open_modify_modal(old_name)
+        self.page.locator(self.SEL_TAG_NAME).first.fill(new_name)
+        self.page.wait_for_timeout(150)
+        self.click_attached(self.SEL_SUBMIT_BTN)
+        self._handle_confirm_modal()
+        self.wait_for(self.SEL_ADD_BTN)
+
+    def _delete_or_rename(self, name: str) -> str:
+        """삭제 시도 → 참조 잠금 차단 시 [AUTO]_DELME_ 로 rename.
+        반환: 'deleted' | 'renamed'. cleanup 루프에서 검색 1회 후 호출 (_skip_search 전제).
+
+        제품 2단계 동작 (Chrome 검증 2026-06-04):
+          1) 삭제 → "삭제 하시겠습니까?" confirm → 확인
+          2) 서버 검증 → 참조 시 "할당 되어 있습니다" 차단 (확인만) / 미참조 시 삭제 완료
+        """
+        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
+        checkbox = row.locator(self.SEL_CHECKBOX).first
+        if not checkbox.is_checked():
+            self._toggle_overlay(False)
+            try:
+                checkbox.click()
+            finally:
+                self._toggle_overlay(True)
+
+        self.click(self.SEL_DELETE_BTN)
+        # 1단계: "삭제 하시겠습니까?" → 확인 클릭
+        self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+            state="attached", timeout=self._TIMEOUT_MODAL
+        )
+        self.click_attached(self.SEL_CONFIRM_BTN)
+        self.page.wait_for_timeout(700)
+        # 2단계: 서버 응답 — 차단 모달 있으면 참조 잠금 → rename
+        if self.page.locator(self.SEL_CONFIRM_MODAL).count() > 0:
+            msg2 = self.page.locator(self.SEL_MODAL_MSG).first.inner_text().strip()
+            if ("할당" in msg2) or ("사용" in msg2) or ("참조" in msg2):
+                self.click_attached(self.SEL_CONFIRM_BTN)
+                try:
+                    self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+                        state="detached", timeout=self._TIMEOUT_TABLE
+                    )
+                except Exception:
+                    pass
+                base = name.replace("[AUTO_KEEP]_", "").replace("[AUTO]_", "")
+                self.rename_item(name, f"[AUTO]_DELME_{base}")
+                return "renamed"
+            self.click_attached(self.SEL_CONFIRM_BTN)
+        try:
+            self.wait_for(self.SEL_ADD_BTN)
+        except Exception:
+            pass
+        return "deleted"
 
     def open_modify_modal(self, name: str) -> None:
         """행 선택 → 수정 버튼 클릭 → 모달 열림 대기."""
@@ -322,49 +420,88 @@ class NpouchTagPage(BasePage):
         return proc_name
 
     def select_process_by_name(self, name: str) -> str:
-        """프로세스 선택 모달에서 이름으로 검색 후 해당 항목 체크박스 선택 → 선택된 이름 반환.
-        찾지 못하면 첫 번째 항목 선택 후 이름 반환 (fallback).
+        """프로세스 선택 모달에서 이름으로 검색 후 정확히 일치하는 행 체크박스 선택.
+        매칭 실패 시 모달 dismiss 후 raise.
+
+        구현 주의사항:
+          1. 검색어는 "[AUTO" 단축 — AUTO + AUTO_KEEP 둘 다 substring 매칭
+          2. el.value + input 이벤트만으론 검색 실행 X (AngularJS ng-model 만 update)
+             → 검색 버튼 클릭 또는 Enter keypress 필요
+          3. fallback 첫 행 무조건 선택 금지 — 잘못된 프로세스 선택 방지
         """
-        # 서브모달 검색창에 이름 입력 (있는 경우)
         try:
+            # 1. 검색어 입력 — "[AUTO" 단축 (사용자 권장 2026-06-04)
             search_input = self.page.locator(self.SEL_PROC_LIST_SEARCH)
             if search_input.count() > 0:
                 search_input.first.evaluate(
-                    "(el, v) => { el.value = v; el.dispatchEvent(new Event('input',{bubbles:true})); }",
-                    name
+                    "(el, v) => { el.value = v;"
+                    " el.dispatchEvent(new Event('input',{bubbles:true}));"
+                    " el.dispatchEvent(new Event('change',{bubbles:true})); }",
+                    "[AUTO"
                 )
-                self.page.wait_for_timeout(400)
+                # 2. 검색 실행 — Enter keypress (AngularJS ng-submit/ng-keypress 호환)
+                try:
+                    search_input.first.press("Enter")
+                except Exception:
+                    pass
+                # 3. 검색 버튼 클릭 시도 (Enter 미지원 케이스 대비)
+                try:
+                    btn = self.page.locator(self.SEL_PROC_LIST_SEARCH_BTN)
+                    if btn.count() > 0:
+                        btn.first.evaluate("el => el.click()")
+                except Exception:
+                    pass
+                # 4. 결과 적용 대기 — 1252건 → 검색 결과로 줄어들 때까지
+                try:
+                    self.page.locator(self.SEL_PROC_LIST_ROW).filter(
+                        has_text=name
+                    ).first.wait_for(state="visible", timeout=3000)
+                except Exception:
+                    self.page.wait_for_timeout(1500)
+
+            rows = self.page.locator(self.SEL_PROC_LIST_ROW).all()
+            if not rows:
+                raise Exception(
+                    f"프로세스 선택 모달 빈 결과 (검색어: '[AUTO' / 찾는 name: {name!r})"
+                )
+
+            # 5. 이름 정확 일치 행 매칭 (fallback 없음)
+            for row in rows:
+                tds = row.locator("td").all()
+                if len(tds) >= 2:
+                    row_name = tds[1].inner_text().strip()
+                    if row_name == name:
+                        cb = row.locator("input[type='checkbox']").first
+                        self._toggle_overlay(False)
+                        try:
+                            cb.click()
+                        finally:
+                            self._toggle_overlay(True)
+                        return row_name
+
+            # 6. 매칭 실패 — 진단 정보 + 모달 dismiss 후 raise
+            visible_names = [
+                row.locator("td").nth(1).inner_text().strip()
+                for row in rows[:5]
+            ]
+            raise Exception(
+                f"프로세스 정확 일치 매칭 실패: name={name!r} "
+                f"(검색어 '[AUTO' / 결과 {len(rows)}건 / 상위 5건: {visible_names})"
+            )
         except Exception:
-            pass
-
-        rows = self.page.locator(self.SEL_PROC_LIST_ROW).all()
-        if not rows:
-            raise Exception(f"프로세스 선택 모달에 프로세스 없음 (검색어: {name!r})")
-
-        # 이름 일치 행 찾기
-        for row in rows:
-            tds = row.locator("td").all()
-            if len(tds) >= 2:
-                row_name = tds[1].inner_text().strip()
-                if row_name == name:
-                    cb = row.locator("input[type='checkbox']").first
-                    self._toggle_overlay(False)
-                    try:
-                        cb.click()
-                    finally:
-                        self._toggle_overlay(True)
-                    return row_name
-
-        # fallback: 첫 번째 항목 선택
-        first_row = rows[0]
-        proc_name = first_row.locator("td").nth(1).inner_text().strip()
-        cb = first_row.locator("input[type='checkbox']").first
-        self._toggle_overlay(False)
-        try:
-            cb.click()
-        finally:
-            self._toggle_overlay(True)
-        return proc_name
+            # 모달 dismiss — 후속 navigate 가능하도록
+            try:
+                close_btn = self.page.locator(
+                    "div#globalProcessList button[data-dismiss='modal'], "
+                    "div#globalProcessList button.close, "
+                    "div#globalProcessList .modal-header button"
+                )
+                if close_btn.count() > 0:
+                    close_btn.first.evaluate("el => el.click()")
+                    self.page.wait_for_timeout(300)
+            except Exception:
+                pass
+            raise
 
     def select_different_process_in_modal(self, exclude_name: str) -> str:
         """프로세스 선택 모달에서 프로세스 선택. 우선순위:
@@ -384,24 +521,38 @@ class NpouchTagPage(BasePage):
             return proc_name
 
         def _search_modal(keyword: str) -> None:
+            """검색어 입력 + 검색 실행 (Enter + 버튼 클릭) + 결과 적용 대기."""
             try:
                 si = self.page.locator(self.SEL_PROC_LIST_SEARCH)
                 if si.count() > 0:
                     si.first.evaluate(
                         "(el, v) => { el.value = v;"
-                        " el.dispatchEvent(new Event('input',{bubbles:true})); }",
+                        " el.dispatchEvent(new Event('input',{bubbles:true}));"
+                        " el.dispatchEvent(new Event('change',{bubbles:true})); }",
                         keyword
                     )
-                    self.page.wait_for_timeout(400)
+                    # 검색 실행 — Enter
+                    try:
+                        si.first.press("Enter")
+                    except Exception:
+                        pass
+                    # 검색 버튼 클릭 (fallback)
+                    try:
+                        btn = self.page.locator(self.SEL_PROC_LIST_SEARCH_BTN)
+                        if btn.count() > 0:
+                            btn.first.evaluate("el => el.click()")
+                    except Exception:
+                        pass
+                    self.page.wait_for_timeout(800)
             except Exception:
                 pass
 
-        # 1순위: [AUTO] 검색
-        _search_modal("[AUTO]")
+        # 1순위: "[AUTO" 검색 (AUTO + AUTO_KEEP 둘 다 매칭)
+        _search_modal("[AUTO")
         rows = self.page.locator(self.SEL_PROC_LIST_ROW).all()
         for row in rows:
             tds = row.locator("td").all()
-            if len(tds) >= 2 and tds[1].inner_text().strip().startswith("[AUTO]"):
+            if len(tds) >= 2 and tds[1].inner_text().strip().startswith("[AUTO]_"):
                 return _click_row(row)
 
         # 2순위: 검색 초기화 후 exclude_name 이 아닌 프로세스

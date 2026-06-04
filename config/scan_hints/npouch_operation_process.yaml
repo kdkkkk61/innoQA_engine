@@ -16,22 +16,26 @@ fields:
     label: "서명"
     required: false
     order: 20
+    overflow_scan: true       # 긴 값 입력 시 서버 길이 검증 확인
   - id: sha2
     selector: "textarea#sha2"
     label: "SHA2"
     required: false
     order: 30
+    overflow_scan: true
     note: "SHA-256 hex 64자 형식이지만 UI에서 포맷 강제 없음 (format_validation_tests 참조)"
   - id: processExecutePath
     selector: "textarea#processExecutePath"
     label: "실행경로"
     required: false
     order: 40
+    overflow_scan: true
   - id: description
     selector: "textarea#description"
     label: "설명"
     required: false
     order: 50
+    overflow_scan: true
 
 # ── 검색 옵션 ──────────────────────────────────────────────────────
 search_options:

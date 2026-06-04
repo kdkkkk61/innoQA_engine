@@ -5,6 +5,357 @@
 
 ---
 
+## [RESOLVED] origin_protect sc5 중복 실행 — sc6 의 클래스 import 로 pytest 재수집 — 2026-06-04
+
+- **증상**: `tests/origin_protect/test_scenario6_keep_verify.py::TestOriginProtectScenario5Lifecycle::test_scenario5a_lifecycle_add` 가 FAIL.
+- **원인**: `test_scenario6_keep_verify.py:11` 의 `from ... import TestOriginProtectScenario5Lifecycle`
+  → pytest 가 sc6 파일에서도 `TestOriginProtectScenario5Lifecycle` 를 재수집 → sc5a/b/c 가 2회 실행됨 → 두 번째는 이미 만든 정책과 충돌 → FAIL.
+- **수정** (2026-06-04):
+  - sc6 의 import 를 alias 로 변경: `as _Sc5Lifecycle`
+  - 사용처 `_Sc5Lifecycle.LIFECYCLE_NAME` 으로 변경
+  - alias 가 underscore prefix 이므로 pytest 수집 대상 제외.
+- **재발 방지 원칙**: 형제 test 파일에서 Test* 클래스 import 시 항상 alias (`as _XXX`) 사용.
+
+---
+
+## [PENDING] 제품 결함 — 원본보호에 부여된 제어스위트 삭제 가능 + 후속 오류 — 2026-06-04
+
+- **제품 결함** (사용자 발견 2026-06-04, 테스트 중 인지):
+  - 원본보호 정책에 부여된 제어스위트를 제어스위트 페이지에서 삭제 가능
+  - 삭제 후 후속 화면에서 오류 메시지 출력 (참조 무결성 깨짐)
+  - 기대 동작: "사용 중" 차단 모달 (npouch_policy → origin_protect 흐름은 정상 차단)
+- **참조 그래프 동작 비대칭** (제품 자체 결함):
+  | 부여 흐름 | 잠금 동작 |
+  |---------|--------|
+  | npouch_policy → origin_protect | ✅ 차단 (정상) |
+  | origin_protect → control_suite | ❌ 삭제됨 + 오류 (결함) |
+  | control_suite → tag | 미확인 |
+  | tag → operation_process | 미확인 |
+- **테스트 설계 — cross-page 패턴** (다음 PDCA 사이클):
+  ```
+  sc — cross_ref_<상위>_<하위>_blocked:
+    1. <상위> 페이지 → AUTO 항목 + AUTO_KEEP 하위 참조 (이미 sc5 lifecycle 산출물)
+    2. <하위> 페이지 navigate
+    3. AUTO_KEEP_sc5_<하위> 삭제 시도
+    4. 검증 — pass=차단 / fail=삭제됨 (known_bug 🔴)
+    5. (선택) 후속 오류 화면 캡처
+    6. 정리: 상위 페이지 복귀 후 AUTO 삭제
+  ```
+  - 단일 시나리오 내 페이지 이동 1회 — CLAUDE.md "함수 1개=시나리오 1개" 원칙 준수
+  - 결함 발견 시 fail + known_bug 마킹 + 화면 캡처
+- **참조 그래프 사전 확인 필요** (Chrome MCP):
+  - 각 부여 흐름의 차단 모달 selector / 메시지
+  - 결함 페이지의 후속 오류 화면 selector
+- **현 상태**: 미수정 — exe 배포 우선. 다음 PDCA 사이클에서 cross-page 검증 + rename fallback + sc5 KEEP 명시 통합.
+
+---
+
+## [PENDING] 참조 그래프 연계 누락 — sc5 부여 시 KEEP 명시 비대칭 — 2026-06-04
+
+- **확진 (코드 기반)**:
+  - `npouch_policy/test_scenario5_lifecycle.py:189` → `_select_origin_protect_keep(page)` 명시 ✅
+  - `origin_protect/test_scenario5_lifecycle.py:206` → `_csu_select_first(page)` (default "AUTO" 검색) ❌
+    - `[AUTO_KEEP]_sc5_control_suite` 명시 선택 보장 없음
+    - 다른 AUTO 잔존 시 그것 선택 → sc1 cleanup 에서 삭제됨 → 참조 끊김
+    - 결과: control_suite AUTO_KEEP 이 참조 잠금 시나리오 미재현
+  - `control_suite/sc6` (태그 적용) — 디렉토리 패턴이지만 sc6 lifecycle 의 KEEP 명시 여부 미확인
+  - `tag/sc6` / `operation_process/sc6` — sc6 자체 미완성 (별도 PENDING 참조)
+- **수정 방향** (다음 PDCA):
+  1. `origin_protect sc5` 의 `_csu_select_first(page)` → `_csu_search_and_select(page, "[AUTO_KEEP]_sc5_control_suite")` 로 변경
+  2. `control_suite sc5/sc6` lifecycle KEEP 명시 확인 + 보강 (태그 적용 시)
+  3. `tag/operation_process` sc6 디렉토리 패턴 업그레이드 시 KEEP 명시 보장
+  4. 일관 원칙: **모든 sc5 lifecycle 의 상위 참조 선택은 `[AUTO_KEEP]_sc5_<참조페이지>` 명시 검색** — 무작위 AUTO 선택 금지
+- **현 상태**: 미수정 — exe 배포 우선, 다음 PDCA 사이클에서 통합 처리.
+
+---
+
+## [RESOLVED] cross-page 검증 예외 'NpouchTagPage' object has no attribute 'settings' — 2026-06-04
+
+- **증상**: 태그 sc6 cross-page 검증이 `'NpouchTagPage' object has no attribute 'settings'` 예외로 실행 안 됨.
+- **원인**: `base_page.py` 가 settings 를 `base_url`/`timeout` 으로만 추출 후 버림. cross-page 코드의
+  `NpouchOperationProcessPage(self.p.page, settings)` 생성 시 settings 참조 실패.
+- **수정** (2026-06-04):
+  - `base_page.py:__init__` → `self.settings = settings` 저장.
+  - `test_npouch_tag.py` cross-page → `self.p.settings` 직접 참조 (잘못된 `getattr(self, "settings")` 제거).
+
+---
+
+## [RESOLVED/오판정정] 태그 등록 프로세스 삭제 — 테스트 로직 오판 (제품 정상) — 2026-06-04
+
+- **초기 오판**: cross-page 가 1단계 confirm("삭제 하시겠습니까?")만 보고 "차단 없음 = 제품 결함" 으로 fail/known_bug 마킹.
+- **Chrome 직접 검증 (192.168.13.141 — innotium.iptime.org 만 차단됐던 것)**:
+  - 1) 삭제 클릭 → `"선택한 항목을 삭제 하시겠습니까?"` (확인/취소)
+  - 2) **확인** → 서버 검증 → `"태그에 해당 프로세스가 할당 되어 있습니다."` (차단, 확인만)
+  - 3) 프로세스 **보존** (삭제 안 됨)
+  - = **제품 정상 동작.** 참조 잠금이 confirm 후 2단계 서버 검증으로 작동.
+- **실제 원인 = 테스트 로직 결함**: 1단계 confirm 만 검사, 2단계 응답 미확인.
+- **수정** (2026-06-04):
+  - cross-page 검증을 2단계로: 삭제 → 확인 → 2단계 모달 메시지 검사 → "할당" 있으면 pass.
+  - `_delete_or_rename` (operation_process + tag 양쪽): 동일 2단계 — 확인 후 차단 모달 감지 시 rename.
+  - known_bug 마킹 / SEL_MODAL_CANCEL 철회 (제품 결함 아님).
+- **교훈**: confirm 프롬프트와 서버 검증 응답은 별개 모달. 삭제류 검증은 반드시 확인 후 2단계 응답까지 확인.
+
+---
+
+## [RESOLVED] rename fallback 구현 — 참조 잠금 차단 시 [AUTO]_DELME_ rename — 2026-06-04
+
+- **배경**: sc1 clean slate (`cleanup_with_keep`) 가 `[AUTO_KEEP]` 항목 삭제 시도 시, 그게 다른 페이지(태그 등)에
+  참조 중이면 "할당/사용/참조" 차단 → cleanup 멈춤.
+- **사용자 결정 (2026-06-04)**: 참조 잠금 나오면 테스트 위해 그냥 이름 변경.
+- **구현** (operation_process + tag 양쪽 페이지):
+  - `rename_item(old, new)`: 수정 모달 → 이름 필드 변경 → 저장.
+  - `_delete_or_rename(name)`: 삭제 시도 → 모달 메시지에 "할당/사용/참조" 있으면 → dismiss → `[AUTO]_DELME_<base>` rename → 'renamed' 반환. 아니면 정상 삭제 'deleted'.
+  - `delete_all_auto_items` / `cleanup_with_keep`: `delete_item` → `_delete_or_rename` 로 교체.
+  - **무한루프 방지**: cleanup 대상 필터에서 `[AUTO]_DELME_` 제외 (rename 후 재선택 안 됨).
+- **효과**: cleanup 차단 없이 진행. `[AUTO]_DELME_*` 항목은 테스터가 참조 해제 후 수동 삭제.
+
+---
+
+## [DECISION] 사용자 테스트 설계 결정 — 2026-06-04
+
+- **maxlength=None 처리**: 현행 유지 (필드별 WARN). 서버 검증 설계이지만 필드별 명시 표시 선호.
+  DOM 속성 체크라 screenshot 없음 — 정상 (비시각적).
+- **cross-page 참조 잠금 검증 위치**: **양쪽 다**.
+  - 태그 sc6: 등록한 프로세스 삭제 차단 검증 (settings fix 후 활성).
+  - 다음 페이지 (control_suite/origin_protect): 해당 페이지 도달 시 각 참조 흐름별 cross-page 검증 추가 (forward task).
+    - control_suite → tag 적용 시 tag 삭제 차단
+    - origin_protect → control_suite 부여 시 control_suite 삭제 차단
+  - **삭제류 검증 표준** (2026-06-04 교훈): 삭제 → confirm "하시겠습니까" 확인 클릭 → 2단계 서버 응답("할당" 차단 등)까지 확인. 1단계 confirm 만 보고 판단 금지.
+  - **참조 그래프 전체 Chrome 직접 검증 완료 (2026-06-04, 서버 192.168.13.141)**:
+    | 흐름 | 차단 메시지 | 동작 |
+    |----|--------|----|
+    | tag → operation_process | "태그에 해당 프로세스가 할당 되어 있습니다" | ✅ 정상 2단계 |
+    | control_suite → tag | "제어스위트에 해당 태그가 할당 되어 있습니다" | ✅ 정상 2단계 |
+    | npouch_policy → origin_protect | "엔파우치 정책에 해당 정책이 할당 되어 있습니다" | ✅ 정상 2단계 |
+    - 모두 정상 차단 — 참조 무결성 제품 결함 없음. 초기 "결함" 판정은 테스트 1단계-only 오판이었음.
+    - 검증 방법: 임시로 상위에 하위 등록 → 하위 삭제 시도 → 차단 확인 → 임시 등록 원복.
+
+---
+
+## [PENDING] 참조 무결성 검증 누락 — 전 페이지 공통 시나리오 부재 — 2026-06-04
+
+- **제품 동작 (정상)**: 상위가 하위를 참조 중이면 하위 삭제 차단.
+  - operation_process ← tag (태그가 프로세스 등록)
+  - tag ← control_suite / origin_protect (적용)
+  - origin_protect ← npouch_policy (부여)
+- **누락된 검증** (모든 페이지 공통):
+  | 페이지 | 누락 검증 |
+  |------|--------|
+  | operation_process | 태그에 등록된 프로세스 삭제 차단 |
+  | tag | 제어스위트/원본보호에 적용된 태그 삭제 차단 |
+  | origin_protect | 엔파우치 정책에 부여된 원본보호 정책 삭제 차단 |
+- **왜 앞 시나리오에서 이슈가 안 났나**:
+  - sc6 lifecycle 의 AUTO_KEEP 잔존이 미완성 (태그 sc6 보고 참조)
+  - 후속 페이지에서 참조 발생 안 함 → cleanup 충돌 회피됨
+  - 단독 실행 = false PASS (참조 잠금 케이스 자체 미실행)
+- **추후 수정 방향**:
+  - **sc3 또는 sc4 에 참조 잠금 검증 추가** (각 페이지별):
+    1. AUTO 하위 항목 생성
+    2. AUTO 상위 항목 생성 + 1번 참조
+    3. 하위 삭제 시도 → 차단 확인 (정상)
+    4. 상위에서 참조 해제 또는 상위 삭제
+    5. 하위 삭제 재시도 → 성공 확인
+  - **sc6 lifecycle 완성** (태그/제어스위트 디렉토리 패턴 업그레이드 포함):
+    - AUTO_KEEP 정상 잔존 → 다음 실행 cleanup 에서 참조 충돌 검증 가능
+  - **cleanup 순서 보정** (참조 그래프 역순):
+    `npouch_policy → origin_protect → control_suite → tag → operation_process`
+  - **차단 모달 정보** (사용자 캡처 2026-06-04 — origin_protect 케이스):
+  - 메시지 텍스트: `"엔파우치 정책에 해당 정책이 할당 되어 있습니다."`
+  - 버튼: "확인" (전역 알림 modal 동일 selector 추정)
+  - 매칭 키워드 후보: `"할당 되어 있습니다"`, `"할당"`, `"사용"` 중 어느 게 모든 페이지 공통인지 추가 조사 필요
+- **rename fallback 패턴** (사용자 제안 2026-06-04 — 채택):
+    - 삭제 시도 → "참조 사용 중" 차단 모달 감지 시 → 이름을 `[AUTO]_DELME_<원이름>` 으로 변경 → 진행 계속.
+    - `base_page.py` 공통 메서드 `delete_or_rename_fallback()` 추가.
+    - sc1/sc5c cleanup 가드: `[AUTO_KEEP]_*` + `[AUTO]_DELME_*` 둘 다 자동 삭제 제외.
+    - 사용자가 수동 정리 (참조 해제 → 삭제) — 테스트 진행은 중단 없음.
+    - 보고서에 "삭제 차단 → rename" 결과 명시 (의도 추적).
+    - 차단 모달 메시지/selector 는 Chrome MCP 로 페이지별 사전 확인 필요.
+- **현 상태**: 미수정 — exe 배포 우선, 추후 별도 PDCA 진행.
+
+---
+
+## [PENDING] 원본보호 정책 부여 시 삭제 잠금 — 검증 시나리오 누락 + cleanup 충돌 가능 — 2026-06-04
+
+- **제품 동작 (정상)**: 원본보호 정책이 엔파우치 정책에 부여돼 있으면 해당 원본보호 정책 삭제 불가 (참조 무결성).
+- **검증 누락**:
+  - npouch_policy sc3/sc4 에서 원본보호 정책 부여 후, origin_protect 쪽에서 삭제 시도 → "삭제 차단" 확인 검증 없음.
+  - 부여 해제 후 삭제 가능 검증 없음.
+- **cleanup 충돌 가능 시나리오**:
+  - 5 페이지 동시 실행 시 page 순서에 따라:
+    - origin_protect sc1 cleanup → AUTO_KEEP 정책 삭제 시도
+    - 그러나 직전 실행에서 `[AUTO_KEEP]_sc5_origin_protect` 가 `[AUTO_KEEP]_sc5_npouch_policy` 에 부여된 상태 잔존 → 삭제 실패
+  - 사용자 보고: 테스트 중 실제 이슈 발생 (2026-06-04).
+- **추후 수정 방향**:
+  - **검증 추가** (sc3 또는 sc4): "참조된 원본보호 정책 삭제 차단" 케이스를 npouch_policy 디렉토리에 새 시나리오로 추가.
+  - **cleanup 순서 보정**: page 실행 순서를 `npouch_policy → origin_protect` 로 강제하거나,
+    origin_protect sc1 cleanup 전에 npouch_policy AUTO/AUTO_KEEP 항목 먼저 삭제 (참조 해제) 후 진행.
+  - 또는 origin_protect cleanup 에서 삭제 실패 시 "부여 해제 → 재시도" fallback.
+- **현 상태**: 미수정 — exe 배포 우선, 추후 별도 PDCA 진행.
+
+---
+
+## [RESOLVED] 페이지 검색 "[AUTO]" 가 [AUTO_KEEP]_* 못 잡음 — 2026-06-04
+
+- **증상**: `search_item("[AUTO]")` 검색 결과에 `[AUTO_KEEP]_sc6_*` 항목 미포함 → cleanup 누락.
+- **원인**: `[AUTO]` substring 매칭 시 `[AUTO_KEEP]` 의 6번째 글자 `_` vs `]` 다름 → 검색 결과 안 들어옴.
+- **수정** (2026-06-04): `search_item("[AUTO]")` → `search_item("[AUTO")` (close bracket 제거).
+  영향: `delete_all_auto_items`, `cleanup_with_keep` 양쪽 페이지.
+- **사용자 발견**: 검색창에 `[auto` 입력 시 KEEP 도 매칭됨을 확인.
+
+---
+
+## [RESOLVED] 글자수 제한(overflow) 스캔 — 느린 서버 에러 놓침 → "제한 없음" 오판 — 2026-06-04
+
+- **증상 (사용자 보고)**: 프로세스 이름에 긴 값 입력+저장 시 "서버에서 오류가 발생 하였습니다" 발생하는데,
+  테스트는 "1001자까지 입력 가능 — 서버 측 글자수 제한 없음 (known issue)" 으로 오판.
+- **증거 (로그)**: `[WARN] 프로세스 이름 — 글자수 제한 스캔: 1001자까지 입력 가능` +
+  `[NET 5xx] POST 500 .../tag?tagName=[AUTO]_ov_XXX...` (실제 500 에러 발생).
+- **원인**: overflow 스캔이 `try_submit()` 후 `wait_for_timeout(600)` + 즉시 `is_confirm_modal_visible()`(count() 무대기).
+  긴 값(1001자)은 서버 처리가 600ms 보다 느려 그 시점에 에러 모달 미출현 → `else` 분기 → `_ov_any_saved=True` ('저장됨/제한없음' 오판).
+- **수정** (2026-06-04, test_npouch.py + test_npouch_tag.py 동일):
+  - `wait_for_timeout(600)` + 즉시검사 → `SEL_CONFIRM_MODAL.wait_for(state="attached", timeout=6000)` 로 변경.
+    모달이 빨리 뜨면 즉시 반환(정상 케이스 영향 없음), 느린 에러도 6초까지 포착.
+  - 모달 미출현 시 '저장됨' 가정 금지 → 재검색으로 실제 저장 여부 확인 (test_npouch.py).
+- **사용자 지적 핵심**: maxlength 는 DOM 속성 체크(None→WARN)만이 아니라 실제 입력+저장+서버응답 검증 필요.
+  overflow 스캔이 그 역할인데 버그로 무력화됐던 것.
+- **2차 원인 (진짜 핵심, 2026-06-04)**: `_SAVE_SUCCESS_KEYWORDS` 에 `"하였습니다"` 포함 →
+  에러 메시지 `"서버에서 오류가 발생 하였습니다"` 가 success 로 오분류 (any() True).
+  타이밍 fix 후에도 여전히 "제한 없음" 오판한 진짜 이유.
+  - **수정**: 에러 키워드(`오류`/`실패`/`에러`) 먼저 검사 → 있으면 무조건 에러 처리.
+    `_ov_is_err = ("오류" in msg) or ...; if (not _ov_is_err) and success_kw: 저장 else: 에러`
+  - test_npouch.py(overflow 스캔) + test_npouch_tag.py(설명 글자수) 양쪽 적용.
+- **스크린샷 추가**: overflow 에러 모달 떠 있는 동안 `_ss()` 캡처 → 결과 extra["screenshot"] 첨부
+  (이전엔 결과 보고 시점에 모달 이미 닫혀 캡처 무의미했음).
+- **Chrome 직접 검증 (192.168.13.141)**: 프로세스 이름 1015자 → "서버에서 오류가 발생 하였습니다" 확인.
+- **보고서 캡처 미표시 원인 (2026-06-04)**: overflow 결과가 "pass" 였는데 html_reporter.py:526
+  `bug_items = status in (fail/warn/known_bug/error)` — pass 는 defect 카드 없음 → 스크린샷 첨부해도 미표시.
+  - **수정**: generic 500 응답은 결함(graceful 검증 메시지 부재)이므로 `pass` → `warn` + `🔴 (known_bug)` 로 변경
+    (디렉토리 패턴 origin_protect sc3n 와 일관). 이제 defect 카드 + 캡처 렌더링.
+- **빨간 하이라이트 (사용자 요청 2026-06-04)**: 코드 전체에 element 빨간 표시 기능 없었음 (캡처는 viewport 만).
+  scan_context 주석: element 캡처는 Playwright actionability 대기로 30초 hang → viewport 만 사용.
+  - **신규 추가**: overflow 에러 시 문제 input 에 `el.style.outline='3px solid red'` + boxShadow 입힌 후
+    viewport 캡처 (스타일링은 hang 없음). 문제 필드가 빨갛게 표시된 화면 캡처.
+
+---
+
+## [RESOLVED] 운용 프로세스 — maxlength 검증 과거 잔재 + overflow 필드 누락 — 2026-06-04
+
+- **사용자 지적**: DOM maxlength(None) × 5필드 WARN = 프로세스 이름 초과 이슈와 같은 것 (중복 노이즈).
+  서명/SHA2/실행경로/설명에 긴 값 → 서버 오류 날 텐데 overflow 검증이 processName 만 있어 누락.
+  → 캡처도 부실해지는 악순환. maxlength DOM 체크 자체가 우리 방향(실입력+저장+서버응답+캡처)과 안 맞는 과거 잔재.
+- **수정** (2026-06-04):
+  1. YAML: 서명/SHA2/실행경로/설명에 `overflow_scan: true` 추가 (processName 포함 5필드 전부 실제 긴값 검증).
+  2. overflow 루프: 비-이름 필드는 유효 processName(`[AUTO]_ov_<id>`) 먼저 채운 후 대상 필드에 긴 값 입력
+     (이름 빈값이면 "이름 입력" 에러가 먼저 떠 필드 길이검증 불가). 저장 시 검색용 짧은 이름이라 cleanup 도 prefix 로 처리.
+  3. DOM maxlength 체크: `warn`(None) → `pass`(info) — 실제 검증은 overflow_scan 이 담당, 중복 WARN 제거.
+- **효과**: 5필드 각각 "X자 이상 서버 오류 🔴 known_bug" + 빨간 하이라이트 캡처. maxlength 노이즈 5건 제거.
+
+---
+
+## [PENDING] 단일 파일 sc 의 fail/warn 자동 screenshot 누락 — 2026-06-04
+
+- **현황**: `tests/test_npouch.py`, `tests/test_npouch_tag.py` 의 `_r(...)` 호출이 대부분 `page=` 인자 없이 호출 → fail/warn 결과에 screenshot 첨부 안 됨.
+  ```python
+  def _r(status, label, detail, sc=0, page=None):
+      if page and status in ("fail", "warn"):
+          ss_path = _ss(page, label)   # 인자 안 넘기면 skip
+  ```
+- **빨간색 highlight** 기능은 디렉토리 패턴 (UIScanner 기반) 만 사용. 단일 파일은 plain screenshot 만 가능.
+- **추후 수정 방향**:
+  - 작은: 핵심 fail 위치 (sc6 cross-page, modal 차단) 만 `page=` 추가
+  - 큰: 단일 파일 → 디렉토리 패턴 업그레이드 (highlight + capture 표준 적용)
+- **현 상태**: 미수정 — 단계적 적용 예정.
+
+---
+
+## [RESOLVED] select_process_by_name fallback — 매칭 실패 시 첫 행 무조건 선택 — 2026-06-04
+
+- **증상**: 태그 sc6 에서 `[AUTO_KEEP]_sc6_np_proc_suite` 등록 의도였으나 무관한 `111bug_process.exe` 가 등록됨.
+- **원인**: `pages/npouch_tag_page.py:355-398` 의 `select_process_by_name` 끝부분 fallback:
+  ```python
+  # fallback: 첫 번째 항목 선택  ← 잘못된 프로세스 선택!
+  first_row = rows[0]
+  cb.click()
+  return proc_name
+  ```
+  추가로 검색 대기 `wait_for_timeout(400)` 가 AJAX 적용 시간보다 짧아 매칭 실패 빈번.
+- **수정** (2026-06-04):
+  1. 검색 후 대기를 `locator.filter(has_text=name).wait_for(state="visible", timeout=2000)` 로 변경 (적용 확인까지 대기).
+  2. fallback 제거 — 매칭 실패 시 `raise Exception(...)` + 상위 5건 진단 정보 포함.
+
+---
+
+## [PENDING] 태그 sc2 — 설명 긴 값 입력 시 이슈 확인 타임아웃 대기 — 2026-06-04
+
+- **현상**: 태그 페이지 sc2 (`tests/test_npouch_tag.py`) 에서 설명 필드에 긴 값 입력 후
+  이슈 확인 단계에서 타임아웃 (긴 wait) 발생. 옛 로직 잔존.
+- **영향**: 태그 페이지 전체 실행 시간 증가.
+- **추후 수정 방향**: 태그 페이지를 디렉토리 패턴 (`tests/npouch_tag/`) 으로 업그레이드.
+  긴 값 입력 후 검증은 단축 timeout 패턴 적용 (origin_protect / npouch_policy 패턴 참조).
+- **현 상태**: 미수정 — exe 배포 우선, 이후 별도 PDCA 진행.
+
+---
+
+## [PENDING] 태그 sc6 — AUTO_KEEP 항목 미잔존 — 2026-06-04
+
+- **현상**: 태그 페이지 sc6 lifecycle 종료 시 `[AUTO_KEEP]_sc5_*` 항목이 남지 않아
+  후속 테스트에서 활용 불가.
+- **영향**: lifecycle 연계 데이터 부재.
+- **추후 수정 방향**: 디렉토리 패턴 업그레이드 시 sc5c (npouch_policy 패턴) AUTO-only cleanup 적용,
+  `cleanup_all_auto_keep` 제외 로직 추가.
+- **현 상태**: 미수정 — exe 배포 우선, 이후 별도 PDCA 진행.
+
+---
+
+## [RESOLVED] qatool 시나리오 0 표시 위치 — append 로 뒤에 표시됨 — 2026-06-04
+
+- **증상**: 시나리오 0 (UIScanner) 가 sc1~5(6) 뒤에 표시됨.
+- **원인**: `app.py:538` 동적 sc 항목 추가가 `append` — `_LIST_SCENARIOS` 에 sc1~5(6) 만 hardcoded 라
+  sc0 는 헤더 print 시 끝에 추가됨.
+- **수정** (2026-06-04): `append` → `sc_num` 오름차순 정렬 insert.
+  ```python
+  insert_at = next((i for i, s in enumerate(sc_list) if s["num"] > sc_num), len(sc_list))
+  sc_list.insert(insert_at, new_sc)
+  ```
+- **효과**: sc0 → sc1 → sc2 → ... 순으로 표시. 다른 동적 sc 항목도 자동 정렬.
+
+---
+
+## [RESOLVED] qatool 시나리오 진행 표시 — sub-num (a/b/c) 정규식 미매칭 — 2026-06-04
+
+- **증상**: control_suite/origin_protect/npouch_policy 실행 중 시나리오 헤더 "시나리오 2c:", "시나리오 4w:" 등이
+  UI 에 "예정"으로만 표시. 디렉토리 패턴 페이지의 모든 sub-num 시나리오 해당.
+- **원인**: `app.py:437` 정규식 `r'시나리오\s+(\d+)\s*[:：]\s*(.+)'` 가
+  "시나리오 2c:" 의 sub-num `c` 를 허용 안 함 → 매칭 fail → sc_status 갱신 안 됨.
+- **수정** (2026-06-04): `(\d+)` 뒤에 `[a-z]?` optional 추가.
+  ```python
+  _SC_RE = _re.compile(r'시나리오\s+(\d+)[a-z]?\s*[:：]\s*(.+)')
+  ```
+- **효과**: sub-num 무시하고 sc_num 정수만 추출 → 같은 sc_num 의 모든 sub 가 동일 항목으로 묶여 표시.
+
+---
+
+## [RESOLVED] qatool UI 진행 표시 — 디렉토리 패턴 페이지 실시간 추적 불가 — 2026-06-04
+
+- **현상**: 5 페이지 선택 후 실행 시 `npouch_control_suite` / `npouch_origin_protect` / `npouch_policy`
+  의 진행 상태가 "예정/대기중" 으로만 표시. 시나리오 헤더 실시간 갱신 안 됨.
+- **원인**: `app.py:488-489` stdout 매칭이 단일 클래스명 매핑 (`_NPOUCH_PAGE_TO_CLASS`) 기반.
+  디렉토리 패턴의 실제 클래스 prefix (`TestScenario*`, `TestOriginProtect*`, `TestNpouchPolicyScenario*`)
+  와 매핑값 (`TestNpouchControlSuite` 등) 불일치 → `current_page` 갱신 실패 → 시나리오 헤더 미감지.
+- **영향**: 보고서 결과는 정상 (테스트 자체는 실행됨) / 실시간 UI 만 정지.
+- **추후 수정 방향**:
+  - `_NPOUCH_PAGE_TO_CLASS` 를 prefix 또는 파일 경로 기반 dict 로 변경
+    (e.g. `{"npouch_control_suite": ("control_suite/", "control_suite\\")}`).
+  - pytest stdout 의 `tests/<dir>/` 또는 `::Prefix*::` 매칭 로직 추가.
+- **수정** (2026-06-04):
+  - `app.py:482-501` 페이지 감지를 `_NPOUCH_PAGE_TO_FILE` 기반 경로 매칭으로 변경.
+    - 단일 파일: `f"{file}::" in line` / `f"{file} " in line`
+    - 디렉토리: `f"/{dir}/" in line` / `f"\\{dir}\\" in line`
+  - `app.py:550` `in_summary` 에 디렉토리 3개 경로 추가 (FAILED 감지용).
+  - 클래스명 prefix 매칭 회피 — control_suite/ 의 `TestScenario*` 가 generic 이라 안전.
+
+---
+
 ## [RESOLVED] [AUTO_KEEP] 정책 cleanup 실패 — check_policy_row 가드가 [AUTO] 만 허용
 - **날짜**: 2026-06-01
 - **증상**: sc1 의 session cleanup 호출 후에도 `[AUTO_KEEP]_sc5_origin_protect` 잔존 → 사용자가 수동 삭제

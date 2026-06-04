@@ -9,6 +9,7 @@ from pages.shared._overlay import overlay_off
 class BasePage:
     def __init__(self, page: Page, settings: dict):
         self.page = page
+        self.settings = settings   # cross-page 등에서 다른 Page 재생성 시 재사용
         self.base_url = settings.get("base_url", "")
         self.timeout = settings.get("browser", {}).get("timeout", 30000)
 

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from core.models import ScanResult, PageScanReport
 from pages.npouch_tag_page import NpouchTagPage
+from pages.npouch_operation_process_page import NpouchOperationProcessPage
 
 # ── scan_hints YAML 로드 ──────────────────────────────────────────
 def _load_hints(page_id: str) -> dict:
@@ -26,12 +27,37 @@ def _load_hints(page_id: str) -> dict:
 # ── 스크린샷 ─────────────────────────────────────────────────────
 _SS_DIR = Path(__file__).parent.parent / "reports" / "screenshots"
 
-def _ss(page, label: str) -> str | None:
+def _ss(page, label: str, highlight=None) -> str | None:
+    """highlight (Locator) 있으면 빨간 outline 임시 주입 + 스크롤 후 캡처 → 복원.
+    None 이면 기존 viewport 캡처. origin_protect _ss 와 동일 헬퍼."""
     try:
         _SS_DIR.mkdir(parents=True, exist_ok=True)
         safe = re.sub(r"[^\w가-힣]", "_", label)[:40]
         path = _SS_DIR / f"BUG_{safe}_{int(time.time()*1000)}.png"
+        injected = False
+        if highlight is not None:
+            try:
+                highlight.first.scroll_into_view_if_needed(timeout=1000)
+                highlight.first.evaluate(
+                    "el => { el.setAttribute('data-qa-hl','1');"
+                    " el.style.outline='3px solid #ff2d2d';"
+                    " el.style.outlineOffset='2px';"
+                    " el.style.boxShadow='0 0 0 6px rgba(255,45,45,0.25)'; }"
+                )
+                injected = True
+            except Exception:
+                injected = False
         page.screenshot(path=str(path))
+        if injected:
+            try:
+                highlight.first.evaluate(
+                    "el => { el.style.outline='';"
+                    " el.style.outlineOffset='';"
+                    " el.style.boxShadow='';"
+                    " el.removeAttribute('data-qa-hl'); }"
+                )
+            except Exception:
+                pass
         return str(path)
     except Exception:
         return None
@@ -45,12 +71,12 @@ _SAVE_SUCCESS_KEYWORDS = ("하시겠습니까", "저장 하였습니다", "저�
 
 
 def _r(status: str, label: str, detail: str = "", sc: int = 0,
-       page=None) -> tuple[str, ScanResult]:
+       page=None, highlight=None) -> tuple[str, ScanResult]:
     icon = _STATUS_ICON.get(status, "?")
     text = f"  {icon} {label}" + (f": {detail}" if detail else "")
     extra: dict = {"scenario": sc}
     if page and status in ("fail", "warn"):
-        ss_path = _ss(page, label)
+        ss_path = _ss(page, label, highlight=highlight)
         if ss_path:
             extra["screenshot"] = ss_path
     sr = ScanResult(
@@ -101,14 +127,14 @@ class TestNpouchTag:
         """
         _page = self.p.page
         def r(status: str, label: str, detail: str = "",
-              capture: bool = None) -> tuple[str, ScanResult]:
+              capture: bool = None, highlight=None) -> tuple[str, ScanResult]:
             if capture is True:
                 page_to_use = _page
             elif capture is False:
                 page_to_use = None
             else:  # None → fail만 자동 캡처
                 page_to_use = _page if status == "fail" else None
-            return _r(status, label, detail, sc=sc, page=page_to_use)
+            return _r(status, label, detail, sc=sc, page=page_to_use, highlight=highlight)
         return r
 
     # ── 시나리오 1: UI 구조 ────────────────────────────────────────
@@ -117,6 +143,12 @@ class TestNpouchTag:
         lines, srs = [], []
         p = self.p
         print(f"\n━━ [{self.PAGE_NAME}] 시나리오 1: UI 구조 ━━━━━━━━━━━━━━━━━━━━━━━")
+
+        # sc1 시작 — clean slate ([AUTO] + [AUTO_KEEP] 일괄 삭제)
+        try:
+            p.cleanup_with_keep()
+        except Exception:
+            pass
 
         # 탭 전환 — 단일 뷰
         t, s = r("skip", "탭 전환", "단일 뷰 페이지 — 탭 없음")
@@ -326,13 +358,23 @@ class TestNpouchTag:
             )
             p.page.wait_for_timeout(200)
             p.try_submit()
-            p.page.wait_for_timeout(600)
-            if p.is_confirm_modal_visible():
+            # 서버 응답 모달 출현까지 대기 (긴 값 서버 처리 지연 대응 — 즉시검사 시 느린 에러 놓침)
+            _ov_modal = False
+            try:
+                p.page.locator(p.SEL_CONFIRM_MODAL).wait_for(
+                    state="attached", timeout=6000
+                )
+                _ov_modal = True
+            except Exception:
+                _ov_modal = False
+            if _ov_modal:
                 ov_dmsg = p.get_modal_message()
-                if any(kw in ov_dmsg for kw in _SAVE_SUCCESS_KEYWORDS):
+                # 에러 키워드 먼저 — "오류가 발생 하였습니다" 가 success "하였습니다" 에 오분류 방지
+                _ov_is_err = ("오류" in ov_dmsg) or ("실패" in ov_dmsg) or ("에러" in ov_dmsg)
+                if (not _ov_is_err) and any(kw in ov_dmsg for kw in _SAVE_SUCCESS_KEYWORDS):
                     t, s = r("warn", "설명 — 글자수 제한",
                              f"DOM maxlength={ml_desc!r} / 실제: {_ov_dlen}자 저장됨 — 서버 제한 없음 (known issue)",
-                             capture=True)
+                             capture=True, highlight=p.page.locator(p.SEL_DESCRIPTION))
                     p.click_attached(p.SEL_CONFIRM_BTN)
                     p.wait_for_confirm_modal_closed()
                     p.wait_for(p.SEL_ADD_BTN)
@@ -341,9 +383,9 @@ class TestNpouchTag:
                     except Exception:
                         pass
                 else:
-                    t, s = r("pass", "설명 — 글자수 제한",
-                             f"DOM maxlength={ml_desc!r} / 실제: {_ov_dlen}자 서버 오류",
-                             capture=True)
+                    t, s = r("warn", "설명 — 글자수 제한",
+                             f"DOM maxlength={ml_desc!r} / 실제: {_ov_dlen}자 generic '서버 오류' 응답 (graceful 검증 부재)",
+                             capture=True, highlight=p.page.locator(p.SEL_DESCRIPTION))
                     p.dismiss_confirm_modal()
                     p.wait_for_confirm_modal_closed()
             else:
@@ -997,7 +1039,8 @@ class TestNpouchTag:
         r = self._make_r(6)
         lines, srs = [], []
         p = self.p
-        _SUITE_TAG = "[AUTO]_np_tag_suite"
+        # AUTO_KEEP_ prefix — sc1 cleanup 시 보존, 세션 간 잔존
+        _SUITE_TAG = "[AUTO_KEEP]_sc6_np_tag_suite"
         print(f"\n━━ [{self.PAGE_NAME}] 시나리오 6: 다음 테스트용 태그 설정 ━━━━━━━━━━━━")
 
         # ── 사전 정리 (항상 실행 — 이전 실행 잔여물 제거) ────────────
@@ -1006,51 +1049,49 @@ class TestNpouchTag:
         except Exception:
             pass
 
-        # ── 연계 테스트 존재 여부 자동 감지 ──────────────────────────
-        _test_dir = Path(__file__).parent
-        _consumer_files = [
-            f for f in _test_dir.glob("test_npouch_*.py")
-            if f.name != Path(__file__).name
-            and _SUITE_TAG in f.read_text(encoding="utf-8", errors="ignore")
-        ]
-        if not _consumer_files:
-            t, s = r("skip", f"{_SUITE_TAG} — 연계 테스트 없음",
-                     "다른 test_npouch_*.py 에서 이 태그를 참조하는 파일 없음 — 설정 스킵")
-            lines.append(t); srs.append(s)
-            for line in lines: print(line)
-            self._attach(srs)
-            return
+        # cross-page 차단 검증을 sc6 안에서 항상 수행 — _consumer_files 감지 skip 제거
 
-        # ── suite 태그 생성 ───────────────────────────────────────
+        # ── suite 태그 — 잔존 시 재사용, 없으면 생성 ───────────────
         try:
-            p.add_item(_SUITE_TAG)
-            names = p.get_item_names()
-            t, s = r("pass" if _SUITE_TAG in names else "fail",
-                     f"{_SUITE_TAG} — 태그 생성",
-                     f"입력: 태그 추가 / 결과: {'생성됨' if _SUITE_TAG in names else '없음'}")
+            p.search_item(_SUITE_TAG)
+            already = _SUITE_TAG in p.get_item_names()
+            if already:
+                t, s = r("pass", f"{_SUITE_TAG} — 태그 잔존 재사용",
+                         f"결과: AUTO_KEEP 잔존 활용")
+            else:
+                p.add_item(_SUITE_TAG)
+                p.search_item(_SUITE_TAG)
+                names = p.get_item_names()
+                t, s = r("pass" if _SUITE_TAG in names else "fail",
+                         f"{_SUITE_TAG} — 태그 생성",
+                         f"입력: 태그 추가 / 결과: {'생성됨' if _SUITE_TAG in names else '없음'}")
         except Exception as e:
             t, s = r("fail", f"{_SUITE_TAG} — 태그 생성", str(e))
         lines.append(t); srs.append(s)
 
-        # ── 프로세스 등록 ─────────────────────────────────────────
-        # [AUTO]_np_proc_suite 우선 선택 (운용 프로세스 시나리오 6에서 생성)
-        # 없으면 첫 번째 프로세스 fallback
-        _SUITE_PROC = "[AUTO]_np_proc_suite"
+        # ── 프로세스 등록 (이미 등록돼 있으면 skip) ─────────────────
+        # [AUTO_KEEP]_sc6_np_proc_suite 우선 선택 (프로세스 sc6 에서 KEEP 잔존)
+        _SUITE_PROC = "[AUTO_KEEP]_sc6_np_proc_suite"
         registered_proc = ""
         try:
-            p.open_modify_modal(_SUITE_TAG)
-            p.open_process_list_modal()
-            registered_proc = p.select_process_by_name(_SUITE_PROC)
-            p.confirm_process_selection()
-            proc_names = p.get_registered_process_names()
-            t, s = r("pass" if registered_proc in proc_names else "fail",
-                     f"{_SUITE_TAG} — 프로세스 등록",
-                     f"입력: {registered_proc!r} 선택 / 결과: "
-                     f"{'등록됨' if registered_proc in proc_names else '등록 안됨'}")
-            # r() 호출 후 저장
-            p.click_attached(p.SEL_SUBMIT_BTN)
-            p._handle_confirm_modal()
-            p.wait_for(p.SEL_ADD_BTN)
+            existing_procs = p.get_process_names_in_list(_SUITE_TAG) if hasattr(p, "get_process_names_in_list") else []
+            if _SUITE_PROC in existing_procs:
+                t, s = r("pass", f"{_SUITE_TAG} — 프로세스 이미 등록 — 재사용",
+                         f"결과: {_SUITE_PROC!r} 잔존 등록")
+                registered_proc = _SUITE_PROC
+            else:
+                p.open_modify_modal(_SUITE_TAG)
+                p.open_process_list_modal()
+                registered_proc = p.select_process_by_name(_SUITE_PROC)
+                p.confirm_process_selection()
+                proc_names = p.get_registered_process_names()
+                t, s = r("pass" if registered_proc in proc_names else "fail",
+                         f"{_SUITE_TAG} — 프로세스 등록",
+                         f"입력: {registered_proc!r} 선택 / 결과: "
+                         f"{'등록됨' if registered_proc in proc_names else '등록 안됨'}")
+                p.click_attached(p.SEL_SUBMIT_BTN)
+                p._handle_confirm_modal()
+                p.wait_for(p.SEL_ADD_BTN)
         except Exception as e:
             t, s = r("fail", f"{_SUITE_TAG} — 프로세스 등록", str(e))
         lines.append(t); srs.append(s)
@@ -1064,6 +1105,69 @@ class TestNpouchTag:
         except Exception as e:
             t, s = r("warn", f"{_SUITE_TAG} — 프로세스 카운트 확인", str(e))
         lines.append(t); srs.append(s)
+
+        # ── cross-page 검증: 태그 등록 중 프로세스 삭제 차단 ────────────
+        # 제품 2단계 동작 (Chrome 직접 검증 2026-06-04):
+        #   1) 삭제 클릭 → "선택한 항목을 삭제 하시겠습니까?" (확인/취소)
+        #   2) 확인 → 서버 검증 → "태그에 해당 프로세스가 할당 되어 있습니다" (차단, 확인만)
+        #   3) 프로세스 보존 (삭제 안 됨)
+        # pass = 2단계에서 "할당" 차단 / fail = 차단 없이 삭제 성공 (실제 결함)
+        try:
+            proc_page = NpouchOperationProcessPage(self.p.page, self.p.settings)
+            proc_page.navigate_to()
+            proc_page.search_item(_SUITE_PROC)
+            proc_names = proc_page.get_item_names()
+            if _SUITE_PROC not in proc_names:
+                t, s = r("warn", f"cross-page — 프로세스 페이지에서 {_SUITE_PROC} 미발견",
+                         f"입력: 프로세스 페이지 search / 결과: names={proc_names}")
+                lines.append(t); srs.append(s)
+            else:
+                row = proc_page.page.locator(proc_page.SEL_TABLE_ROW).filter(
+                    has_text=_SUITE_PROC
+                ).first
+                checkbox = row.locator(proc_page.SEL_CHECKBOX).first
+                if not checkbox.is_checked():
+                    proc_page._toggle_overlay(False)
+                    try:
+                        checkbox.click()
+                    finally:
+                        proc_page._toggle_overlay(True)
+                proc_page.click(proc_page.SEL_DELETE_BTN)
+                # 1단계: "삭제 하시겠습니까?" confirm → 확인 클릭하여 서버 검증 진행
+                proc_page.page.locator(proc_page.SEL_CONFIRM_MODAL).wait_for(
+                    state="attached", timeout=proc_page._TIMEOUT_MODAL
+                )
+                proc_page.click_attached(proc_page.SEL_CONFIRM_BTN)
+                proc_page.page.wait_for_timeout(800)
+                # 2단계: 서버 응답 모달 (차단 "할당" or 삭제 성공)
+                if proc_page.page.locator(proc_page.SEL_CONFIRM_MODAL).count() > 0:
+                    msg2 = proc_page.page.locator(proc_page.SEL_MODAL_MSG).first.inner_text().strip()
+                    is_blocked = ("할당" in msg2) or ("사용" in msg2) or ("참조" in msg2)
+                else:
+                    # 응답 모달 없음 = 삭제 완료 = 참조 무결성 결함
+                    msg2 = "(2단계 응답 모달 없음 — 삭제 완료 추정)"
+                    is_blocked = False
+                t, s = r("pass" if is_blocked else "fail",
+                         f"cross-page — 태그 등록 중 프로세스 삭제 차단",
+                         f"입력: {_SUITE_PROC} 삭제 시도(확인) / 결과: 2단계 msg={msg2!r} "
+                         f"blocked={is_blocked} "
+                         f"({'정상 차단 (할당)' if is_blocked else '결함 — 차단 없이 삭제됨'})",
+                         capture=(not is_blocked))
+                lines.append(t); srs.append(s)
+                # 2단계 모달(차단 alert) dismiss — 확인 (프로세스는 이미 보존됨)
+                try:
+                    proc_page.click_attached(proc_page.SEL_CONFIRM_BTN)
+                except Exception:
+                    pass
+            # 태그 페이지 복귀
+            self.p.navigate_to()
+        except Exception as e:
+            t, s = r("warn", f"cross-page — 프로세스 삭제 차단 검증 예외", str(e))
+            lines.append(t); srs.append(s)
+            try:
+                self.p.navigate_to()
+            except Exception:
+                pass
 
         # ── 남겨두기 안내 ─────────────────────────────────────────
         t, s = r("skip", f"{_SUITE_TAG} — 삭제하지 않음",
