@@ -714,12 +714,19 @@ def generate_html_report(
     product_name: str = "RansomCruncher",
     output_dir: str = "reports",
     screenshot_dir: Optional[str] = None,
+    duration_sec: Optional[float] = None,
 ) -> Path:
     """
     reports: [(page_id, PageScanReport), ...] 순서대로 전달
+    duration_sec: 테스트 총 소요시간(초) — 헤더에 표시 (None 이면 생략)
     반환값: 생성된 HTML 파일 경로
     """
     now       = datetime.now()
+    # 소요시간 표시 문자열 (예: "46분 28초")
+    _dur_str = ""
+    if duration_sec is not None:
+        _m, _s = divmod(int(duration_sec), 60)
+        _dur_str = (f"{_m}분 {_s}초" if _m else f"{_s}초")
     date_str  = now.strftime("%Y%m%d_%H%M")
     filename  = f"QA_{product_name}_{date_str}.html"
     out_path  = Path(output_dir) / filename
@@ -806,6 +813,7 @@ def generate_html_report(
     <h1>🔍 QA 보고서 — {html.escape(product_name)}</h1>
     <div class="meta">
       생성일시: {now.strftime('%Y년 %m월 %d일 %H:%M')} &nbsp;|&nbsp;
+      {f'소요시간: {_dur_str} &nbsp;|&nbsp;' if _dur_str else ''}
       전체 결과: &#x2705; {total_p}  &#x1F534; {total_f}  &#x26A0;&#xFE0F; {total_k}  &#x26D4; {total_e} &nbsp;|&nbsp;
       {overall}
     </div>
@@ -862,6 +870,7 @@ function switchTab(btn, key) {{
     import json as _json
     json_data = {
         "generated_at": now.isoformat(),
+        "duration_sec": round(duration_sec, 1) if duration_sec is not None else None,
         "html_path":    str(out_path.resolve()),
         "pages": [
             {

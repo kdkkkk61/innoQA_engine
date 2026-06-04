@@ -182,12 +182,18 @@ def _remove_overlay(page) -> None:
 # ------------------------------------------------------------------
 # 계정 입력
 # ------------------------------------------------------------------
+_SESSION_START = None   # pytest_configure 에서 설정 — 보고서 소요시간 계산용
+
+
 def pytest_configure(config):
     """
     pytest 시작 직후(캡처 설정 이전) 계정 정보를 터미널에서 입력받는다.
     --collect-only / --help 등 실제 실행이 아닐 때는 스킵한다.
     커스텀 마커 dependency를 등록해 경고를 억제한다.
     """
+    import time as _time
+    global _SESSION_START
+    _SESSION_START = _time.time()   # 보고서 소요시간 계산용
     config.addinivalue_line(
         "markers",
         "dependency(name=None, depends=[]): 테스트 의존성 선언 — depends 목록 중 하나라도 실패하면 SKIP",
@@ -285,11 +291,17 @@ def pytest_unconfigure(config):
                     _cfg = _yaml.safe_load(_f) or {}
                 product_name = _cfg.get("product_name", "RansomCruncher")
 
+            # 소요시간 (pytest_configure 시작 ~ 지금)
+            _dur = None
+            if _SESSION_START is not None:
+                import time as _time
+                _dur = _time.time() - _SESSION_START
             html_path = generate_html_report(
                 _merged_list,
                 product_name=product_name,
                 output_dir=f"reports/{product_name}",
                 screenshot_dir=None,
+                duration_sec=_dur,
             )
             sys.stdout.write(f"\n[HTML 리포트] {html_path}\n")
             sys.stdout.flush()
