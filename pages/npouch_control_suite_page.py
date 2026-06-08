@@ -832,22 +832,49 @@ class NpouchControlSuitePage(BasePage):
         return "수정" in self.get_modal_title()
 
     def delete_policy(self, name: str) -> None:
-        """check + 삭제 버튼 + confirm 확인."""
+        """check + 삭제 버튼 + confirm 확인.
+        참조 잠금(원본보호가 이 제어스위트 사용 중)으로 삭제 차단 시 → [AUTO]_DELME_ rename.
+        """
         self.check_policy_row(name)
         self._click(self.page.locator(self.SEL_DELETE_BTN).first)
-        # 확인 모달 ('삭제 하시겠습니까?' 등) — 확인 버튼
+        # 1단계 확인 모달 ('삭제 하시겠습니까?') — 확인
         self.page.locator(self.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
             state="attached", timeout=self._TIMEOUT_MODAL
         )
         self.dismiss_confirm_modal()
-        # 두 번째 confirm ('삭제 하였습니다') — 있으면 dismiss
+        # 2단계 서버 응답 ('삭제 하였습니다' or 차단 '할당/사용 되어 있습니다')
         try:
             self.page.locator(self.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
                 state="attached", timeout=self._TIMEOUT_STALE
             )
+            msg2 = self.get_confirm_message()
             self.dismiss_confirm_modal()
+            if ("할당" in msg2) or ("사용" in msg2) or ("참조" in msg2):
+                # 삭제 차단 → rename fallback (무한루프/timeout 회피)
+                self.navigate_to()
+                if self.is_policy_exists(name):
+                    self._rename_policy_to_delme(name)
         except Exception:
             pass
+
+    def _rename_policy_to_delme(self, name: str) -> None:
+        """삭제 차단(참조 잠금)된 제어스위트를 [AUTO]_DELME_ 로 이름 변경 (테스터 수동 정리용)."""
+        try:
+            base = name.replace("[AUTO_KEEP]_", "").replace("[AUTO]_", "")
+            new_name = f"[AUTO]_DELME_{base}"
+            self.open_modify_modal(name)
+            self.fill(self.SEL_CSU_NAME, new_name)
+            self._click(self.page.locator(self.SEL_SUBMIT_MODIFY).first)
+            try:
+                self.page.locator(self.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                    state="attached", timeout=self._TIMEOUT_MODAL
+                )
+                self.dismiss_confirm_modal()
+            except Exception:
+                pass
+            print(f"[delete_policy] rename 완료: {name!r} → {new_name!r}")
+        except Exception as _re:
+            print(f"[delete_policy] rename 실패(무시): {_re}")
 
     def delete_all_auto_policies(self) -> int:
         """[AUTO]_ 접두사 정책 일괄 삭제 ([AUTO_KEEP]_ 제외).
@@ -860,10 +887,14 @@ class NpouchControlSuitePage(BasePage):
             names = [
                 n for n in self.get_policy_names()
                 if n.startswith("[AUTO]") and not n.startswith("[AUTO_KEEP]")
+                and not n.startswith("[AUTO]_DELME_")
             ]
             if not names:
                 break
             self.delete_policy(names[0])
+            # 삭제/rename 후에도 같은 이름 그대로면 무한루프 방지 위해 중단
+            if self.is_policy_exists(names[0]):
+                break
             deleted += 1
         return deleted
 
@@ -872,16 +903,21 @@ class NpouchControlSuitePage(BasePage):
 
         용도: 기본 cleanup — 자기 영역 깨끗히 시작 / 마지막 전체 청소.
         주의: 다음 테스트가 KEEP 데이터에 의존하는 경우 사용 금지.
+        [AUTO]_DELME_ 제외 (참조 잠금 잔존물 — 재rename 방지).
         """
         deleted = 0
         while True:
             names = [
                 n for n in self.get_policy_names()
-                if n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]")
+                if (n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]"))
+                and not n.startswith("[AUTO]_DELME_")
             ]
             if not names:
                 break
             self.delete_policy(names[0])
+            # 삭제/rename 후에도 같은 이름 그대로면 무한루프 방지 위해 중단
+            if self.is_policy_exists(names[0]):
+                break
             deleted += 1
         return deleted
 

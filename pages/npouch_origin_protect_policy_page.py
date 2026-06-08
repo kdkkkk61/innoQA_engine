@@ -250,10 +250,12 @@ class NpouchOriginProtectPolicyPage(BasePage):
         return actual_name[0]
 
     def delete_all_auto_policies(self) -> int:
-        """[AUTO]_ 만 삭제, [AUTO_KEEP]_ 보존 (control_suite 패턴 일치)."""
+        """[AUTO]_ 만 삭제, [AUTO_KEEP]_ 보존 (control_suite 패턴 일치).
+        [AUTO]_DELME_ 는 제외 (삭제 차단된 잔존물 — 테스터 수동 정리 대상)."""
         deleted = 0
         for name in [n for n in self.get_policy_names()
-                     if n.startswith("[AUTO]") and not n.startswith("[AUTO_KEEP]")]:
+                     if n.startswith("[AUTO]") and not n.startswith("[AUTO_KEEP]")
+                     and not n.startswith("[AUTO]_DELME_")]:
             try:
                 self.delete_policy(name)
                 deleted += 1
@@ -262,10 +264,12 @@ class NpouchOriginProtectPolicyPage(BasePage):
         return deleted
 
     def delete_all_test_data(self) -> int:
-        """[AUTO]_ + [AUTO_KEEP]_ 모두 삭제 — session 시작 clean slate 용 (control_suite 패턴)."""
+        """[AUTO]_ + [AUTO_KEEP]_ 모두 삭제 — session 시작 clean slate 용 (control_suite 패턴).
+        [AUTO]_DELME_ 는 제외 (참조 잠금으로 못 지운 잔존물 — 재rename 방지)."""
         deleted = 0
         for name in [n for n in self.get_policy_names()
-                     if n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]")]:
+                     if (n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]"))
+                     and not n.startswith("[AUTO]_DELME_")]:
             try:
                 self.delete_policy(name)
                 deleted += 1
@@ -273,34 +277,55 @@ class NpouchOriginProtectPolicyPage(BasePage):
                 pass
         return deleted
 
-    def delete_policy(self, name: str) -> None:
-        # [AUTO]_ 또는 [AUTO_KEEP]_ 접두사만 삭제 허용 (KEEP 도 session cleanup 대상).
+    def delete_policy(self, name: str) -> str:
+        """정책 삭제. 반환: 'deleted' | 'blocked'(참조 중 — 삭제 차단, 정상) | 'skipped'.
+
+        참조 잠금(엔파우치 정책이 이 원본보호 정책 부여 중 → DELETE 422)으로 삭제 차단 시:
+        5초 timeout 으로 멈추지 않고 ~1.2초 만에 차단 감지 → skip (재사용). hang/rename 없음.
+        """
         if not (name.startswith("[AUTO]") or name.startswith("[AUTO_KEEP]")):
             raise Exception("테스트 정책([AUTO]/[AUTO_KEEP] 접두사)만 삭제 가능합니다")
 
-        def _attempt():
-            self.check_policy_row(name)
-            self.click(self.SEL_DELETE_BTN)
+        self.check_policy_row(name)
+        self.click(self.SEL_DELETE_BTN)
+        # 1단계: "삭제 하시겠습니까?" confirm
+        try:
             self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
                 state="attached", timeout=self._TIMEOUT_MODAL
             )
-            msg = self.page.locator(self.SEL_MODAL_MSG).first.inner_text().strip()
-            if "하시겠습니까" not in msg:
+        except Exception:
+            return "skipped"
+        msg = self.page.locator(self.SEL_MODAL_MSG).first.inner_text().strip()
+        if "하시겠습니까" not in msg:
+            # 이미 차단/에러 모달 (참조 등) → dismiss 후 skip
+            try:
                 self.click_attached(self.SEL_CONFIRM_BTN)
-                raise Exception(f"삭제 에러 모달: {msg!r}")
-            self.click_attached(self.SEL_CONFIRM_BTN)
-            self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
-                state="detached", timeout=self._TIMEOUT_TABLE
-            )
+            except Exception:
+                pass
+            print(f"[delete_policy] 삭제 차단(참조 중) skip: {name!r} / {msg!r}")
+            return "blocked"
+        # 확인 → 삭제 요청
+        self.click_attached(self.SEL_CONFIRM_BTN)
+        self.page.wait_for_timeout(1200)   # 서버 응답 짧게 대기 (422 차단 모달 출현 시간)
+        # 2단계: 모달 잔존 = 참조 잠금(DELETE 422) 차단 → skip (재사용)
+        if self.page.locator(self.SEL_CONFIRM_MODAL).count() > 0:
+            try:
+                msg2 = self.page.locator(self.SEL_MODAL_MSG).first.inner_text().strip()
+            except Exception:
+                msg2 = "(차단 모달)"
+            try:
+                self.click_attached(self.SEL_CONFIRM_BTN)
+            except Exception:
+                pass
+            print(f"[delete_policy] 삭제 차단(참조 중) skip: {name!r} / {msg2!r}")
+            return "blocked"
+        # 삭제 성공
+        try:
             self.wait_for(self.SEL_ADD_BTN)
             self._restore_page_size()
-
-        try:
-            _attempt()
-        except Exception as e:
-            print(f"\n[delete_policy] 1차 실패: {e} — navigate_to 후 재시도")
-            self.navigate_to()
-            _attempt()
+        except Exception:
+            pass
+        return "deleted"
 
     # ── UIScanner 인터페이스 ──────────────────────────────────────
 

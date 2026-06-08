@@ -318,38 +318,53 @@ class NpouchPolicyPage(BasePage):
             pass
 
     # ── 삭제 ─────────────────────────────────────────────────────
-    def delete_policy(self, name: str) -> None:
+    def delete_policy(self, name: str) -> str:
+        """정책 삭제. 반환: 'deleted' | 'blocked'(참조 중 — 삭제 차단, 정상) | 'skipped'.
+        참조 잠금(원본보호/엔파우치 연계 등)으로 차단 시 ~1.2초 만에 감지 → skip (hang 없음, 재사용)."""
         if not (name.startswith("[AUTO]") or name.startswith("[AUTO_KEEP]")):
             raise Exception("테스트 정책([AUTO]/[AUTO_KEEP] 접두사)만 삭제 가능합니다")
 
-        def _attempt():
-            self.check_policy_row(name)
-            self.click(self.SEL_DELETE_BTN)
+        self.check_policy_row(name)
+        self.click(self.SEL_DELETE_BTN)
+        try:
             self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
                 state="attached", timeout=self._TIMEOUT_MODAL
             )
-            msg = self.page.locator(self.SEL_MODAL_MSG).first.inner_text().strip()
-            if "하시겠습니까" not in msg:
+        except Exception:
+            return "skipped"
+        msg = self.page.locator(self.SEL_MODAL_MSG).first.inner_text().strip()
+        if "하시겠습니까" not in msg:
+            try:
                 self.click_attached(self.SEL_CONFIRM_BTN)
-                raise Exception(f"삭제 에러: {msg!r}")
-            self.click_attached(self.SEL_CONFIRM_BTN)
-            self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
-                state="detached", timeout=self._TIMEOUT_TABLE
-            )
-            self.wait_for(self.SEL_ADD_BTN)
-
+            except Exception:
+                pass
+            print(f"[delete_policy] 삭제 차단(참조 중) skip: {name!r} / {msg!r}")
+            return "blocked"
+        self.click_attached(self.SEL_CONFIRM_BTN)
+        self.page.wait_for_timeout(1200)
+        if self.page.locator(self.SEL_CONFIRM_MODAL).count() > 0:
+            try:
+                msg2 = self.page.locator(self.SEL_MODAL_MSG).first.inner_text().strip()
+            except Exception:
+                msg2 = "(차단 모달)"
+            try:
+                self.click_attached(self.SEL_CONFIRM_BTN)
+            except Exception:
+                pass
+            print(f"[delete_policy] 삭제 차단(참조 중) skip: {name!r} / {msg2!r}")
+            return "blocked"
         try:
-            _attempt()
-        except Exception as e:
-            print(f"\n[delete_policy] 1차 실패: {e} — navigate_to 후 재시도")
-            self.navigate_to()
-            _attempt()
+            self.wait_for(self.SEL_ADD_BTN)
+        except Exception:
+            pass
+        return "deleted"
 
     def delete_all_auto_policies(self) -> int:
-        """[AUTO]_ 만 삭제, [AUTO_KEEP]_ 보존."""
+        """[AUTO]_ 만 삭제, [AUTO_KEEP]_ 보존. [AUTO]_DELME_ 제외 (수동 정리 대상)."""
         deleted = 0
         for name in [n for n in self.get_policy_names()
-                     if n.startswith("[AUTO]") and not n.startswith("[AUTO_KEEP]")]:
+                     if n.startswith("[AUTO]") and not n.startswith("[AUTO_KEEP]")
+                     and not n.startswith("[AUTO]_DELME_")]:
             try:
                 self.delete_policy(name)
                 deleted += 1
@@ -358,10 +373,12 @@ class NpouchPolicyPage(BasePage):
         return deleted
 
     def delete_all_test_data(self) -> int:
-        """[AUTO]_ + [AUTO_KEEP]_ 모두 삭제 — session 시작 clean slate 용."""
+        """[AUTO]_ + [AUTO_KEEP]_ 모두 삭제 — session 시작 clean slate 용.
+        [AUTO]_DELME_ 제외 (참조 잠금 잔존물 — 재rename 방지)."""
         deleted = 0
         for name in [n for n in self.get_policy_names()
-                     if n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]")]:
+                     if (n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]"))
+                     and not n.startswith("[AUTO]_DELME_")]:
             try:
                 self.delete_policy(name)
                 deleted += 1

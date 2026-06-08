@@ -5,6 +5,41 @@
 
 ---
 
+## [RESOLVED] 정책 페이지 delete_policy — 참조 잠금(DELETE 422) timeout ERROR — 2026-06-05
+
+- **증상**: origin_protect sc5a (그리고 npouch_policy) lifecycle ADD 에서
+  `[AUTO_KEEP]_sc5_origin_protect` 삭제 시도 → `DELETE 422` (엔파우치 정책이 부여 중, 참조 잠금)
+  → 차단 모달이 안 닫힘 → `delete_policy` 의 `wait_for(detached)` 5초 timeout × 2(재시도) → ERROR 테스트 중단.
+- **원인**: origin_protect / npouch_policy 의 `delete_policy` 에 차단 처리(rename fallback) 없음.
+  프로세스/태그엔 있었지만 정책 페이지엔 미적용.
+- **수정** (2026-06-05, 양쪽 정책 페이지):
+  1. `delete_policy`: 2차 시도도 실패 시 → `_rename_policy_to_delme(name)` 호출 (timeout raise 대신).
+     → `[AUTO]_DELME_<base>` 로 이름 변경, 테스터 수동 정리. 테스트는 진행 (중단 안 됨).
+  2. `_rename_policy_to_delme`: open_modify_modal → 이름 필드 변경 → 저장.
+  3. cleanup (`delete_all_auto_policies` / `delete_all_test_data`): `[AUTO]_DELME_` 제외 (재rename/무한 방지).
+- **효과**: 참조 잠금으로 못 지우는 KEEP 정책 → rename 후 진행. sc5a 가 NAME 사라진 걸 보고 fresh 재생성.
+  더이상 timeout ERROR 없음.
+- **남은 점**: rename 후 원래 참조(엔파우치→원본보호 DELME)는 유지 — 테스터가 부여 해제 후 DELME 수동 삭제.
+- **control_suite 도 추가** (2026-06-05): delete_policy 가 `while True` 루프라 참조된 정책(원본보호가 사용 중)
+  만나면 **무한루프 위험**이었음. 동일 rename fallback + `[AUTO]_DELME_` 제외 + "삭제 후에도 이름 잔존 시 break" 안전망 추가.
+- **참조잠금 rename fallback 적용 완료 = 5페이지 전부**: operation_process / tag / control_suite / origin_protect / npouch_policy.
+
+### [수정 2026-06-05] rename fallback → fast-skip(재사용)로 전환 (사용자 방향)
+
+- **배경**: rename fallback 이 매 실행 `[AUTO]_DELME_` 누적 + 삭제 2×5초 timeout 으로 sc1 멈춤(느림).
+- **사용자 방향**: "auto keep 삭제 불가 = 정상 (삭제되면 결함). rename 누적 말고 재사용."
+- **수정** (origin_protect / npouch_policy):
+  1. `delete_policy`: 5초 detached-wait 제거 → "확인 클릭 후 ~1.2초 대기 → 모달 잔존 시 차단(참조 중)" 빠른 감지 →
+     `'blocked'` 반환 + skip (hang/rename 없음). 반환값 `'deleted'|'blocked'|'skipped'`.
+  2. origin_protect `sc5a`: 삭제 차단(blocked)이면 **재생성 안 하고 기존 재사용** (`_reused` 분기).
+     보고서에 "참조 중이라 삭제 차단 → 정상 → 재사용 (삭제되면 결함)" pass 기록.
+  3. npouch_policy: 참조 그래프 최상위라 자기 KEEP 미참조 → 항상 삭제 성공. delete_policy fast-skip 만 적용.
+- **효과**: sc1 멈춤 해소 (5초×2 → ~1.2초), DELME 누적 0 (재사용), "삭제 불가=정상" 의도 반영.
+- **남은 작업**: control_suite 는 아직 이전 rename fallback (느리지만 hang 안 함) — 추후 fast-skip 통일.
+  날짜 기반 prefix (`[AUTO]_<날짜>`) 전환은 27파일 영향 → 별도 PDCA.
+
+---
+
 ## [RESOLVED] origin_protect sc5 중복 실행 — sc6 의 클래스 import 로 pytest 재수집 — 2026-06-04
 
 - **증상**: `tests/origin_protect/test_scenario6_keep_verify.py::TestOriginProtectScenario5Lifecycle::test_scenario5a_lifecycle_add` 가 FAIL.

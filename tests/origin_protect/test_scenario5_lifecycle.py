@@ -186,66 +186,77 @@ class TestOriginProtectScenario5Lifecycle(OriginProtectBase):
         self._ensure_session_cleanup(page)
 
         NAME = self.LIFECYCLE_NAME
-        # 이전 run 잔존 정책 — 풀세팅 보장 위해 삭제 후 재생성
-        # (idempotent skip 은 이전 불완전 상태 그대로 둬서 sc5b/c 검증 의미 없게 됨)
-        if page.is_policy_exists(NAME):
-            # 자기 KEEP 정책만 삭제 (사용자 우려 2026-06-01: sc5a 가 다른 AUTO 영향 X)
-            # check_policy_row 가드 fix (2026-06-01) 후 delete_policy 가 [AUTO_KEEP] 도 처리 OK
-            page.delete_policy(NAME)
-            page.page.wait_for_timeout(200)
-            self._add("pass", "sc5a — 이전 잔존 KEEP 정책만 삭제 (풀세팅 보장)",
-                      f"입력: {NAME} / 결과: 자기 KEEP 만 정리 후 재생성 (다른 AUTO 영향 X)", sc=5)
-
         v = self.ON_VALUES
-        # ADD 모달 — 필수 5
-        page.open_add_modal()
-        page.page.locator(page.SEL_POLICY_NAME).fill(v["name"])
-        page.page.locator(page.SEL_DRIVE_LETTER).fill(v["letter"])
-        page.page.locator(page.SEL_DRIVE_LABEL).fill(v["label"])
-        page.page.locator(page.SEL_DRIVE_QUOTA).fill(v["quota"])
-        _csu_select_first(page)
+        # 이전 run 잔존 정책 처리 (사용자 설계 2026-06-05):
+        #   삭제 시도 → 참조 중(엔파우치 정책이 부여)이라 삭제 차단되면 = 정상 (참조 무결성 작동).
+        #   → 재생성 안 하고 기존 재사용 (DELME 누적/멈춤 방지). 삭제되면 fresh 재생성.
+        _reused = False
+        if page.is_policy_exists(NAME):
+            result = page.delete_policy(NAME)   # 'deleted' | 'blocked' | 'skipped'
+            page.page.wait_for_timeout(200)
+            page.navigate_to()
+            page.page.wait_for_timeout(150)
+            if page.is_policy_exists(NAME):
+                # 삭제 안 됨 = 참조 잠금(정상) → 재사용
+                _reused = True
+                self._add("pass",
+                          "sc5a — 기존 KEEP 참조 중(다른 정책 사용)이라 삭제 차단 → 정상 → 재사용",
+                          f"입력: {NAME} delete={result} / 결과: 참조 무결성 정상 "
+                          f"(삭제되면 결함). 기존 정책 재사용 (재생성 skip — 누적 방지)", sc=5)
+            else:
+                self._add("pass", "sc5a — 이전 잔존 KEEP 삭제 후 재생성",
+                          f"입력: {NAME} delete={result} / 결과: 삭제됨 → fresh 재생성", sc=5)
 
-        # 사용 토글 3개 ON
-        _toggle_to(page, page.SEL_ALLOW_PROCESS, True)
-        _toggle_to(page, page.SEL_EXCEPT_PROCESS, True)
-        _toggle_to(page, page.SEL_BLOCK_PROCESS, True)
+        if not _reused:
+            # ADD 모달 — 필수 5
+            page.open_add_modal()
+            page.page.locator(page.SEL_POLICY_NAME).fill(v["name"])
+            page.page.locator(page.SEL_DRIVE_LETTER).fill(v["letter"])
+            page.page.locator(page.SEL_DRIVE_LABEL).fill(v["label"])
+            page.page.locator(page.SEL_DRIVE_QUOTA).fill(v["quota"])
+            _csu_select_first(page)
 
-        # 허용 종료 메시지 ON + 텍스트
-        _toggle_to(page, page.SEL_SHUTDOWN_MSG_TOGGLE, True)
-        page.page.locator(page.SEL_SHUTDOWN_MSG_TEXT).fill(v["shutdown_text"])
+            # 사용 토글 3개 ON
+            _toggle_to(page, page.SEL_ALLOW_PROCESS, True)
+            _toggle_to(page, page.SEL_EXCEPT_PROCESS, True)
+            _toggle_to(page, page.SEL_BLOCK_PROCESS, True)
 
-        # 파일 감시 + 헤더
-        _toggle_to(page, page.SEL_WATCH_EXT_TOGGLE, True)
-        _toggle_to(page, page.SEL_WATCH_HEADER, True)
+            # 허용 종료 메시지 ON + 텍스트
+            _toggle_to(page, page.SEL_SHUTDOWN_MSG_TOGGLE, True)
+            page.page.locator(page.SEL_SHUTDOWN_MSG_TEXT).fill(v["shutdown_text"])
 
-        # 화면 워터마크
-        _toggle_to(page, page.SEL_SCREEN_WM, True)
-        _toggle_to(page, page.SEL_SCREEN_WM_PC_INFO, True)
-        _toggle_to(page, page.SEL_SCREEN_WM_TIME, True)
-        page.page.locator(page.SEL_SCREEN_WM_OPACITY).fill(v["screen_wm_opacity"])
-        page.page.locator(page.SEL_SCREEN_WM_DEGREE).fill(v["screen_wm_degree"])
+            # 파일 감시 + 헤더
+            _toggle_to(page, page.SEL_WATCH_EXT_TOGGLE, True)
+            _toggle_to(page, page.SEL_WATCH_HEADER, True)
 
-        # 출력 워터마크
-        _toggle_to(page, page.SEL_PRINT_WM, True)
-        _toggle_to(page, page.SEL_PRINT_WM_PC_INFO, True)
-        _toggle_to(page, page.SEL_PRINT_WM_TIME, True)
-        page.page.locator(page.SEL_PRINT_WM_OPACITY).fill(v["print_wm_opacity"])
-        page.page.locator(page.SEL_PRINT_WM_DEGREE).fill(v["print_wm_degree"])
+            # 화면 워터마크
+            _toggle_to(page, page.SEL_SCREEN_WM, True)
+            _toggle_to(page, page.SEL_SCREEN_WM_PC_INFO, True)
+            _toggle_to(page, page.SEL_SCREEN_WM_TIME, True)
+            page.page.locator(page.SEL_SCREEN_WM_OPACITY).fill(v["screen_wm_opacity"])
+            page.page.locator(page.SEL_SCREEN_WM_DEGREE).fill(v["screen_wm_degree"])
 
-        # 저장
-        _save_click(page)
-        msg = ""
-        if page.is_confirm_modal_visible(timeout=2000):
-            msg = page.get_confirm_message()
-            page.dismiss_confirm_modal()
-        is_success = "저장" in msg and "오류" not in msg
-        msg_loc = page.page.locator(page.SEL_CONFIRM_MODAL).first
-        self._add("pass" if is_success else "fail",
-                  "sc5a — lifecycle ADD 정상 저장 (전부 ON)",
-                  f"입력: {NAME} + 사용 토글 3 ON + 감시 2 ON + 화면WM full + 출력WM full + 종료 메시지 텍스트 / msg={msg!r}",
-                  sc=5, highlight=msg_loc)
-        if not is_success:
-            return
+            # 출력 워터마크
+            _toggle_to(page, page.SEL_PRINT_WM, True)
+            _toggle_to(page, page.SEL_PRINT_WM_PC_INFO, True)
+            _toggle_to(page, page.SEL_PRINT_WM_TIME, True)
+            page.page.locator(page.SEL_PRINT_WM_OPACITY).fill(v["print_wm_opacity"])
+            page.page.locator(page.SEL_PRINT_WM_DEGREE).fill(v["print_wm_degree"])
+
+            # 저장
+            _save_click(page)
+            msg = ""
+            if page.is_confirm_modal_visible(timeout=2000):
+                msg = page.get_confirm_message()
+                page.dismiss_confirm_modal()
+            is_success = "저장" in msg and "오류" not in msg
+            msg_loc = page.page.locator(page.SEL_CONFIRM_MODAL).first
+            self._add("pass" if is_success else "fail",
+                      "sc5a — lifecycle ADD 정상 저장 (전부 ON)",
+                      f"입력: {NAME} + 사용 토글 3 ON + 감시 2 ON + 화면WM full + 출력WM full + 종료 메시지 텍스트 / msg={msg!r}",
+                      sc=5, highlight=msg_loc)
+            if not is_success:
+                return
 
         # 재오픈 일치 검증 — list 등록 + EDIT 진입 + 모든 필드 확인
         page.navigate_to()
