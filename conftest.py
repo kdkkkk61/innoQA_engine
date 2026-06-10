@@ -286,6 +286,8 @@ def pytest_unconfigure(config):
             _all_ids = list(_merged.keys())
             if any(_pid.startswith("npouch_") for _pid in _all_ids):
                 product_name = "nPouch"
+            elif any(_pid.startswith("secure_zone_") for _pid in _all_ids):
+                product_name = "SecureZone"
             else:
                 with open(CONFIG_PATH, encoding="utf-8") as _f:
                     _cfg = _yaml.safe_load(_f) or {}

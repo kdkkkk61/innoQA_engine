@@ -40,6 +40,8 @@ _PAGE_LABELS: dict[str, str] = {
     "npouch_control_suite":     "제어 스위트",
     "npouch_origin_protect":    "원본 보호 정책",
     "npouch_policy":            "nPouch 정책",
+    # SecureZone
+    "secure_zone_access_control": "접근제어 정책",
 }
 
 # ── 시나리오 번호 → 표시 라벨 (extra["scenario"] 태깅 기준) ────────

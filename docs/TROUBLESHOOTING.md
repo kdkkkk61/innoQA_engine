@@ -1891,3 +1891,21 @@
 
 상태: [RESOLVED] = 수정 완료 / [OPEN] = 미수정 / [WONTFIX] = 의도적으로 수정 안 함
 ```
+
+---
+
+## [2026-06-10] secure_zone 테스트 5분 → teardown full reload 제거
+
+- **증상**: `tests/secure_zone/` 39 tests 실행 344s(5:44). 평균 8.8s/test.
+- **원인**: `tests/secure_zone/_base.py` `_setup` 픽스처(autouse, function scope) teardown 이
+  매 테스트마다 `p.set_default_timeout(30000)` + `p.reload(wait_until="domcontentloaded", timeout=15000)` 실행.
+  이중 비용: ① SPA full reload 39회 ② reload 후 URL hash 소실 → 다음 `navigate_to()` early-return 가드
+  (`SecureZoneAccessControlPolicy` + `pageSize=100` in url) 무효화 → App Setting→SecureZone 아코디언 풀 네비게이션 매번 재실행.
+- **수정**: teardown 의 `set_default_timeout(30000)` + `reload` + `wait_for_timeout(200)` 제거.
+  모달/백드롭 청소 JS(`.modal-backdrop` 제거 + `modal-open` 클래스/`padding-right` 제거)만 유지.
+  열린 모달은 다음 `navigate_to()` 의 `_close_modal_if_open()` 가 닫으므로 격리 유지.
+  `_SC_DEFAULT_TIMEOUT = 5000`(5초)은 변경 없음.
+- **파일**: `tests/secure_zone/_base.py`
+- **검증**: collect 39 tests 정상. 실측 단축폭은 사용자 pytest 재실행으로 확인 예정.
+
+상태: [RESOLVED]

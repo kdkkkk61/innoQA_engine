@@ -19,6 +19,7 @@ from pages.npouch_tag_page                    import NpouchTagPage
 from pages.npouch_control_suite_page          import NpouchControlSuitePage
 from pages.npouch_origin_protect_policy_page  import NpouchOriginProtectPolicyPage
 from pages.npouch_policy_page                 import NpouchPolicyPage
+from pages.secure_zone_access_control_policy_page import SecureZoneAccessControlPolicyPage
 
 PAGE_REGISTRY: dict[str, type] = {
     "ransom_detect_policy":       RansomDetectPolicyPage,
@@ -29,6 +30,7 @@ PAGE_REGISTRY: dict[str, type] = {
     "npouch_control_suite":       NpouchControlSuitePage,
     "npouch_origin_protect":      NpouchOriginProtectPolicyPage,
     "npouch_policy":              NpouchPolicyPage,
+    "secure_zone_access_control": SecureZoneAccessControlPolicyPage,
 }
 
 # 제품/모듈별 그룹 — pytest -m {module} 으로 선택 실행
@@ -44,5 +46,8 @@ MODULE_GROUPS: dict[str, list[str]] = {
         "npouch_control_suite",      # 3. 제어 스위트 (운용 프로세스 참조)
         "npouch_origin_protect",     # 4. 원본보호 정책 (제어 스위트 참조)
         "npouch_policy",             # 5. 엔파우치 정책 (원본보호 정책 참조)
+    ],
+    "secure_zone": [
+        "secure_zone_access_control",  # 1. 접근제어 정책 (독립 — 템플릿 의존 없음)
     ],
 }

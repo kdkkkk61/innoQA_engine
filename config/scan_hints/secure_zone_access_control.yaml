@@ -1,0 +1,103 @@
+# secure_zone_access_control 페이지 스캔 힌트 (modal_form / 방식 A)
+# DOM 검증 완료 (2026-06-09) — Chrome MCP 직접 확인
+#
+# [구조]
+# - 단일 플랫 모달 (탭 없음). ADD/EDIT 동일 모달(addModifySecureZoneAccessControlPolicy).
+# - 마스터 토글 isAccessControl(접근제어 사용) OFF → 하위 전부 disabled (Chrome MCP 확인).
+#   → 하위 컨트롤을 isAccessControl 의 dependent_fields 로 등록 (gating 검증).
+# - USB 권한 radio(usbControlAuth)는 마스터 OFF 기본상태에서 disabled →
+#   top-level radio_groups 에 두면 false-fail. dependent_fields(type:field)로 enable/disable만 검증.
+#
+# [검증값 출처]
+# - maxlength / default / checked: ADD 모달 최초 열림 Chrome MCP 직접 확인 (2026-06-09)
+# - 필수제출 메시지: 빈 제출 → "템플릿 이름을 입력해 주세요." (실측, 라벨은 '정책 이름'이나 메시지는 '템플릿 이름' — 제품 특이)
+
+page_id: "secure_zone_access_control"
+modal_id: "addModifySecureZoneAccessControlPolicy"
+scan_mode: "modal_form"
+
+# 모달 진입점 — AngularJS ng-click
+modal_trigger:
+  add:    "button#addItem"
+  modify: "button#modifyItem"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 필수 입력 순서 검증 (ADD 모달)
+# Chrome MCP 실측 (2026-06-09): 빈 제출 → "템플릿 이름을 입력해 주세요."
+# 필수 필드 = 정책 이름 1개 (나머지는 마스터 토글 OFF 기본값이라 선택)
+# ──────────────────────────────────────────────────────────────────────────────
+required_submit_sequence:
+  - step:                1
+    description:         "아무것도 입력 안 함"
+    fill:               []
+    expected_msg:       "템플릿 이름을 입력해 주세요."
+    missing_field:      "szAccessControlPolicyName"
+    missing_field_label: "정책 이름"
+
+  - step:        2
+    description: "정책 이름 입력"
+    fill:        ["szAccessControlPolicyName"]
+    expected:    "success"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 텍스트 입력 (항상 enabled — 마스터 토글 무관)
+# ──────────────────────────────────────────────────────────────────────────────
+text_inputs:
+  - selector:   "input#szAccessControlPolicyName"
+    label:      "정책 이름"
+    maxlength:  50
+    required:   true
+    test_value: "[AUTO]_sac_t"
+    order:      10
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 마스터 토글 — 접근제어 사용 (OFF 시 하위 전부 disabled, Chrome MCP 확인 2026-06-09)
+# dependent_fields: 드라이브 3종(text) + 시스템도구 3종(checkbox) + USB radio 3종(field, enable/disable만) + 종료해제(checkbox)
+# 드라이브 필드는 maxlength 속성 없음(null) — 서버측 제한
+# ──────────────────────────────────────────────────────────────────────────────
+toggle_checkboxes:
+  - selector: "input#isAccessControl"
+    label:    "접근제어 사용 (마스터 토글)"
+    default:  false
+    order:    20
+    dependent_fields:
+      - selector: "input#pickHideDrive"
+        label:    "지정 드라이브 숨기기"
+        type:     "text_input"
+      - selector: "input#pickDenyDrive"
+        label:    "지정 드라이브 접근금지"
+        type:     "text_input"
+      - selector: "input#pickExceptDrive"
+        label:    "지정 드라이브 예외처리"
+        type:     "text_input"
+      - selector: "input#isCmd"
+        label:    "명령프롬프트(CMD) 사용"
+        type:     "plain_checkbox"
+      - selector: "input#isRegedit"
+        label:    "Regedit 사용"
+        type:     "plain_checkbox"
+      - selector: "input#isMmc"
+        label:    "MMC, Gpedit 사용"
+        type:     "plain_checkbox"
+      - selector: "input#usbControlDeny"
+        label:    "휴대용 디바이스 권한 — 거부"
+        type:     "field"
+      - selector: "input#usbControlRead"
+        label:    "휴대용 디바이스 권한 — 읽기"
+        type:     "field"
+      - selector: "input#usbControlReadWrite"
+        label:    "휴대용 디바이스 권한 — 읽기/쓰기"
+        type:     "field"
+      - selector: "input#isShutdownAccessControl"
+        label:    "종료 시 접근제어 해제"
+        type:     "plain_checkbox"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 모달 액션 버튼
+# 저장 = button.btn-primary (add-btn/modify-btn 속성 없음 — ADD/EDIT 공용)
+# 닫기 = button.btn-default,  × = data-dismiss=modal
+# ──────────────────────────────────────────────────────────────────────────────
+modal_actions:
+  submit_add:    "div#addModifySecureZoneAccessControlPolicy.in button.btn-primary"
+  submit_modify: "div#addModifySecureZoneAccessControlPolicy.in button.btn-primary"
+  close:         "div#addModifySecureZoneAccessControlPolicy.in button.btn-default"
