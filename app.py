@@ -993,9 +993,11 @@ def finalize():
   </div>
   <!-- DEFECT_SECTION_END -->"""
 
+    # 치환문자열을 함수로 전달 — new_section 의 Windows 경로(\screenshots 등)가
+    # re.sub 치환에서 이스케이프로 해석돼 'bad escape \s' 나는 것 방지 (2026-06-15).
     patched = _re.sub(
         r'<!-- DEFECT_SECTION_START -->.*?<!-- DEFECT_SECTION_END -->',
-        new_section,
+        lambda _m: new_section,
         original,
         flags=_re.DOTALL,
     )
@@ -1003,7 +1005,7 @@ def finalize():
         # 마커 없는 구버전 파일 fallback
         patched = _re.sub(
             r'<div class="section">\s*<div class="section-title">🐛 발견된 결함.*?</div>\s*</div>',
-            new_section,
+            lambda _m: new_section,
             original,
             flags=_re.DOTALL,
         )

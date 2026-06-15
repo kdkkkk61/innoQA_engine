@@ -412,11 +412,52 @@ class UIScanner:
             )
             return
 
-        # 신규/제거 발견되면 모달 element 통째 캡처 (스크롤 영역 포함).
+        # 숨김(display:none) 감지 — yaml+DOM 둘 다 존재하나 화면 미표시(=섹션 숨김).
+        # 삭제(missing, DOM 미존재)와 구분. 비활성 탭 pane 때문에 숨은 건 제외(오탐 방지).
+        # opt-in: hints 에 detect_hidden:true 인 페이지만 동작 (다른 페이지 sc0 영향 차단).
+        hidden_sels: list[str] = []
+        if ctx.phase in (0, 2) and hints.get("detect_hidden"):
+            try:
+                present = sorted(set(yaml_set) & set(dom_set))
+                if present:
+                    hidden_sels = self.page.evaluate(
+                        """(args) => {
+                            const [rootSel, sels] = args;
+                            const root = document.querySelector(rootSel);
+                            if (!root) return [];
+                            const out = [];
+                            for (const s of sels) {
+                                const el = root.querySelector(s);
+                                if (!el) continue;
+                                if (el.offsetParent !== null) continue;  // 명확히 보임 → 통과
+                                // offsetParent=null: (a)토글 스위치는 input 자체를 CSS로 숨김(부모는 보임)
+                                //   (b)섹션 display:none. 자신은 무시하고 '구조적 부모'가 숨김일 때만 섹션숨김.
+                                let node = el.parentElement, sectionHidden = false;
+                                while (node && node !== root) {
+                                    const cs = getComputedStyle(node);
+                                    if (cs.display === 'none') {
+                                        const isPane = node.classList.contains('modalBox')
+                                            || node.classList.contains('tab-pane')
+                                            || node.getAttribute('role') === 'tabpanel';
+                                        if (!isPane) sectionHidden = true;  // 구조적 섹션 숨김만
+                                        break;  // pane이면 비활성탭 → 제외(sectionHidden=false)
+                                    }
+                                    node = node.parentElement;
+                                }
+                                if (sectionHidden) out.push(s);
+                            }
+                            return out;
+                        }""",
+                        [context_sel, present],
+                    ) or []
+            except Exception:
+                hidden_sels = []
+
+        # 신규/제거/숨김 발견되면 모달 element 통째 캡처 (스크롤 영역 포함).
         # viewport 만 찍으면 길어진 모달의 위쪽만 보임 → 신규 요소가 스크롤 아래면 의미 X.
         # element_sel 사용해서 모달 전체 캡처 — 검수자가 신규 요소 위치까지 확인 가능.
         shared_ss = None
-        if diff["new"] or diff["missing"]:
+        if diff["new"] or diff["missing"] or hidden_sels:
             try:
                 shared_ss = ctx.take_screenshot(
                     "scan_diff_modal", element_sel=context_sel
@@ -501,6 +542,30 @@ class UIScanner:
                 detail=(
                     "yaml 정의 / DOM 미발견\n"
                     "검수자 조치: 의도된 제거면 yaml 정리, 회귀(의도치 않음)면 제품팀 보고"
+                ),
+                order=9, phase=1,
+                extra=extra_data,
+            ))
+
+        # 숨겨진 기능 (yaml+DOM 둘 다 존재 / 화면 미표시 display:none) — phase 0/2 만 등록
+        for sel in sorted(hidden_sels):
+            if not register_discovery_cards:
+                continue
+            ko = (yaml_label_map.get(sel) or "").strip()
+            label_text = (
+                f'숨겨진 기능 감지 — "{ko}" ({sel})' if ko
+                else f"숨겨진 기능 감지 — {sel}"
+            )
+            extra_data = {"scenario": 1, "scenario_tag": "시나리오 1"}
+            if shared_ss:
+                extra_data["screenshot"] = shared_ss
+            report.results.append(ScanResult(
+                pattern="discovered_hidden", selector=sel,
+                label=label_text,
+                status="warn",
+                detail=(
+                    "yaml 정의 + DOM 존재하나 화면 미표시 (display:none 섹션) — 기능 비표시\n"
+                    "검수자 조치: 의도적 비활성(에디션 차이)이면 yaml 정리, 의도치 않으면 제품팀 보고"
                 ),
                 order=9, phase=1,
                 extra=extra_data,

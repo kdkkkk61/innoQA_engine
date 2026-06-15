@@ -108,6 +108,26 @@ def extract_yaml_selectors(hints: dict) -> set[str]:
             if sel:
                 selectors.add(sel)
 
+    # tab_* 문서 구조 (npouch_policy 등) — id+type 으로 baseline 구성.
+    #   {tab_basic_info: {group: [{id, type}, ...]}, tab_pdf_protect: {...}}
+    #   type 매핑: textarea→textarea# / select→select# / button→제외(폼요소 아님) / 그 외→input#
+    #   tab_ 접두 key 가 있는 페이지(npouch)만 동작 — 다른 페이지 무영향(additive).
+    _TAG_BY_TYPE = {"textarea": "textarea", "select": "select"}
+    for _k, _v in hints.items():
+        if not (isinstance(_k, str) and _k.startswith("tab_") and isinstance(_v, dict)):
+            continue
+        for _group in _v.values():
+            if not isinstance(_group, list):
+                continue
+            for _item in _group:
+                if not isinstance(_item, dict):
+                    continue
+                _fid = _item.get("id")
+                _ft  = (_item.get("type") or "").lower()
+                if not _fid or _ft == "button":
+                    continue
+                selectors.add(f"{_TAG_BY_TYPE.get(_ft, 'input')}#{_fid}")
+
     # 비교 대상은 폼 입력 요소 한정. button/div/ul 등 액션·컨테이너는 제외.
     # extract_dom_selectors 가 input/textarea/select 만 반환하므로 일치시킴.
     return {
@@ -262,6 +282,26 @@ def extract_yaml_labels(hints: dict) -> dict[str, str]:
                 sel = f.get("selector"); lab = f.get("label", "")
                 if sel:
                     out[sel] = lab
+
+    # tab_* 문서 구조 (npouch_policy 등) — id+label (extract_yaml_selectors 와 동일 규칙).
+    # 삭제/숨김 카드에 한국어 명칭 표시용 (DOM 없어도 yaml 라벨로 식별 가능).
+    _TAG_BY_TYPE = {"textarea": "textarea", "select": "select"}
+    for _k, _v in hints.items():
+        if not (isinstance(_k, str) and _k.startswith("tab_") and isinstance(_v, dict)):
+            continue
+        for _group in _v.values():
+            if not isinstance(_group, list):
+                continue
+            for _item in _group:
+                if not isinstance(_item, dict):
+                    continue
+                _fid = _item.get("id")
+                _ft  = (_item.get("type") or "").lower()
+                if not _fid or _ft == "button":
+                    continue
+                _lab = _item.get("label", "")
+                if _lab:
+                    out[f"{_TAG_BY_TYPE.get(_ft, 'input')}#{_fid}"] = _lab
 
     return out
 

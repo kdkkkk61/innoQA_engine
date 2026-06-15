@@ -91,9 +91,11 @@ class TestNpouchPolicyScenario2Input(NpouchPolicyBase):
         for group_label, items in groups.items():
             for label, sel in items:
                 present = page.page.locator(sel).count() > 0
-                self._add("pass" if present else "fail",
+                # 없으면 fail(높음버그) 아니라 skip — 빌드별 삭제는 sc0 '변경사항(삭제)'가 보고.
+                self._add("pass" if present else "skip",
                           f"sc2a — [{group_label}] '{label}' 존재",
-                          f"selector='{sel}' / 결과: present={present}", sc=2)
+                          f"selector='{sel}' / 결과: present={present}"
+                          + ("" if present else " (이 빌드 미존재 — sc0 변경사항 참조)"), sc=2)
 
         # PDF 탭 그룹
         page.activate_tab("PDF문서 보호 기능 설정")
@@ -122,9 +124,10 @@ class TestNpouchPolicyScenario2Input(NpouchPolicyBase):
         for group_label, items in pdf_groups.items():
             for label, sel in items:
                 present = page.page.locator(sel).count() > 0
-                self._add("pass" if present else "fail",
+                self._add("pass" if present else "skip",
                           f"sc2a — [{group_label}] '{label}' 존재",
-                          f"selector='{sel}' / 결과: present={present}", sc=2)
+                          f"selector='{sel}' / 결과: present={present}"
+                          + ("" if present else " (이 빌드 미존재 — sc0 변경사항 참조)"), sc=2)
 
         page.close_modal()
 
@@ -162,6 +165,10 @@ class TestNpouchPolicyScenario2Input(NpouchPolicyBase):
         self._page = page.page
         page.navigate_to()
         page.open_add_modal()
+        # 기본값 검증은 모달 구조가 baseline 과 같아야 의미 — 핵심 요소 삭제/숨김이면 전체 skip.
+        if self._skip_if_missing(page, "sc2c 기본값/reset 검증",
+                                 [page.SEL_PW_TOGGLE, page.SEL_MAX_READ_COUNT_VAL], sc=2):
+            page.close_modal(); return
 
         # 토글 default ON
         toggle_on = {

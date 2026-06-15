@@ -39,9 +39,11 @@ class TestNpouchPolicyScenario1Ui(NpouchPolicyBase):
         }
         for label, sel in elements.items():
             present = page.page.locator(sel).count() > 0
-            self._add("pass" if present else "fail",
+            # 없으면 fail(높음버그) 아니라 skip — 빌드별 삭제는 sc0 '변경사항(삭제)'가 보고.
+            self._add("pass" if present else "skip",
                       f"목록 페이지 — '{label}' 존재",
-                      f"결과: present={present}", sc=1)
+                      f"결과: present={present}"
+                      + ("" if present else " (이 빌드 미존재 — sc0 변경사항 참조)"), sc=1)
 
     def test_scenario1b_add_modal_enter_exit(self, logged_in_page, settings):
         """sc1b — ADD 모달 진입 + 핵심 필드 + 2탭 존재 + close."""
@@ -70,9 +72,11 @@ class TestNpouchPolicyScenario1Ui(NpouchPolicyBase):
         }
         for label, sel in core_fields.items():
             present = page.page.locator(sel).count() > 0
-            self._add("pass" if present else "fail",
+            # 없으면 fail(높음버그) 아니라 skip — 빌드별 삭제는 sc0 '변경사항(삭제)'가 보고.
+            self._add("pass" if present else "skip",
                       f"ADD 모달 — '{label}' 필드 존재",
-                      f"selector='{sel}' / 결과: present={present}", sc=1)
+                      f"selector='{sel}' / 결과: present={present}"
+                      + ("" if present else " (이 빌드 미존재 — sc0 변경사항 참조)"), sc=1)
 
         # 탭 2개 존재
         tabs = page.page.locator(

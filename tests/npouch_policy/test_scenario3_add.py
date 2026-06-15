@@ -216,6 +216,10 @@ class TestNpouchPolicyScenario3Add(NpouchPolicyBase):
         self._page = page.page
         page.navigate_to()
         page.open_add_modal()
+        page.ensure_value_fields_ready()   # 토글 기본값(환경별 ON/OFF) 무관하게 값 필드 활성 보장
+        if self._skip_if_missing(page, "sc3c 숫자 마스킹(열람횟수)",
+                                 [page.SEL_MAX_READ_COUNT_VAL], sc=3):
+            page.close_modal(); return
 
         # 1) fill 직후 마스킹 검증 (음수/소수점/문자 → reset 또는 그대로)
         masking_cases = [
@@ -375,11 +379,21 @@ class TestNpouchPolicyScenario3Add(NpouchPolicyBase):
         has_keep = page.page.locator(
             "tbody#originProtectPolicyList tr:has-text('[AUTO_KEEP]_sc5_origin_protect')"
         ).count() > 0
-        self._add("pass" if has_keep else "fail",
-                  "sc3e — 적용 list 에 KEEP 정책 행 추가 확인",
-                  f"적용 list row 수={cnt} / KEEP 포함={has_keep}",
-                  sc=3,
-                  highlight=page.page.locator("tbody#originProtectPolicyList"))
+        # KEEP 원본보호 정책([AUTO_KEEP]_sc5_origin_protect)이 이전 단계서 생성됐을 때만 KEEP 포함 검증.
+        # 없으면 _select_origin_protect_keep 이 맨 위 정책으로 fallback → 행 추가만 확인(정상).
+        if has_keep:
+            self._add("pass", "sc3e — 적용 list 에 KEEP 정책 행 추가 확인",
+                      f"적용 list row 수={cnt} / KEEP 포함=True", sc=3,
+                      highlight=page.page.locator("tbody#originProtectPolicyList"))
+        elif cnt >= 1:
+            self._add("pass", "sc3e — 적용 list 정책 행 추가 (KEEP 부재 → 맨 위 정책 fallback)",
+                      f"적용 list row 수={cnt} / KEEP 포함=False "
+                      "(이전 단계서 KEEP 원본보호 미생성 → 맨 위 정책으로 정상 fallback)", sc=3,
+                      highlight=page.page.locator("tbody#originProtectPolicyList"))
+        else:
+            self._add("fail", "sc3e — 원본보호 정책 적용 실패 (행 없음)",
+                      f"적용 list row 수={cnt}", sc=3,
+                      highlight=page.page.locator("tbody#originProtectPolicyList"))
         try:
             page.close_modal()
         except Exception:
@@ -443,6 +457,9 @@ class TestNpouchPolicyScenario3Add(NpouchPolicyBase):
         self._page = page.page
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3g 서버인증 종속(오프라인 정책)",
+                                 [page.SEL_OFFLINE_POLICY], sc=3):
+            page.close_modal(); return
 
         # 1) 메인 OFF (default) → 종속 4 다 disabled
         children = {
@@ -500,6 +517,9 @@ class TestNpouchPolicyScenario3Add(NpouchPolicyBase):
         self._page = page.page
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3h 오프라인 배타",
+                                 [page.SEL_OFFLINE_POLICY], sc=3):
+            page.close_modal(); return
 
         # 메인 + 오프라인 ON
         page.page.locator(page.SEL_SERVER_AUTH).first.evaluate("el => el.click()")
@@ -848,6 +868,8 @@ class TestNpouchPolicyScenario3Add(NpouchPolicyBase):
         for label, sel, suffix, hint in cases:
             NAME = f"[AUTO]_sc3n_{suffix}"
             page.open_add_modal()
+            if self._skip_if_missing(page, f"sc3n {label} 빈값검증", [sel], sc=3):
+                page.close_modal(); continue
             try:
                 page.page.locator(page.SEL_POLICY_NAME).fill(NAME)
                 page.page.locator(sel).fill("")
@@ -988,6 +1010,9 @@ class TestNpouchPolicyScenario3Add(NpouchPolicyBase):
         ]
         for label, fills, keywords in cases:
             page.open_add_modal()
+            if self._skip_if_missing(page, "sc3o 비밀번호 제약",
+                                     [page.SEL_PW_MIN], sc=3):
+                page.close_modal(); return
             try:
                 page.page.locator(page.SEL_POLICY_NAME).fill(f"[AUTO]_sc3o_{label[:8]}")
                 for sel, val in fills:
@@ -1025,6 +1050,9 @@ class TestNpouchPolicyScenario3Add(NpouchPolicyBase):
         ]
         for label, sel, val, limit in cases:
             page.open_add_modal()
+            if self._skip_if_missing(page, "sc3p 숫자 범위 초과",
+                                     [page.SEL_MAX_READ_COUNT_VAL], sc=3):
+                page.close_modal(); return
             try:
                 page.page.locator(page.SEL_POLICY_NAME).fill(f"[AUTO]_sc3p_{label[:8]}")
                 loc = page.page.locator(sel)
@@ -1212,6 +1240,9 @@ class TestNpouchPolicyScenario3Add(NpouchPolicyBase):
         self._page = page.page
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3u 토글 종속(열람횟수 등)",
+                                 [page.SEL_MAX_READ_COUNT_VAL], sc=3):
+            page.close_modal(); return
 
         # (메인 토글, 종속 selector list, 라벨 list)
         groups = [

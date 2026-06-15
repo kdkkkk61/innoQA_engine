@@ -152,6 +152,29 @@ list_modal_overflow:
 
 ---
 
+## 8-1. scenario_test 패턴 캡처 규칙 (사용자 지정 2026-06-11)
+
+> 적용: `tests/secure_zone*/` 등 `_add()` 기반 시나리오 테스트 (`tests/.../_base.py` 의 `_ss` 사용).
+
+**원칙 (2가지 + 예외)**:
+1. **이슈 난 곳을 빨간 박스로 표시**: warn/fail `_add` 는 가능하면 `highlight=문제요소_locator` 를 넘긴다.
+   `_ss` 가 그 요소에 빨간 outline(`outline:3px solid #ff2d2d`)을 그려 캡처 → 검수자가 어디가 문제인지 즉시 인지.
+   highlight 누락 시 빨간 박스 없이 전체 화면만 찍혀 "확인 불가".
+2. **이슈가 보이는 시점에 캡처**: `_add` 는 이슈 요소/모달이 **화면에 보이는 동안**(모달 닫기 전) 호출.
+   → 닫고 나서 `_add` 호출하면 빈 리스트/엉뚱한 화면이 찍힘 (실측 버그: AC sc4n, 정책 sc3e 초기).
+   재오픈해서 확인하는 케이스(Type 3, 예: 저장값 손실)는 **재오픈한 모달이 열린 상태에서** `_add` + highlight.
+3. **예외**: 이슈를 모달 닫힌 뒤에야 알 수 있는 경우(목록 비교 등)는 best-effort (detail 텍스트로 cause 보완).
+
+**`_add(highlight=...)` 사용 예**:
+```python
+# 모달 열린 상태에서 호출 (닫기 전!)
+self._add("warn", "sc3h — ...", "입력:.../결과:...", sc=3,
+          highlight=page.page.locator(page.SEL_WATCH_EXT_LIST))   # 문제 요소 빨간 박스
+page._close_modal_if_open()   # _add 이후 닫기
+```
+
+---
+
 ## 8. 작업 시 주의사항
 
 - **이미지 중복 방지**: 패턴 A·B·C 각각 수정 시 호출자의 기존 `take_screenshot` 호출을 반드시 제거. 안 하면 dismiss 전 1장 + 후 1장 = 2장.

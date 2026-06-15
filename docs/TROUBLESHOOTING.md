@@ -1909,3 +1909,22 @@
 - **검증**: collect 39 tests 정상. 실측 단축폭은 사용자 pytest 재실행으로 확인 예정.
 
 상태: [RESOLVED]
+
+---
+
+## [2026-06-11] 시큐어존 정책 sc3b — 템플릿 picker selector/wait 오류로 TimeoutError
+
+- **증상**: sc3b normal_create 가 `select_template_top` 의 `picker.wait_for(state="visible")` 3초 TimeoutError.
+- **원인 2가지**:
+  1. **버튼 selector 오류**: `a.addTemplate` 는 템플릿설정 탭 '설정' 버튼 6개(hidden)만 매칭. 기본정책 탭 '템플릿 선택'은
+     `button.addTemplate`(2개, [0]드라이브 [1]제어스위트) — 태그가 button. → nth(0/1) 이 엉뚱/hidden 요소 지정.
+  2. **wait 상태 오류**: 템플릿 picker(`#selectCommonPolicyItemModal`)는 Bootstrap 모달이라 Playwright `state="visible"` 판정 실패
+     (열려도 visible=false 취급). MEMORY.md "Bootstrap 모달 position offset → visible 체크 실패" 동일.
+- **수정**: `pages/secure_zone_agent_policy_page.py`
+  - `SEL_TEMPLATE_BTN`: `a.addTemplate` → `button.addTemplate`.
+  - picker selector: 텍스트 필터 → 실측 id `div#selectCommonPolicyItemModal.in`.
+  - `wait_for(state="visible")` → `state="attached"`.
+- **검증**: Chrome MCP 로 생성(드라이브+제어스위트+이름+저장→"저장 하였습니다")+삭제 end-to-end 확인, [AUTO] 정리.
+- **파일**: `pages/secure_zone_agent_policy_page.py`
+
+상태: [RESOLVED]

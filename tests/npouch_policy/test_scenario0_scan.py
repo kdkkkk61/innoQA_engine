@@ -35,30 +35,37 @@ class TestScenario0Scan(NpouchPolicyBase):
             modal_close_fn=page.close_modal,
         )
 
-        # 결과 분류
-        new_features = [r for r in report.results if r.pattern == "discovered_new"]
+        # 결과 분류 — 변경사항 3종: 추가/삭제/숨김 (baseline yaml ↔ 실제 DOM diff).
+        #   추가(discovered_new)     = DOM에만 존재 (yaml 미정의)
+        #   삭제(discovered_missing) = yaml에만 존재, DOM 미발견 (그냥 삭제)
+        #   숨김(discovered_hidden)  = yaml+DOM 둘 다 있으나 display:none (있는데 안 보임)
+        _DISCOVERY = ("discovered_new", "discovered_missing", "discovered_hidden")
+        added   = [r for r in report.results if r.pattern == "discovered_new"]
+        deleted = [r for r in report.results if r.pattern == "discovered_missing"]
+        hidden  = [r for r in report.results if r.pattern == "discovered_hidden"]
         scan_fails  = [r for r in report.results
-                       if r.status == "fail" and r.pattern != "discovered_new"]
+                       if r.status == "fail" and r.pattern not in _DISCOVERY]
         scan_warns  = [r for r in report.results
-                       if r.status == "warn" and r.pattern != "discovered_new"]
+                       if r.status == "warn" and r.pattern not in _DISCOVERY]
         scan_pass   = [r for r in report.results if r.status == "pass"]
 
-        # 요약
-        self._add("warn" if new_features else "pass",
-                  "sc0a — [UIScanner] 신규 기능 감지 자동 스캔 (yaml ↔ DOM diff)",
-                  f"결과: 신규 감지={len(new_features)}건, "
-                  f"UI 검증 fail={len(scan_fails)}건, warn={len(scan_warns)}건, "
-                  f"pass={len(scan_pass)}건",
+        # 요약 — 변경사항 통합
+        changed = len(added) + len(deleted) + len(hidden)
+        self._add("warn" if changed else "pass",
+                  "sc0a — [UIScanner] 변경사항 감지 (baseline yaml ↔ 실제 DOM diff)",
+                  f"변경사항: 추가={len(added)}건, 삭제={len(deleted)}건, 숨김={len(hidden)}건 / "
+                  f"UI 검증 fail={len(scan_fails)}건, warn={len(scan_warns)}건, pass={len(scan_pass)}건",
                   sc=0)
 
-        # 신규 기능 감지 카드 개별 노출
-        for r in new_features:
-            extra = r.extra or {}
-            ss = extra.get("screenshot")
-            detail_lines = [r.detail or ""]
-            if ss:
-                detail_lines.append(f"캡처: {ss}")
-            self._add("warn", r.label, "\n".join(detail_lines), sc=0)
+        # 변경사항 카드 개별 노출 — "변경사항(종류) — 기능명 (selector)" 로 간결화.
+        #   r.label 의 "신규/제거된/숨겨진 기능 감지 — " prefix 는 변경사항(종류)와 중복 → 제거.
+        #   스크린샷 없음: 삭제=요소 없음 / 숨김=display:none / 모달도 이미 닫힘 → 기본화면만 찍혀 무의미.
+        import re as _re
+        for kind, items in (("추가", added), ("삭제", deleted), ("숨김", hidden)):
+            for r in items:
+                name = _re.sub(r"^(신규|제거된|숨겨진) 기능 감지 — ", "", r.label or "")
+                self._add("warn", f"변경사항({kind}) — {name}",
+                          r.detail or "", sc=0, screenshot=False)
 
         # UI 검증 fail/warn 개별 노출
         for r in scan_fails + scan_warns:

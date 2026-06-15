@@ -1,25 +1,16 @@
-base_url: "http://innotium.iptime.org:14180/"
-product_name: "RansomCruncher"
-
-# QA 결과 대시보드 서버 URL (비워두면 업로드 안 함)
-# 테스트 완료 시 HTML 리포트를 이 서버로 자동 전송
-qa_server_url: "http://192.168.13.55:8080"
-
-# innoRelease 연동 설정
-# url: innoRelease 서버 주소 (포트 포함)
-# username / password: QA 권한이 있는 계정
-innorelease:
-  url: "http://192.168.13.55:8090"
-  username: "admin"
-  password: "zxcvb1234"
-
+base_url: http://innotium.iptime.org:14180/
 browser:
-  headless: false        # true: 헤드리스(백그라운드), false: 브라우저 창 표시
-  slow_mo: 0             # 0 = 지연 없음 (validators 내 wait_for_timeout으로 개별 제어)
-  timeout: 30000         # 기본 타임아웃(ms)
-
+  headless: false
+  slow_mo: 0
+  timeout: 30000
+innorelease:
+  password: zxcvb1234
+  url: http://192.168.13.55:8090
+  username: admin
+product_name: RansomCruncher
+qa_server_url: http://192.168.13.55:8080
 selectors:
   login:
-    username_input: "input#memberId"
-    password_input: "input#password"
-    submit_button:  "input#loginBtn"
+    password_input: input#password
+    submit_button: input#loginBtn
+    username_input: input#memberId

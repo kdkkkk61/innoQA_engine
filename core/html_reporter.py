@@ -42,6 +42,7 @@ _PAGE_LABELS: dict[str, str] = {
     "npouch_policy":            "nPouch 정책",
     # SecureZone
     "secure_zone_access_control": "접근제어 정책",
+    "secure_zone_agent_policy":   "시큐어존 정책",
 }
 
 # ── 시나리오 번호 → 표시 라벨 (extra["scenario"] 태깅 기준) ────────
@@ -219,7 +220,13 @@ _STATUS_BADGE = {
 # ── 재현 단계 자동 생성 ────────────────────────────────────────────
 
 def _reproduce_steps(r: ScanResult) -> str:
-    """ScanResult에서 재현 단계 텍스트 자동 생성."""
+    """ScanResult에서 재현 단계 텍스트 자동 생성.
+
+    extra['repro'] 가 있으면 그걸 우선 사용 (시나리오 테스트가 직접 지정한 상세 단계).
+    줄바꿈은 <br> 로 변환. (다른 페이지는 미지정 → 기존 pattern 기반 동작 유지)
+    """
+    if r.extra and r.extra.get("repro"):
+        return html.escape(str(r.extra["repro"])).replace("\n", "<br>")
     p = r.pattern
     if p == "list_modal_overflow":
         field = r.label.split("—")[-1].strip().split("(")[0].strip()

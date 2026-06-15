@@ -121,7 +121,19 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
             "is_origin_protect": True,
             "is_pdf_protect": True,
         }
+        # 숨김(display:none) 필드는 저장값이 default(0)라 load 검증 불가 → skip.
+        field_sel = {
+            "max_read_count": page.SEL_MAX_READ_COUNT_VAL,
+            "max_read_day":   page.SEL_MAX_READ_DAY_VAL,
+            "pw_min":         page.SEL_PW_MIN,
+            "pw_max":         page.SEL_PW_MAX,
+        }
         for k, expected in checks.items():
+            sel = field_sel.get(k)
+            if sel and not page.feature_available(sel):
+                self._add("skip", f"sc4a — '{k}' 저장값 load (이 빌드 미표시 → 검증 건너뜀)",
+                          f"대상 {sel} 미표시 — sc0 변경사항 참조", sc=4, screenshot=False)
+                continue
             actual = loaded.get(k)
             ok = actual == expected
             self._add("pass" if ok else "fail",
@@ -212,6 +224,9 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
         page.navigate_to()
         _ensure_sc3l_policy(page)
         _enter_edit_modal(page, SC3L_NAME)
+        if self._skip_if_missing(page, "sc4d EDIT 숫자 마스킹(열람횟수)",
+                                 [page.SEL_MAX_READ_COUNT_VAL], sc=4):
+            _safe_close_modal(page); return
 
         cases = [
             (page.SEL_MAX_READ_COUNT_VAL, "1.5",  "EDIT 열람횟수 '1.5' 소수점"),
@@ -252,6 +267,8 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
         ]
         for label, sel, hint in cases:
             _enter_edit_modal(page, SC3L_NAME)
+            if self._skip_if_missing(page, f"sc4e EDIT '{label}' 빈값", [sel], sc=4):
+                _safe_close_modal(page); continue
             page.page.locator(sel).fill("")
             page.page.wait_for_timeout(150)
             _save_click(page)
@@ -349,6 +366,9 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
         page.navigate_to()
         _ensure_sc3l_policy(page)
         _enter_edit_modal(page, SC3L_NAME)
+        if self._skip_if_missing(page, "sc4h EDIT 서버인증 종속(오프라인)",
+                                 [page.SEL_OFFLINE_POLICY], sc=4):
+            _safe_close_modal(page); return
 
         # 메인 OFF default → 종속 4 disabled
         children = [
@@ -381,6 +401,9 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
         page.navigate_to()
         _ensure_sc3l_policy(page)
         _enter_edit_modal(page, SC3L_NAME)
+        if self._skip_if_missing(page, "sc4i EDIT 오프라인 배타",
+                                 [page.SEL_OFFLINE_POLICY], sc=4):
+            _safe_close_modal(page); return
 
         # 메인 + 오프라인 ON
         page.page.locator(page.SEL_SERVER_AUTH).first.evaluate("el => el.click()")
@@ -584,6 +607,9 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
         page.navigate_to()
         _ensure_sc3l_policy(page)
         _enter_edit_modal(page, SC3L_NAME)
+        if self._skip_if_missing(page, "sc4n EDIT 토글 종속(열람횟수 등)",
+                                 [page.SEL_MAX_READ_COUNT_VAL], sc=4):
+            _safe_close_modal(page); return
 
         groups = [
             ("열람횟수", page.SEL_MAX_READ_COUNT_TOGGLE, [(page.SEL_MAX_READ_COUNT_VAL, "값")]),
@@ -627,6 +653,8 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
         ]
         for label, fills, kws in cases:
             _enter_edit_modal(page, SC3L_NAME)
+            if self._skip_if_missing(page, f"sc4p EDIT 비번 '{label}'", [page.SEL_PW_MIN], sc=4):
+                _safe_close_modal(page); continue
             for sel, val in fills:
                 page.page.locator(sel).fill(val)
             _save_click(page)
@@ -657,6 +685,8 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
         ]
         for label, sel, val, limit in cases:
             _enter_edit_modal(page, SC3L_NAME)
+            if self._skip_if_missing(page, f"sc4q EDIT '{label}'", [sel], sc=4):
+                _safe_close_modal(page); continue
             loc = page.page.locator(sel)
             loc.fill("")
             loc.fill(val)
@@ -983,6 +1013,9 @@ class TestNpouchPolicyScenario4Modify(NpouchPolicyBase):
             expected_blocks: [(sel, check_type)] — check_type='input_value' or 'checked' or 'disabled'
             """
             _enter_edit_modal(page, SC3L_NAME)
+            if self._skip_if_missing(page, f"sc4x {label}",
+                                     [main_sel] + [a[0] for a in sub_actions], sc=4):
+                _safe_close_modal(page); return
             # 1) 메인 ON 보장
             main_el = page.page.locator(main_sel).first
             if not main_el.is_checked():

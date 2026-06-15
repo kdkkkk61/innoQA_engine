@@ -164,6 +164,9 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
 
         v = self.ON_VALUES
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc5a lifecycle 생성(열람횟수/암호 등)",
+                                 [page.SEL_MAX_READ_COUNT_VAL], sc=5):
+            page.close_modal(); return
         # 필수 + 텍스트
         page.page.locator(page.SEL_POLICY_NAME).fill(v["name"])
         page.page.locator(page.SEL_CERT_URL).fill(v["cert_url"])
@@ -247,6 +250,9 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
             return
 
         _enter_edit_modal(page, NAME)
+        if self._skip_if_missing(page, "sc5b lifecycle 수정(열람횟수 등)",
+                                 [page.SEL_MAX_READ_COUNT_VAL], sc=5):
+            _safe_close_modal(page); return
 
         # 종속 먼저 OFF → 메인 OFF (시나리오 기반 순서)
         # 비번 종속 (체크박스)
@@ -296,15 +302,17 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
         # sc1 만 cleanup 호출 (사용자 보고 2026-06-02). sc5 는 호출 안 함.
 
         NAME = self.LIFECYCLE_NAME
-        if not page.is_policy_exists(NAME):
-            self._add("skip", "sc5c — 5a/5b 정책 부재", "", sc=5)
-            return
-
-        # 1) 5b 상태 재오픈 일치 한 번 더
-        _enter_edit_modal(page, NAME)
-        loaded = self._dump_dom(page)
-        self._verify_loaded(page, loaded, self.OFF_VALUES, scope="5c")
-        _safe_close_modal(page)
+        keep_existed = page.is_policy_exists(NAME)
+        # 1) 5b 상태 재오픈 일치 — KEEP 정책 있을 때만 (5a 미생성 시 verify 생략).
+        #    단 cleanup(2)은 KEEP 유무 무관 항상 실행 — 테스트 데이터 정리 보장
+        #    (sc5a 가 기능 미표시로 skip 돼도 [AUTO]_ 잔존 정리되도록).
+        if keep_existed:
+            _enter_edit_modal(page, NAME)
+            loaded = self._dump_dom(page)
+            self._verify_loaded(page, loaded, self.OFF_VALUES, scope="5c")
+            _safe_close_modal(page)
+        else:
+            self._add("skip", "sc5c verify — 5a/5b 미생성(기능 미표시) → verify 생략, cleanup 은 진행", "", sc=5)
 
         # 2) cleanup — AUTO 만 정리, AUTO_KEEP 보존
         page.navigate_to()
@@ -328,7 +336,12 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
                   "sc5c — cleanup: [AUTO]_ 정책 전부 삭제",
                   f"before AUTO: {len(before_auto)}건 / deleted={deleted} / after AUTO: {len(after_auto)}건",
                   sc=5)
-        self._add("pass" if keep_preserved else "fail",
-                  "sc5c — cleanup: [AUTO_KEEP]_ 정책 보존 (sc6 / 다음 연계용)",
-                  f"before KEEP: {before_keep} / after KEEP: {after_keep} / "
-                  f"lifecycle 정책 {NAME} 보존 여부={keep_preserved}", sc=5)
+        # KEEP 보존 검증은 KEEP 이 원래 있었을 때만 (5a 미생성 시 보존 대상 없음 → false-fail 방지)
+        if keep_existed:
+            self._add("pass" if keep_preserved else "fail",
+                      "sc5c — cleanup: [AUTO_KEEP]_ 정책 보존 (sc6 / 다음 연계용)",
+                      f"before KEEP: {before_keep} / after KEEP: {after_keep} / "
+                      f"lifecycle 정책 {NAME} 보존 여부={keep_preserved}", sc=5)
+        else:
+            self._add("skip", "sc5c — KEEP 보존 검증 (KEEP 미생성으로 생략)",
+                      "5a 가 기능 미표시로 skip → 생성된 KEEP 없음", sc=5)

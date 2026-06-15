@@ -4,6 +4,10 @@
 
 page_id: npouch_policy
 scan_mode: modal_form
+# top-level modal_id 필수 — _scan_diff_yaml_dom 이 hints.get("modal_id") 로 읽음.
+# overview.modal_id(하위)만 있으면 diff 가 조기 return(스캔 0건)됨 (2026-06-13 로그 확인).
+modal_id: "addItemModal"
+detect_hidden: true   # 변경사항(숨김) 감지 opt-in — display:none 섹션 (이 페이지만 동작)
 
 # ─────────────────────────────────────────────────────────────────
 # 페이지 개요

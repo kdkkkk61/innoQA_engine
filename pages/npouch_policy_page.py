@@ -281,6 +281,60 @@ class NpouchPolicyPage(BasePage):
             state="attached", timeout=self._TIMEOUT_MODAL
         )
 
+    def ensure_toggle_on(self, toggle_sel: str) -> bool:
+        """gating 토글을 ON 으로 보장 (이미 ON 이면 no-op). 반환: 원래 OFF여서 켰으면 True.
+
+        값 필드(예 maxReadCount)는 토글 OFF 시 disabled/hidden → fill 불가.
+        환경별 토글 기본값 차이(innotium ON / 일부 환경 OFF)에 견고하도록 fill 전 호출.
+        체크박스는 JS el.click 으로 충분(메모리 2026-04-09).
+        """
+        loc = self.page.locator(toggle_sel).first
+        if loc.count() == 0:
+            return False
+        try:
+            if loc.is_checked():
+                return False
+            loc.evaluate("el => el.click()")
+            self.page.wait_for_timeout(150)
+            return True
+        except Exception:
+            return False
+
+    def ensure_value_fields_ready(self) -> list[str]:
+        """숫자/비밀번호 값 필드를 가리는 공통 토글을 ON 보장. 반환: 원래 OFF였던 토글 id 목록.
+
+        반환값이 비어있지 않으면 '이 환경은 해당 토글이 기본 OFF' 라는 환경 차이 신호.
+        """
+        flipped = []
+        for sel in (self.SEL_MAX_READ_COUNT_TOGGLE, self.SEL_MAX_READ_DAY_TOGGLE, self.SEL_PW_TOGGLE):
+            if self.ensure_toggle_on(sel):
+                flipped.append(sel.split("#")[-1].rstrip('"'))
+        return flipped
+
+    def feature_available(self, selector: str) -> bool:
+        """요소가 '검증 가능' 상태인가 = DOM 존재 + 섹션이 display:none 아님.
+
+        - 삭제(미존재) / 섹션(또는 탭) display:none → False (→ 테스트 skip)
+        - 토글 스위치처럼 input 자체만 CSS 숨김(부모 섹션은 보임) → True (강제 동작 가능 = 검증 대상)
+        - 정상 보임 → True
+        sc0 의 숨김(discovered_hidden) 판정과 동일 기준 — 삭제/숨김 vs 동작결함 정확 구분용.
+        """
+        try:
+            return bool(self.page.evaluate(
+                """(sel) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return false;                       // 삭제(미존재)
+                    if (el.offsetParent !== null) return true;   // 명확히 보임
+                    let node = el.parentElement;                 // 자신의 CSS숨김은 무시(토글)
+                    while (node) {
+                        if (getComputedStyle(node).display === 'none') return false;  // 섹션/탭 숨김
+                        node = node.parentElement;
+                    }
+                    return true;                                 // 토글 등 자체만 숨김 → 검증 가능
+                }""", selector))
+        except Exception:
+            return False
+
     def close_modal(self) -> None:
         """모달 닫기 — 이전 4 runs 정상 통과 코드 100% 복구 (사용자 보고 2026-06-03).
 
