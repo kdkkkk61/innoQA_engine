@@ -1928,3 +1928,23 @@
 - **파일**: `pages/secure_zone_agent_policy_page.py`
 
 상태: [RESOLVED]
+
+---
+
+## [2026-06-15] nPouch sc1c — navigate_to 'Angular not loaded' race 로 메뉴 클릭 30초 TimeoutError
+
+- **증상**: 실제환경(192.168.13.141) 실행 중 sc1c_pdf_tab_access 만 ERROR (1 failed / 57 passed, 런은 계속).
+  `[BasePage] 오류 — click:a[data-menuid='managerAppSetting'] | wait_for(visible) Timeout 30000ms`.
+- **원인**: 필드/가드 문제 아님. sc1c `navigate_to()` 가 풀 리로드(main.html+bundle) 직후 **Angular 미부트스트랩**
+  상태에서 App Setting 메뉴를 클릭 → 메뉴 아이콘 미렌더 → 30초 timeout.
+  진단 DUMP: `open_modals=[] backdrops=0`(모달 무관) + `{'error':'angular not loaded'}` + NET 에 main.html/bundle 재로딩.
+  실제환경 세션·500 일시 불안정과 겹친 flaky (innotium 58 passed 에선 미발생).
+- **수정**: `pages/npouch_policy_page.py navigate_to` — 메뉴 상호작용 전 **메뉴 DOM 렌더 대기**
+  (`wait_for_function(document.querySelector('[data-menuid]'), _TIMEOUT_TABLE)`). 렌더돼 있으면 즉시 통과.
+- **⚠ 회귀 주의 (같은 날 발견·수정)**: 처음엔 `window.angular !== undefined` 조건을 넣었는데, 이 매니저 앱은
+  **webpack 번들이라 angular 전역 미노출** → 조건 **항상 false** → 매 navigate_to 가 15초 hang → 테스트 전체 급격 저하.
+  → `window.angular` 제거, `[data-menuid]` 렌더 여부만 확인. (진단의 'angular not loaded'도 window.angular 체크라 오해 유발)
+- **검증**: 구문 OK. 정상 시 즉시 통과(no-op), 리로드 중일 때만 대기. innotium 영향 없음.
+- **파일**: `pages/npouch_policy_page.py`
+
+상태: [RESOLVED] (window.angular 회귀 수정 — [data-menuid] 렌더 대기로 변경)

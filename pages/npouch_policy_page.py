@@ -171,6 +171,17 @@ class NpouchPolicyPage(BasePage):
             except Exception:
                 pass
 
+        # 메뉴 DOM 렌더 대기 — 리로드 직후 메뉴 클릭 시 30초 timeout 나던 race 방지.
+        # ⚠ window.angular 체크 금지: 이 앱은 webpack 번들이라 angular 전역 미노출 →
+        #   항상 false 라 매 호출 15초 hang 했음(2026-06-15 느려짐 회귀). [data-menuid] 렌더만 확인.
+        try:
+            self.page.wait_for_function(
+                "() => !!document.querySelector('[data-menuid]')",
+                timeout=self._TIMEOUT_TABLE,
+            )
+        except Exception:
+            pass
+
         try:
             self.page.locator(self.SEL_APP_SETTING_LIST).wait_for(
                 state="visible", timeout=self._TIMEOUT_TABLE
@@ -334,6 +345,20 @@ class NpouchPolicyPage(BasePage):
                 }""", selector))
         except Exception:
             return False
+
+    def fill_if_available(self, selector: str, value) -> bool:
+        """요소가 검증가능(존재+섹션표시)하면 fill, 아니면 no-op. 반환: 채웠으면 True.
+
+        숨김/삭제 필드 fill 시 30초 timeout 크래시 방지. 정책 생성/수정은 계속 진행해야 하는
+        경우(sc5 KEEP 정책 등 — 연계용 영속 산출물)에 사용: 가능한 필드만 입력하고 저장.
+        """
+        if self.feature_available(selector):
+            try:
+                self.page.locator(selector).first.fill(str(value))
+                return True
+            except Exception:
+                return False
+        return False
 
     def close_modal(self) -> None:
         """모달 닫기 — 이전 4 runs 정상 통과 코드 100% 복구 (사용자 보고 2026-06-03).

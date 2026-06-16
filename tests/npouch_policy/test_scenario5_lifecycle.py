@@ -22,6 +22,10 @@ from tests.npouch_policy.test_scenario4_modify import _enter_edit_modal, _safe_c
 # Toggle helper — 체크박스를 target 상태로 set (disabled 면 skip)
 # ─────────────────────────────────────────────────────────────────
 def _toggle_to(page, sel: str, target: bool):
+    # 삭제(미존재) 토글 — 실제환경서 빌드별 제거된 토글(예 isOpenFilePassword)에 evaluate 시
+    # 5초 timeout 크래시 나던 것 방지. 없으면 조용히 skip (숨김(display:none)은 attached라 통과).
+    if page.page.locator(sel).count() == 0:
+        return
     el = page.page.locator(sel).first
     try:
         if not el.is_enabled():
@@ -30,8 +34,11 @@ def _toggle_to(page, sel: str, target: bool):
     except Exception:
         cur = False
     if cur != target:
-        el.evaluate("el => el.click()")
-        page.page.wait_for_timeout(100)
+        try:
+            el.evaluate("el => el.click()")
+            page.page.wait_for_timeout(100)
+        except Exception:
+            pass
 
 
 class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
@@ -131,10 +138,23 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
             "is_ext_filter": page.SEL_EXT_FILTER,
             "is_pdf_protect": page.SEL_PDF_PROTECT,
         }
+        # fill 로 설정해야 하는 값필드가 이 빌드선 숨김(display:none)이면 설정 불가 → 검증 skip.
+        # 토글/PDF 필드는 JS 로 읽고·설정되므로 숨김이어도 검증(innotium 회귀 방지).
+        _FILL_KEYS = {"max_read_count", "max_read_day", "pw_min", "pw_max",
+                      "pw_same", "pw_continue", "file_count"}
         for k, v in expected.items():
+            sel = sel_by_key.get(k, page.SEL_MODAL_OPEN)
+            # 삭제(미존재) 요소 → 읽을 수 없음(False/null) → 검증 skip (예 isOpenFilePassword).
+            if k in sel_by_key and page.page.locator(sel).count() == 0:
+                self._add("skip", f"sc{scope} — 재오픈 [{k}] (이 빌드 미존재 → 건너뜀)",
+                          f"대상 {sel} 미존재 — sc0 변경사항(삭제) 참조", sc=5, screenshot=False)
+                continue
+            if k in _FILL_KEYS and not page.feature_available(sel):
+                self._add("skip", f"sc{scope} — 재오픈 [{k}] 일치 (이 빌드 미표시 → 건너뜀)",
+                          f"대상 {sel} 미표시 — sc0 변경사항 참조", sc=5, screenshot=False)
+                continue
             actual = loaded.get(k)
             ok = actual == v
-            sel = sel_by_key.get(k, page.SEL_MODAL_OPEN)
             loc = page.page.locator(sel).first
             self._add("pass" if ok else "fail",
                       f"sc{scope} — 재오픈 [{k}] 일치",
@@ -164,9 +184,8 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
 
         v = self.ON_VALUES
         page.open_add_modal()
-        if self._skip_if_missing(page, "sc5a lifecycle 생성(열람횟수/암호 등)",
-                                 [page.SEL_MAX_READ_COUNT_VAL], sc=5):
-            page.close_modal(); return
+        # KEEP 정책은 sc6/다음 연계용 영속 산출물 → 숨김 필드가 있어도 생성은 진행.
+        #   숨김 값 필드는 fill_if_available 로 안전 처리(없으면 건너뜀, 크래시 방지). 통째 skip 안 함.
         # 필수 + 텍스트
         page.page.locator(page.SEL_POLICY_NAME).fill(v["name"])
         page.page.locator(page.SEL_CERT_URL).fill(v["cert_url"])
@@ -174,16 +193,16 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
         # 토글 + 숫자 (default ON 인 거 그대로 두고, 값 변경)
         _toggle_to(page, page.SEL_VALIDATE_SSL, v["is_validate_ssl"])
         _toggle_to(page, page.SEL_MAX_READ_COUNT_TOGGLE, v["is_max_read_count"])
-        page.page.locator(page.SEL_MAX_READ_COUNT_VAL).fill(v["max_read_count"])
+        page.fill_if_available(page.SEL_MAX_READ_COUNT_VAL, v["max_read_count"])
         _toggle_to(page, page.SEL_MAX_READ_DAY_TOGGLE, v["is_max_read_day"])
-        page.page.locator(page.SEL_MAX_READ_DAY_VAL).fill(v["max_read_day"])
+        page.fill_if_available(page.SEL_MAX_READ_DAY_VAL, v["max_read_day"])
 
         # 비번
         _toggle_to(page, page.SEL_PW_TOGGLE, v["is_open_pw"])
-        page.page.locator(page.SEL_PW_MIN).fill(v["pw_min"])
-        page.page.locator(page.SEL_PW_MAX).fill(v["pw_max"])
-        page.page.locator(page.SEL_PW_SAME_LETTER).fill(v["pw_same"])
-        page.page.locator(page.SEL_PW_CONTINUE_LETTER).fill(v["pw_continue"])
+        page.fill_if_available(page.SEL_PW_MIN, v["pw_min"])
+        page.fill_if_available(page.SEL_PW_MAX, v["pw_max"])
+        page.fill_if_available(page.SEL_PW_SAME_LETTER, v["pw_same"])
+        page.fill_if_available(page.SEL_PW_CONTINUE_LETTER, v["pw_continue"])
         _toggle_to(page, page.SEL_PW_NUMBER_LETTER, v["is_pw_number"])
         _toggle_to(page, page.SEL_PW_SPECIAL_LETTER, v["is_pw_special"])
 
@@ -197,7 +216,11 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
 
         # 첨부파일
         _toggle_to(page, page.SEL_FILE_COUNT_TOGGLE, v["is_file_count"])
-        page.page.locator(page.SEL_FILE_COUNT_VAL).fill(v["file_count"])
+        page.fill_if_available(page.SEL_FILE_COUNT_VAL, v["file_count"])
+
+        # 서버 통신 후 열람 — ON_VALUES 는 False. 실제환경은 기본 ON 이라 명시적으로 설정해야
+        # 재오픈 검증(기대 False)과 일치. (누락돼 있어 환경 기본값에 의존 → 실제환경서 fail 나던 것)
+        _toggle_to(page, page.SEL_SERVER_AUTH, v["is_server_auth"])
 
         # 확장자
         _toggle_to(page, page.SEL_EXT_FILTER, v["is_ext_filter"])
@@ -250,9 +273,8 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
             return
 
         _enter_edit_modal(page, NAME)
-        if self._skip_if_missing(page, "sc5b lifecycle 수정(열람횟수 등)",
-                                 [page.SEL_MAX_READ_COUNT_VAL], sc=5):
-            _safe_close_modal(page); return
+        # sc5b 는 값 fill 없이 토글(_toggle_to, 숨김이어도 JS click 안전)만 OFF →
+        # 숨김 필드 있어도 크래시 없음. KEEP 정책 수정·유지가 목적이라 통째 skip 안 함.
 
         # 종속 먼저 OFF → 메인 OFF (시나리오 기반 순서)
         # 비번 종속 (체크박스)
@@ -270,6 +292,22 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
         _toggle_to(page, page.SEL_SERVER_AUTH, False)
         _toggle_to(page, page.SEL_EXT_FILTER, False)
         _toggle_to(page, page.SEL_PDF_PROTECT, False)
+
+        # 필수 아닌 텍스트(URL/브랜드/포트) 비우기 → 저장 → 재오픈 시 silent 복원 검증용.
+        # (실제환경은 URL 기본값이 미리 채워져 있어 비웠다 저장 시 복원 여부가 의미 있음)
+        _OPTIONAL_TEXT = [
+            ("열람 인증 서버 URL", page.SEL_CERT_URL),
+            ("허용 인쇄 브랜드",   page.SEL_ALLOW_PRINT_BRAND),
+            ("제외 인쇄 포트",     page.SEL_EXCEPT_PRINT_PORT),
+        ]
+        emptied = []
+        for _label, _sel in _OPTIONAL_TEXT:
+            if page.feature_available(_sel):
+                try:
+                    page.page.locator(_sel).first.fill("")
+                    emptied.append((_label, _sel))
+                except Exception:
+                    pass
 
         _save_click(page)
         msg = ""
@@ -289,6 +327,15 @@ class TestNpouchPolicyScenario5Lifecycle(NpouchPolicyBase):
         _enter_edit_modal(page, NAME)
         loaded = self._dump_dom(page)
         self._verify_loaded(page, loaded, self.OFF_VALUES, scope="5b")
+
+        # 빈값 저장 → 재오픈 시 그대로 빈값인지(= silent 복원 결함 없는지) 검증.
+        for _label, _sel in emptied:
+            val = page.page.locator(_sel).first.input_value()
+            self._add("pass" if val == "" else "warn",
+                      f"sc5b — '{_label}' 빈값 저장 → 재오픈 유지",
+                      f"빈값 저장 후 재오픈 값: {val!r} "
+                      + ("(유지 — 정상)" if val == "" else "[silent 복원: 빈값 저장했는데 기본값/이전값으로 채워짐]"),
+                      sc=5, highlight=page.page.locator(_sel).first)
         _safe_close_modal(page)
 
     # ==================================================================
