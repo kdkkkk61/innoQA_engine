@@ -12,7 +12,7 @@ import time
 _MODIFY_OK_MESSAGES = ("저장 하였습니다", "수정된 항목이 없습니다.")
 
 from pages.npouch_control_suite_page import NpouchControlSuitePage
-from tests.control_suite._base import ControlSuiteBase
+from tests.common.control_suite._base import ControlSuiteBase
 
 
 class TestScenario4Modify(ControlSuiteBase):

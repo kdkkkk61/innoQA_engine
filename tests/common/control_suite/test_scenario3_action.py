@@ -10,7 +10,7 @@
 import pytest
 
 from pages.npouch_control_suite_page import NpouchControlSuitePage
-from tests.control_suite._base import ControlSuiteBase
+from tests.common.control_suite._base import ControlSuiteBase
 
 
 class TestScenario3Action(ControlSuiteBase):

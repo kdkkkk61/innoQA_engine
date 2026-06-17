@@ -203,10 +203,11 @@ _NPOUCH_PAGE_TO_CLASS: dict[str, str] = {
 }
 _NPOUCH_CLASS_TO_PAGE: dict[str, str] = {v: k for k, v in _NPOUCH_PAGE_TO_CLASS.items()}
 _NPOUCH_PAGE_TO_FILE: dict[str, str] = {
-    "npouch_operation_process": "test_npouch.py",
-    "npouch_tag":               "test_npouch_tag.py",
+    # 공통 페이지(운용/태그)는 tests/common/ 으로 이동 (page_id 는 호환 위해 npouch_ 유지)
+    "npouch_operation_process": "common/test_operation_process.py",
+    "npouch_tag":               "common/test_tag.py",
     # 디렉토리 매핑 — tests/<디렉토리>/ 안의 모든 test_scenario*.py 실행
-    "npouch_control_suite":     "control_suite",
+    "npouch_control_suite":     "common/control_suite",
     "npouch_origin_protect":    "origin_protect",
     "npouch_policy":            "npouch_policy",   # 디렉토리 매핑 (sc0~6 구조)
 }
@@ -394,7 +395,7 @@ def start():
     if product_id == "npouch":
         # nPouch: page_id별 test 파일 수집 (중복 제거) — -k 필터로 클래스 선택
         test_files = list(dict.fromkeys(
-            str(BASE_DIR / "tests" / _NPOUCH_PAGE_TO_FILE.get(pid, "test_npouch.py"))
+            str(BASE_DIR / "tests" / _NPOUCH_PAGE_TO_FILE.get(pid, "common/test_operation_process.py"))
             for pid in page_ids
         ))
         # 디렉토리 매핑된 page (control_suite/origin_protect/npouch_policy) 가 하나라도 있으면
@@ -481,7 +482,7 @@ def start():
 
                 # ── 현재 스캔 중인 페이지 감지 ──────────────────────────────
                 # test_scan_pages.py: "test_page_scan[page_id]"
-                # test_npouch.py:     "test_npouch.py::" (단일 파일)
+                # 공통 단일 파일:    "test_operation_process.py::" / "test_tag.py::" (basename)
                 # 디렉토리 패턴:     "tests/control_suite/" / "tests\control_suite\"
                 #                    (단일 클래스명 매핑 불가 — 디렉토리 안 다중 클래스)
                 for pid in page_ids:
@@ -489,8 +490,9 @@ def start():
                     if product_id == "npouch":
                         file_or_dir = _NPOUCH_PAGE_TO_FILE.get(pid, "")
                         if file_or_dir.endswith(".py"):
-                            # 단일 파일: "test_npouch.py::" 또는 "test_npouch.py "
-                            if f"{file_or_dir}::" in line or f"{file_or_dir} " in line:
+                            # 단일 파일: basename 으로 매칭 (경로 구분자 무관 — common/ 접두 대응)
+                            _base = file_or_dir.rsplit("/", 1)[-1]
+                            if f"{_base}::" in line or f"{_base} " in line:
                                 detected = True
                         elif file_or_dir:
                             # 디렉토리: "tests/<dir>/" 또는 "tests\<dir>\"
@@ -550,11 +552,12 @@ def start():
 
                 # ── pytest 결과 줄 감지 ─────────────────────────────────────
                 # test_scan_pages.py: 페이지 1개 = 테스트 함수 1개 → PASSED면 페이지 완료
-                # test_npouch.py:     페이지 1개 = 시나리오 5개 → 모든 시나리오 done 시 페이지 완료
+                # 공통 운용/태그:    페이지 1개 = 시나리오 5개 → 모든 시나리오 done 시 페이지 완료
                 if current_page:
                     bare        = line.strip()
                     in_summary  = (
-                        ("test_page_scan" in line) or ("test_npouch" in line) or
+                        ("test_page_scan" in line)
+                        or ("test_operation_process" in line) or ("test_tag" in line) or
                         ("/control_suite/" in line) or ("\\control_suite\\" in line) or
                         ("/origin_protect/" in line) or ("\\origin_protect\\" in line) or
                         ("/npouch_policy/" in line) or ("\\npouch_policy\\" in line)
