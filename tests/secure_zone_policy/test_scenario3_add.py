@@ -7,8 +7,9 @@
 보고서엔 _add(detail="입력:X / 결과:Y", repro="단계") 로 상세 기록. [AUTO] 만 생성+자체 cleanup.
 기본반출정책(singleton)은 확인다이얼로그 '취소'만(데이터안전). picker 선택은 overlay OFF.
 
-[SKIP 자리표시 — 세션 안정 시 라이브 검증 후 구현]: 드라이브/제어스위트 할당해제·재설정,
-프로세스통제 검증A/B(허용·거부 gating), 예외폴더 특수폴더 추가/중복.
+템플릿 동작 커버리지: 추가(드라이브 3e/제어스위트 3f/허용·거부 3g/실행차단·특수폴더·폴더동기화 3h
+/예외처리·레지스트리 3v), 변경/재설정(드라이브 3e/제어스위트 3f/허용↔거부 3g), 할당해제(3u),
+검색(3f — 3진입점 미동작 검출). 드라이브/제어스위트 할당해제는 없음(필수*).
 """
 from pages.secure_zone_agent_policy_page import SecureZoneAgentPolicyPage
 from tests.secure_zone_policy._base import SecureZonePolicyBase
@@ -43,6 +44,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page.navigate_to()
         self._ensure_session_cleanup(page)
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3a 타입/기본반출정책",
+                                 ["div#addItemModal.in input#szAgentPolicyTypeDefault"], sc=3):
+            page._close_modal_if_open(); return
 
         td = page.field_state("szAgentPolicyTypeDefault")
         self._add("pass" if td.get("checked") else "fail",
@@ -76,6 +80,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3b 정책이름 필수",
+                                 [f"div#addItemModal.in {page.SEL_NAME}"], sc=3):
+            page._close_modal_if_open(); return
         msg = page.submit_and_message()
         expected = "필수 입력값이 입력되지 않았습니다."
         self._add("pass" if msg == expected else "fail",
@@ -91,6 +98,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page.navigate_to()
         name = f"{page.AUTO_NAME_PREFIX}_dup"
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3c 정책이름 중복",
+                                 [f"div#addItemModal.in {page.SEL_NAME}"], sc=3):
+            page._close_modal_if_open(); return
         msg1 = page.create_basic_policy(name)
         page.navigate_to()
         page.open_add_modal()
@@ -110,6 +120,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page.navigate_to()
         name = page.AUTO_NAME_PREFIX + "_sc';!@#$%"
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3d 특수문자 이름",
+                                 [f"div#addItemModal.in {page.SEL_NAME}"], sc=3):
+            page._close_modal_if_open(); return
         msg = page.create_basic_policy(name)
         saved = "저장" in msg and "오류" not in msg
         self._add("warn" if saved else "pass",
@@ -128,6 +141,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3e 드라이브 템플릿 picker",
+                                 [page.SEL_TEMPLATE_BTN], sc=3):
+            page._close_modal_if_open(); return
 
         m = page.page.locator("div#addItemModal.in")
         txt0 = m.inner_text()
@@ -160,6 +176,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3f 제어스위트 picker",
+                                 [page.SEL_TEMPLATE_BTN], sc=3):
+            page._close_modal_if_open(); return
 
         picked = page.select_template_top(1)   # 제어스위트
         txt = page.page.locator("div#addItemModal.in").inner_text()
@@ -169,19 +188,43 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
                   f"입력: 제어스위트 '템플릿 선택' → 맨 위 행('{picked}') / 결과: 표시={shown}", sc=3,
                   repro="1. 제어스위트 '템플릿 선택' → picker\n2. 맨 위 선택 → 확인\n3. 템플릿명 표시 확인")
 
-        # picker 검색 미동작 — 모든 진입점이 동일 div#selectCommonPolicyItemModal 단일 요소 공유.
-        #   기본정책 탭: 드라이브(0)/제어스위트(1)  /  템플릿설정 탭: 허용·거부(0)
-        #   사용자가 검색하는 진입점마다 확인(누락 방지). 실측 2026-06-12 셋 다 미동작.
+        # 제어스위트 재설정(다른 템플릿으로 변경) — 드라이브와 동일(할당해제 없음, 재클릭=재설정)
+        name2 = page.reselect_template(1, 1)   # 제어스위트(btn 1) → 2번째 행
+        txt2 = page.page.locator("div#addItemModal.in").inner_text()
+        reset_ok = bool(name2) and name2.split()[0] in txt2 and picked != name2
+        self._add("pass" if reset_ok else "warn",
+                  "sc3f — 제어스위트 재설정(다른 템플릿으로 변경)",
+                  f"입력: 제어스위트 재클릭 → 2번째 템플릿('{name2}') / 결과: 변경됨={reset_ok} "
+                  "(제어스위트는 필수* — 할당해제 없음, 재클릭=재설정만. 템플릿 1개뿐이면 변경 불가→warn)",
+                  sc=3, highlight=page.page.locator(page.SEL_TEMPLATE_BTN).nth(1),
+                  repro=("1. 제어스위트 템플릿 선택(1번째)\n2. '템플릿 선택' 재클릭 → 2번째 선택 → 확인\n"
+                         "3. 제어스위트 행이 2번째 템플릿으로 바뀌는지 확인"))
+
+        # picker 검색 미동작 — 모든 진입점이 동일 div#selectCommonPolicyItemModal 단일 요소 공유(근원 중복).
+        #   중복 이슈지만 사용자 검색 진입점이 8군데로 다 달라 '전 진입점' 검출(곳곳에서 노출).
+        #   기본정책 탭: 드라이브(0)/제어스위트(1)
+        #   템플릿설정 탭: 허용·거부(0)/예외처리(1)/실행차단(2)/특수폴더(3)/레지스트리(4)/폴더동기화(5)
+        #   실측 2026-06-12: 검색 미동작. 빈 picker(해당 템플릿 0건)는 필터 판정 불가 → skip.
         for idx, nm, tab in [
             (0, "드라이브", "기본정책"),
             (1, "제어스위트", "기본정책"),
             (0, "템플릿설정 허용/거부", "템플릿설정"),
+            (1, "템플릿설정 예외처리", "템플릿설정"),
+            (2, "템플릿설정 실행차단", "템플릿설정"),
+            (3, "템플릿설정 특수폴더", "템플릿설정"),
+            (4, "템플릿설정 레지스트리", "템플릿설정"),
+            (5, "템플릿설정 폴더동기화", "템플릿설정"),
         ]:
             res = page.picker_search_filters(idx, "전사", tab=tab)
+            if res["before"] == 0:
+                self._add("skip", f"sc3f — {nm} picker 검색 (빈 목록)",
+                          f"입력: [{tab}] {nm} picker / 결과: 검색 전 0건 — 필터 판정 불가, 생략", sc=3)
+                page.close_picker()
+                continue
             self._add("warn" if not res["filtered"] else "pass",
                       f"sc3f — {nm} 템플릿 picker 검색 필터 동작",
-                      f"입력: [{tab}] {nm} picker 검색창 '전사'(매칭 존재) + 검색 버튼 / 결과: 검색 전 {res['before']} → 후 {res['after']}건 "
-                      + ("[결함: 결과 불변 = 검색 미동작(낮음). 모든 picker 진입점 공유 컴포넌트]" if not res["filtered"] else "[필터 동작]"),
+                      f"입력: [{tab}] {nm} picker 검색창 '전사' + 검색 버튼 / 결과: 검색 전 {res['before']} → 후 {res['after']}건 "
+                      + ("[결함: 결과 불변 = 검색 미동작(낮음). 공유 컴포넌트라 근원 중복이나 진입점마다 노출]" if not res["filtered"] else "[필터 동작]"),
                       sc=3, highlight=page.page.locator(page.SEL_PICKER_SEARCH),
                       repro=f"1. [{tab}] {nm} '템플릿 선택/설정' → picker\n2. 검색창 '전사' 입력\n3. 검색 버튼\n4. 결과 건수 변화 확인")
             page.close_picker()
@@ -195,6 +238,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3g 프로세스 통제기능",
+                                 ["div#addItemModal.in input#isAllowDenyProcessUse"], sc=3):
+            page._close_modal_if_open(); return
 
         for dep, dl in [("isAllowProcessForceStop", "강제종료"), ("isExceptProcess", "예외처리")]:
             off = page.field_state(dep)
@@ -271,6 +317,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3h 기타 토글(실행차단/특수폴더/폴더동기화)",
+                                 ["div#addItemModal.in input#isBlockExecuteProcess"], sc=3):
+            page._close_modal_if_open(); return
         # ① 토글 반응 (OFF→ON)
         for cid, label in [("isBlockExecuteProcess", "실행차단 프로세스"),
                            ("isManageFolder", "특수폴더"), ("isSyncFolder", "폴더 동기화")]:
@@ -312,6 +361,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()   # 파일감시 OFF 기본
+        if self._skip_if_missing(page, "sc3i 파일감시 master",
+                                 ["div#addItemModal.in input#isWatchFile"], sc=3):
+            page._close_modal_if_open(); return
 
         # master OFF → 하위항목 전체(보관소/확장자 3종/예외폴더 3종/헤더) 비활성 확인
         subs = page.filewatch_sub_disabled()
@@ -354,6 +406,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         name = f"{page.AUTO_NAME_PREFIX}_wfsp"
         sel = "div#addItemModal.in input#watchFileStorePath"
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3j 보관소 값 손실",
+                                 ["div#addItemModal.in input#isWatchFile"], sc=3):
+            page._close_modal_if_open(); return
         page.fill(page.SEL_NAME, name)
         page.select_template_top(0); page.select_template_top(1)
         page.set_toggle("isWatchFile", True)
@@ -386,6 +441,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3k 확장자 입력",
+                                 ["div#addItemModal.in input#isWatchFile"], sc=3):
+            page._close_modal_if_open(); return
         page.set_toggle("isWatchFile", True)
         _ext = page.page.locator(page.SEL_WATCH_EXT_INPUT)
 
@@ -433,6 +491,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3l 하위 체크박스 OFF gating",
+                                 ["div#addItemModal.in input#isWatchFile"], sc=3):
+            page._close_modal_if_open(); return
         page.set_toggle("isWatchFile", True)
 
         # ① 감시할 확장자 체크박스 OFF → 추가 시도
@@ -470,6 +531,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3m 헤더 체크",
+                                 ["div#addItemModal.in input#isWatchFile"], sc=3):
+            page._close_modal_if_open(); return
         page.set_toggle("isWatchFile", True)
         s0 = page.field_state("isWatchFileHeader")
         page.set_toggle("isWatchFileHeader", True)
@@ -486,6 +550,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3n 감시 예외 폴더",
+                                 ["div#addItemModal.in input#isWatchFile"], sc=3):
+            page._close_modal_if_open(); return
         off = page.field_state("isWatchFolder")
         self._add("pass" if off.get("disabled") else "warn",
                   "sc3n — 파일감시 OFF 시 '감시 예외 폴더' 비활성",
@@ -546,6 +613,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3o 프린트 설정",
+                                 ["div#addItemModal.in input#isPrintUse"], sc=3):
+            page._close_modal_if_open(); return
         # OFF 기본 → 라디오 disabled + 클릭 무반응
         before_v = page.print_radio_value()
         try:
@@ -586,6 +656,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3p 메뉴 토글",
+                                 ["div#addItemModal.in input#isShowAgentShutdownMenu"], sc=3):
+            page._close_modal_if_open(); return
         for cid, label in [("isShowAgentShutdownMenu", "에이전트 종료 메뉴"),
                            ("isShowEmergencyCodeMenu", "긴급 허용 코드 메뉴")]:
             s0 = page.field_state(cid)
@@ -605,6 +678,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3q 오프라인 차단 대기시간",
+                                 ["div#addItemModal.in input#isOfflineUse"], sc=3):
+            page._close_modal_if_open(); return
         page.set_toggle("isOfflineUse", True)
         v1, _ = page.type_block_time("1.5")
         self._add("pass" if v1 == "1.5" else "warn", "sc3q — 소수점 입력 허용(분)",
@@ -639,6 +715,8 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page.navigate_to()
         page.open_add_modal()
         sel = "div#addItemModal.in input#customOptionText"
+        if self._skip_if_missing(page, "sc3r 커스텀 옵션값", [sel], sc=3):
+            page._close_modal_if_open(); return
         page.fill(sel, "custom_test_123")
         val = page.page.locator(sel).first.input_value()
         self._add("pass" if val == "custom_test_123" else "fail",
@@ -654,6 +732,9 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page.navigate_to()
         name = f"{page.AUTO_NAME_PREFIX}_add"
         page.open_add_modal()
+        if self._skip_if_missing(page, "sc3s 일반 정책 생성",
+                                 [f"div#addItemModal.in {page.SEL_NAME}"], sc=3):
+            page._close_modal_if_open(); return
         msg = page.create_basic_policy(name)
         ok = "저장" in msg and "오류" not in msg
         self._add("pass" if ok else "fail", "sc3s — 일반 정책 생성 저장",
@@ -681,3 +762,61 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         self._add("pass" if gone else "fail", "sc3t — 생성 정책 삭제 → 목록에서 사라짐",
                   f"입력: 체크 후 삭제→확인 / 결과: '{name}' 삭제 후 존재={not gone}", sc=3,
                   repro=(f"1. '{name}' 체크\n2. 삭제 버튼\n3. 확인\n4. 목록에서 사라짐 확인"))
+
+    # ══ 템플릿설정 탭: 할당해제 동작 ══════════════════════════════
+    def test_scenario3u_template_unassign(self, logged_in_page, settings):
+        """템플릿설정 행 할당 → [할당해제] 클릭 → '없음' 복귀 (할당해제 동작 검증).
+        드라이브/제어스위트는 할당해제 없음(필수*) → 템플릿설정 탭 행 전용."""
+        print("\n━━ [시큐어존 정책] 시나리오 3u: 템플릿 할당해제 동작 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.open_add_modal()
+        if self._skip_if_missing(page, "sc3u 템플릿 할당해제",
+                                 [f"div#addItemModal.in {page.SEL_NAME}"], sc=3):
+            page._close_modal_if_open(); return
+
+        nm = page.assign_process_template("허용")
+        area1 = page.process_template_area_text()
+        assigned = bool(nm) and "할당해제" in area1
+        if not assigned:
+            self._add("skip", "sc3u — 할당해제 (할당 가능 허용 템플릿 없음)",
+                      f"입력: - / 결과: 허용 템플릿 할당 실패({nm!r}) — 후속 생략", sc=3)
+            page._close_modal_if_open(); return
+
+        released = page.unassign_template_setting()
+        area2 = page.process_template_area_text()
+        gone = released and ("할당해제" not in area2)
+        self._add("pass" if gone else "fail",
+                  "sc3u — 허용 프로세스 [할당해제] → '없음' 복귀",
+                  f"입력: 허용 템플릿('{nm}') 할당 후 [할당해제] 클릭 / 결과: 해제전={area1!r} → 해제후={area2!r} "
+                  + ("(해제됨 — '할당해제' 링크 사라짐)" if gone else "[결함: 할당해제 후에도 잔존]"),
+                  sc=3, repro=("1. 템플릿설정 탭 → 허용/거부 [설정] → 허용 선택 → 확인\n"
+                               "2. '허용 프로세스 [할당해제] {명}'에서 [할당해제] 클릭\n"
+                               "3. '없음'으로 복귀하는지 확인"))
+        page._close_modal_if_open()
+
+    # ══ 템플릿설정 탭: 예외처리/레지스트리 [설정] 할당 (3g/3h 미커버분) ══
+    def test_scenario3v_remaining_template_settings(self, logged_in_page, settings):
+        """6행 중 sc3g(허용/거부)·sc3h(실행차단/특수폴더/폴더동기화) 미커버분 = 예외처리(1)/레지스트리(4) 할당."""
+        print("\n━━ [시큐어존 정책] 시나리오 3v: 예외처리/레지스트리 템플릿 할당 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.open_add_modal()
+        if self._skip_if_missing(page, "sc3v 예외처리/레지스트리 할당",
+                                 [f"div#addItemModal.in {page.SEL_NAME}"], sc=3):
+            page._close_modal_if_open(); return
+
+        for btn_idx, feat in [(1, "예외처리 프로세스"), (4, "레지스트리 변경")]:
+            nm = page.assign_template_setting(btn_idx)
+            if not nm:
+                self._add("skip", f"sc3v — '{feat}' (할당 가능 템플릿 없음)",
+                          f"입력: {feat} [설정] / 결과: picker 비어있음/실패 — 검증 생략", sc=3)
+                continue
+            txt = page.template_tab_text()
+            shown = nm.split()[0] in txt
+            self._add("pass" if shown else "fail",
+                      f"sc3v — '{feat}' 템플릿 할당 등록 표시",
+                      f"입력: {feat} [설정] → 맨 위 템플릿('{nm}') / 결과: 탭 텍스트에 표시={shown}", sc=3,
+                      repro=(f"1. 템플릿설정 탭 → {feat} [설정]\n2. 맨 위 템플릿 선택 → 확인\n"
+                             f"3. 행에 '[할당해제] 템플릿명'으로 등록 표시되는지 확인"))
+        page._close_modal_if_open()

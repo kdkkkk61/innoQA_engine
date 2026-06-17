@@ -283,11 +283,20 @@ def pytest_unconfigure(config):
             ]
 
             # 제품명 자동 감지 (page_id 접두사 기준)
+            # 공통 페이지(운용프로세스/태그/제어스위트)는 nPouch·SecureZone 양쪽이 쓰므로
+            # 제품 판별에서 제외 — 같이 돈 제품에 귀속(예: 시큐어존+공통태그 → SecureZone).
+            # 공통만 단독 실행 시에만 'Common'. (page_id 접두사가 npouch_ 라도 공통은 제외)
+            _COMMON_PIDS = {
+                "npouch_operation_process", "npouch_tag", "npouch_control_suite",
+            }
             _all_ids = list(_merged.keys())
-            if any(_pid.startswith("npouch_") for _pid in _all_ids):
+            _decisive = [_p for _p in _all_ids if _p not in _COMMON_PIDS]
+            if any(_pid.startswith("npouch_") for _pid in _decisive):
                 product_name = "nPouch"
-            elif any(_pid.startswith("secure_zone_") for _pid in _all_ids):
+            elif any(_pid.startswith("secure_zone_") for _pid in _decisive):
                 product_name = "SecureZone"
+            elif _all_ids and all(_p in _COMMON_PIDS for _p in _all_ids):
+                product_name = "Common"
             else:
                 with open(CONFIG_PATH, encoding="utf-8") as _f:
                     _cfg = _yaml.safe_load(_f) or {}

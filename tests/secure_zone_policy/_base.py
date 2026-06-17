@@ -179,3 +179,18 @@ class SecureZonePolicyBase:
         self._lines.append(t)
         self._srs.append(s)
         self._attach(self._srs)
+
+    def _skip_if_missing(self, page, feat_desc: str, sels, sc: int) -> bool:
+        """환경별 삭제/숨김 기능 가드 — 대상이 검증 불가면 SKIP 카드 + True 반환(호출자 return).
+
+        sels: [selector, ...]. feature_available(존재 + 섹션 안 숨김)로 판정 —
+        삭제/숨김이면 skip, 있으면(토글 CSS숨김/gating disabled 포함) 통과시켜 실제 동작 검증(깨지면 fail).
+        크래시(fill/is_checked 타임아웃) 대신 graceful skip. 근거는 sc0 '숨김/제거' 카드.
+        """
+        for sel in sels:
+            if not page.feature_available(sel):
+                self._add("skip", f"{feat_desc} — 이 환경에 미표시(삭제/숨김) → 검증 건너뜀",
+                          f"대상 {sel} 미표시 — sc0 '신규/제거/숨김' 카드 참조 (환경/빌드 차이)",
+                          sc=sc)
+                return True
+        return False

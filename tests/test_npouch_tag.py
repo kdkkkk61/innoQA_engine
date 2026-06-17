@@ -543,10 +543,16 @@ class TestNpouchTag:
                 for th in p.page.locator("div#addItemModal table thead th").all()
             ]
             print(f"  추가 모달 프로세스 테이블 헤더: {proc_headers}")
-            for col in ["프로세스 이름", "서명", "SHA2", "설명"]:
-                t, s = r("pass" if col in proc_headers else "fail",
-                         f"추가 모달 — 프로세스 테이블 헤더 '{col}'",
-                         f"입력: (없음) / 결과: {'존재' if col in proc_headers else '없음'}")
+            # 이름 컬럼 라벨은 빌드차('프로세스명'/'프로세스 이름') → 둘 다 허용
+            header_specs = [
+                ("프로세스명/이름", {"프로세스명", "프로세스 이름"}),
+                ("서명", {"서명"}), ("SHA2", {"SHA2"}), ("설명", {"설명"}),
+            ]
+            for label, accept in header_specs:
+                ok = any(a in proc_headers for a in accept)
+                t, s = r("pass" if ok else "fail",
+                         f"추가 모달 — 프로세스 테이블 헤더 '{label}'",
+                         f"입력: (없음) / 결과: {'존재' if ok else '없음'}")
                 lines.append(t); srs.append(s)
 
             # 프로세스 선택 서브모달 오픈 확인
@@ -591,7 +597,7 @@ class TestNpouchTag:
         r = self._make_r(3)
         lines, srs = [], []
         p = self.p
-        _AUTO = "[AUTO]_np_tag"
+        _AUTO = "[AUTO]_cm_tag"
         print(f"\n━━ [{self.PAGE_NAME}] 시나리오 3: 동작 검증 ━━━━━━━━━━━━━━━━━━━━━━━")
 
         # 사전 정리
@@ -1030,7 +1036,7 @@ class TestNpouchTag:
     def test_scenario6_suite_setup(self):
         """
         제어 스위트 등 다음 테스트에서 사용할 태그를 준비한다.
-        [AUTO]_np_tag_suite 태그를 생성하고 프로세스 1개를 등록한 뒤
+        [AUTO_KEEP]_sc6_cm_tag_suite 태그를 생성하고 프로세스 1개를 등록한 뒤
         삭제하지 않고 남겨둔다.
 
         연계 테스트(다른 test_npouch_*.py 파일에서 _SUITE_TAG 참조)가 없으면
@@ -1040,7 +1046,7 @@ class TestNpouchTag:
         lines, srs = [], []
         p = self.p
         # AUTO_KEEP_ prefix — sc1 cleanup 시 보존, 세션 간 잔존
-        _SUITE_TAG = "[AUTO_KEEP]_sc6_np_tag_suite"
+        _SUITE_TAG = "[AUTO_KEEP]_sc6_cm_tag_suite"
         print(f"\n━━ [{self.PAGE_NAME}] 시나리오 6: 다음 테스트용 태그 설정 ━━━━━━━━━━━━")
 
         # ── 사전 정리 (항상 실행 — 이전 실행 잔여물 제거) ────────────
@@ -1070,8 +1076,8 @@ class TestNpouchTag:
         lines.append(t); srs.append(s)
 
         # ── 프로세스 등록 (이미 등록돼 있으면 skip) ─────────────────
-        # [AUTO_KEEP]_sc6_np_proc_suite 우선 선택 (프로세스 sc6 에서 KEEP 잔존)
-        _SUITE_PROC = "[AUTO_KEEP]_sc6_np_proc_suite"
+        # [AUTO_KEEP]_sc6_cm_proc_suite 우선 선택 (프로세스 sc6 에서 KEEP 잔존)
+        _SUITE_PROC = "[AUTO_KEEP]_sc6_cm_proc_suite"
         registered_proc = ""
         try:
             existing_procs = p.get_process_names_in_list(_SUITE_TAG) if hasattr(p, "get_process_names_in_list") else []

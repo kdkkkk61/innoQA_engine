@@ -381,6 +381,30 @@ class SecureZoneAgentPolicyPage(BasePage):
             out["value"] = None
         return out
 
+    def feature_available(self, selector: str) -> bool:
+        """요소가 '검증 가능' 상태인가 = DOM 존재 + 섹션이 display:none 아님.
+
+        - 삭제(미존재) / 섹션(또는 탭) display:none → False (→ sc3 테스트 skip)
+        - 토글 스위치처럼 input 자체만 CSS 숨김(부모 섹션은 보임) → True (강제 동작 가능 = 검증 대상)
+        - gating(disabled, 보임) → True (disabled 동작 자체가 검증 대상)
+        sc0 의 숨김(extract_dom_hidden) 판정과 동일 기준 — 삭제/숨김 vs 동작결함 정확 구분용.
+        """
+        try:
+            return bool(self.page.evaluate(
+                """(sel) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return false;                       // 삭제(미존재)
+                    if (el.offsetParent !== null) return true;   // 명확히 보임
+                    let node = el.parentElement;                 // 자신의 CSS숨김은 무시(토글)
+                    while (node) {
+                        if (getComputedStyle(node).display === 'none') return false;  // 섹션/탭 숨김
+                        node = node.parentElement;
+                    }
+                    return true;                                 // 토글 등 자체만 숨김 → 검증 가능
+                }""", selector))
+        except Exception:
+            return False
+
     # ── 파일 감시 확장자 tag-input (isWatchFile ON 필요) ──────────
     SEL_WATCH_EXT_INPUT = "div#addItemModal.in input#watchFileExtention"
     SEL_WATCH_EXT_ADD   = "div#addItemModal.in button#addSzWatchFileExtention"
@@ -635,6 +659,31 @@ class SecureZoneAgentPolicyPage(BasePage):
         t = " ".join(self.page.locator("div#addItemModal.in").inner_text().split())
         i = t.find("프로세스 템플릿")
         return t[i:i + 70] if i >= 0 else ""
+
+    def template_tab_text(self) -> str:
+        """템플릿설정 탭 전체 가시 텍스트 (6행 전부 — 예외처리/레지스트리 등록 표시 확인용)."""
+        self.goto_modal_tab("템플릿설정")
+        return " ".join(self.page.locator("div#addItemModal.in").inner_text().split())
+
+    def unassign_template_setting(self) -> bool:
+        """템플릿설정 탭에서 첫 [할당해제] 링크 클릭 → 해제. 확인 다이얼로그 시 '확인'.
+
+        반환: [할당해제] 링크가 있어서 클릭했으면 True (없으면 False — 할당된 행 없음).
+        드라이브/제어스위트는 할당해제 버튼 없음(필수*) → 템플릿설정 탭 행 전용.
+        """
+        self.goto_modal_tab("템플릿설정")
+        link = self.page.locator(
+            "div#addItemModal.in a:has-text('할당해제'), "
+            "div#addItemModal.in button:has-text('할당해제')").first
+        if link.count() == 0:
+            return False
+        with overlay_off(self.page):
+            link.click(force=True)
+        self.page.wait_for_timeout(300)
+        if self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).count() > 0:
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+        return True
 
     # ── 예외폴더 특수폴더(예약어) picker (추가 동작 검증) ──────────
     def add_watch_folder_reserved(self, macro_keyword: str) -> tuple[list[str], str]:

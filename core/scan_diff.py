@@ -606,6 +606,59 @@ def extract_dom_labels(page, context_sel: str, selectors: Iterable[str]) -> dict
     return {s: "" for s in sel_list}
 
 
+def extract_dom_hidden(page, context_sel: str, selectors: Iterable[str]) -> list[str]:
+    """yaml+DOM 둘 다 존재하는 셀렉터 중 '섹션 숨김(display:none)' 상태인 것만 반환.
+
+    삭제(missing, DOM 미존재)와 구분되는 회귀 신호 — "있어야 할 게 화면에서 사라짐".
+    판정 (core/ui_scanner.py 숨김 감지와 동일 기준):
+      - offsetParent != null            → 보임 → 제외
+      - 자신만 CSS 숨김(토글 스위치 raw input) → 부모 섹션 보임 → 제외
+      - 구조적 부모가 display:none       → 숨김 (단, 비활성 탭 pane 은 제외=오탐 방지)
+
+    매개변수:
+      selectors : 비교 대상(보통 compare()['common'] = yaml ∩ DOM).
+    반환:
+      숨김 셀렉터 list (없으면 빈 list).
+    """
+    sel_list = list(selectors)
+    if not context_sel or not sel_list:
+        return []
+    js = """
+    (args) => {
+        const [rootSel, sels] = args;
+        const root = document.querySelector(rootSel);
+        if (!root) return [];
+        const out = [];
+        for (const s of sels) {
+            const el = root.querySelector(s);
+            if (!el) continue;
+            if (el.offsetParent !== null) continue;  // 명확히 보임 → 통과
+            // offsetParent=null: (a)토글 스위치는 input 자체를 CSS로 숨김(부모는 보임)
+            //   (b)섹션 display:none. 자신은 무시하고 '구조적 부모'가 숨김일 때만 섹션숨김.
+            let node = el.parentElement, sectionHidden = false;
+            while (node && node !== root) {
+                const cs = getComputedStyle(node);
+                if (cs.display === 'none') {
+                    const isPane = node.classList.contains('modalBox')
+                        || node.classList.contains('tab-pane')
+                        || node.getAttribute('role') === 'tabpanel';
+                    if (!isPane) sectionHidden = true;  // 구조적 섹션 숨김만
+                    break;  // pane이면 비활성탭 → 제외(sectionHidden=false)
+                }
+                node = node.parentElement;
+            }
+            if (sectionHidden) out.push(s);
+        }
+        return out;
+    }
+    """
+    try:
+        result = page.evaluate(js, [context_sel, sel_list])
+        return list(result) if isinstance(result, list) else []
+    except Exception:
+        return []
+
+
 def detect_tag_input_patterns(
     page, context_sel: str, candidate_inputs: Iterable[str]
 ) -> dict[str, dict]:

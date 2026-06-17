@@ -17,6 +17,7 @@ from pathlib import Path
 from core.scan_diff import (
     extract_yaml_selectors, extract_dom_selectors, compare,
     extract_yaml_labels, extract_dom_labels, extract_dom_attributes,
+    extract_dom_hidden,
 )
 from pages.secure_zone_agent_policy_page import SecureZoneAgentPolicyPage
 from tests.secure_zone_policy._base import SecureZonePolicyBase
@@ -46,15 +47,18 @@ class TestSecureZonePolicyScenario0Scan(SecureZonePolicyBase):
             new_labels = extract_dom_labels(page.page, context_sel, diff["new"])
             new_attrs  = extract_dom_attributes(page.page, context_sel, diff["new"])
             yaml_labels = extract_yaml_labels(hints)
+            # 숨김: yaml+DOM 둘 다 있으나 섹션 display:none (모달 열린 채 판정 — offsetParent 유효).
+            #   gating(disabled)은 보임 → 제외 / 토글 스위치 self-hidden → 제외 / 비활성 탭 → 제외.
+            hidden_sels = extract_dom_hidden(page.page, context_sel, diff["common"])
         finally:
             page._close_modal_if_open()   # 모달 닫기 (필드 클릭 없음 — singleton 안전)
 
         new_set, missing_set = diff["new"], diff["missing"]
-        self._add("warn" if (new_set or missing_set) else "pass",
-                  "sc0a — 신규/제거 UI 감지 (yaml baseline ↔ 모달 DOM diff, 클릭 없음)",
+        self._add("warn" if (new_set or missing_set or hidden_sels) else "pass",
+                  "sc0a — 신규/제거/숨김 UI 감지 (yaml baseline ↔ 모달 DOM diff, 클릭 없음)",
                   f"baseline {len(yaml_set)}개 / DOM {len(dom_set)}개 → "
-                  f"신규={len(new_set)}건, 제거={len(missing_set)}건 "
-                  f"(0/0 = UI 변동 없음)", sc=0)
+                  f"신규={len(new_set)}건, 제거={len(missing_set)}건, 숨김={len(hidden_sels)}건 "
+                  f"(0/0/0 = UI 변동 없음)", sc=0)
 
         # 신규 요소 카드 — DOM 라벨/속성 동봉 (검수자가 yaml baseline 추가 판단)
         for sel in sorted(new_set):
@@ -73,3 +77,11 @@ class TestSecureZonePolicyScenario0Scan(SecureZonePolicyBase):
             self._add("warn",
                       f"sc0a — ❌ 제거 요소 {ko or ''} ({sel})",
                       "yaml baseline 에 있으나 DOM 에 없음 — 회귀 후보(요소 사라짐) 또는 의도된 제거.", sc=0)
+
+        # 숨김 요소 카드 — yaml+DOM 둘 다 있으나 섹션 display:none (회귀 후보, sc3 가 skip 처리)
+        for sel in sorted(hidden_sels):
+            ko = (yaml_labels.get(sel) or "").strip()
+            self._add("warn",
+                      f"sc0a — 🙈 숨김 요소 {ko or ''} ({sel})",
+                      "yaml baseline+DOM 둘 다 존재하나 섹션이 display:none — 회귀 후보(섹션 사라짐) "
+                      "또는 환경별 숨김. sc3 동일 기준(feature_available)으로 자동 skip.", sc=0)

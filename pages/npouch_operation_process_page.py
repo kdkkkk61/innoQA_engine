@@ -54,6 +54,18 @@ class NpouchOperationProcessPage(BasePage):
         """운용 프로세스 페이지로 이동."""
         self._dismiss_stale_confirm_modal()
         self._close_modal_if_open()
+        # 이전 페이지(태그 등)에서 닫히지 않고 남은 모달 backdrop 제거.
+        # cross-page 진입 시 잔여 'modal-backdrop in'이 좌측 메뉴 클릭을 가로채
+        # 30초 타임아웃을 유발(실측 2026-06-17 sc6). url이 이미 main.html이면 리로드를
+        # 건너뛰는 경로(아래 64행)라 backdrop이 그대로 남는 문제를 막는다.
+        try:
+            self.page.evaluate(
+                "() => { document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());"
+                " document.body.classList.remove('modal-open');"
+                " document.body.style.removeProperty('padding-right'); }"
+            )
+        except Exception:
+            pass
 
         if ("GlobalCommonProcess" in self.page.url
                 and "pageSize=100" in self.page.url
@@ -358,21 +370,40 @@ class NpouchOperationProcessPage(BasePage):
             state="detached", timeout=self._TIMEOUT_TABLE
         )
 
-    def search_item(self, keyword: str) -> None:
-        """키워드로 검색 실행 (기본 옵션 유지)."""
+    # 검색 컬럼 드롭다운: 라벨은 빌드마다 다름('프로세스명' vs '프로세스 이름') → value 로 선택.
+    # value 는 안정적(Chrome 직접 확인 2026-06-17: processName/sign/description).
+    _SEARCH_OPTION_VALUE = {
+        "프로세스 이름": "processName", "프로세스명": "processName", "이름": "processName",
+        "서명": "sign", "설명": "description",
+    }
+
+    def _select_search_option(self, value: str) -> None:
+        """검색 컬럼 드롭다운을 value 로 선택 (라벨 빌드차 흡수)."""
+        try:
+            self.page.locator("select#searchOption").first.select_option(value=value)
+            self.page.wait_for_timeout(100)
+        except Exception:
+            pass
+
+    def _do_search(self, keyword: str) -> None:
+        """검색창 입력 + 검색 버튼 (드롭다운 미변경)."""
         search = self.page.locator("input#searchText").first
         search.fill(keyword)
         self.page.locator("button#searchBtn").first.evaluate("el => el.click()")
         self.page.wait_for_timeout(600)
 
+    def search_item(self, keyword: str) -> None:
+        """이름(프로세스명) 컬럼으로 검색. 드롭다운 상태가 이전 검색(설명 등)에서
+        물려지지 않도록 매번 processName 명시 선택 (URL 해시 의존 제거)."""
+        self._select_search_option("processName")
+        self._do_search(keyword)
+
     def search_item_with_option(self, keyword: str, option_label: str) -> None:
-        """검색 옵션을 변경한 뒤 키워드로 검색. option_label: '프로세스 이름' | '서명' | '설명'"""
-        try:
-            self.page.locator("select#searchOption").first.select_option(label=option_label)
-            self.page.wait_for_timeout(100)
-        except Exception:
-            pass
-        self.search_item(keyword)
+        """검색 옵션 변경 후 검색. option_label: '프로세스 이름'/'프로세스명' | '서명' | '설명'.
+        라벨이 빌드마다 달라 value 로 변환해 선택."""
+        value = self._SEARCH_OPTION_VALUE.get(option_label, "processName")
+        self._select_search_option(value)
+        self._do_search(keyword)
 
     def get_modal_title(self) -> str:
         """현재 열린 모달의 타이틀 텍스트."""

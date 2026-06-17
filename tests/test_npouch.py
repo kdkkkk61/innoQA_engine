@@ -66,9 +66,9 @@ def _ss(page, label: str, highlight=None) -> str | None:
         return None
 
 # ── 모듈 상수 ─────────────────────────────────────────────────────────────────
-_AUTO_PROCESS   = "[AUTO]_np_process"
-_AUTO_PROC_FULL = "[AUTO]_np_proc_full"
-_AUTO_PROC_REQ  = "[AUTO]_np_proc_req"
+_AUTO_PROCESS   = "[AUTO]_cm_process"
+_AUTO_PROC_FULL = "[AUTO]_cm_proc_full"
+_AUTO_PROC_REQ  = "[AUTO]_cm_proc_req"
 _SHA2_VALID     = "AABB112233445566778899001122334455667788990011223344556677889900"
 _EXEC_TEST      = r"C:\auto\test_proc.exe"   # 실행경로 테스트용
 
@@ -167,14 +167,20 @@ class TestNpouchOperationProcess:
             )
             lines.append(t); srs.append(s)
 
-        # 테이블 헤더
+        # 테이블 헤더 (이름 컬럼 라벨은 빌드차: '프로세스명'/'프로세스 이름' 둘 다 허용)
         headers = [th.inner_text().strip() for th in page.locator("table thead th").all()]
         print(f"  실제 헤더: {headers}")
-        for h in ["프로세스 이름", "서명", "설명", "등록일", "수정일"]:
+        header_specs = [
+            ("프로세스명/이름", {"프로세스명", "프로세스 이름"}),
+            ("서명", {"서명"}), ("설명", {"설명"}),
+            ("등록일", {"등록일"}), ("수정일", {"수정일"}),
+        ]
+        for label, accept in header_specs:
+            ok = any(a in headers for a in accept)
             t, s = _r(
-                "pass" if h in headers else "fail",
-                f"테이블 헤더 — {h}",
-                f"입력: (없음) / 결과: {'존재' if h in headers else '없음'}",
+                "pass" if ok else "fail",
+                f"테이블 헤더 — {label}",
+                f"입력: (없음) / 결과: {'존재' if ok else '없음'}",
                 sc=1,
             )
             lines.append(t); srs.append(s)
@@ -1004,7 +1010,7 @@ class TestNpouchOperationProcess:
 
     # ── 시나리오 6: 연계 데이터 준비 ─────────────────────────────────────────────
     def test_scenario6_suite_setup(self):
-        """시나리오 6: 연계 데이터 준비 — [AUTO]_np_proc_suite 생성 후 태그 테스트에 남겨둠
+        """시나리오 6: 연계 데이터 준비 — [AUTO_KEEP]_sc6_cm_proc_suite 생성 후 태그 테스트에 남겨둠
 
         연계 테스트(다른 test_npouch_*.py 파일에서 _SUITE 참조)가 없으면
         정리만 하고 skip 처리한다.
@@ -1014,7 +1020,7 @@ class TestNpouchOperationProcess:
         lines, srs = [], []
 
         # AUTO_KEEP_ prefix — sc1 cleanup 시 보존, 세션 간 잔존
-        _SUITE = "[AUTO_KEEP]_sc6_np_proc_suite"
+        _SUITE = "[AUTO_KEEP]_sc6_cm_proc_suite"
 
         # AUTO_KEEP 잔존 — 정리 안 함 (세션 간 보존이 의도).
         # 이미 잔존 여부만 미리 검색해 둠 (이후 add 분기에 활용).

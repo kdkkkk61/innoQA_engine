@@ -1948,3 +1948,44 @@
 - **파일**: `pages/npouch_policy_page.py`
 
 상태: [RESOLVED] (window.angular 회귀 수정 — [data-menuid] 렌더 대기로 변경)
+
+---
+
+## [2026-06-17] nPouch 운용/태그 — dev 서버(:88) 검색 컬럼 drift + cross-page backdrop + 헤더 라벨 빌드차
+
+- **증상**: dev 서버(`http://192.168.13.141/` → :88)에서 운용/태그 **6 fail**(운용 sc1/3/4/5/6 + 태그 sc2).
+  실서버(:40010)에선 1 fail(태그 sc6). 헤더 '프로세스 이름' 없음 / 저장 항목을 목록서 못 찾음(`filter(has_text=...)` timeout) / 태그 sc6 메뉴 클릭 30초.
+- **원인 3가지** (Chrome 직접 확인 2026-06-17 — 로그인 세션 공유로 dev DOM 실측):
+  1. **검색 컬럼 drift**: `search_item` 이 드롭다운 안 박고 URL 해시(`searchOption=processName`)에만 의존 →
+     dev 빌드선 해시가 드롭다운에 미반영 → "설명"으로 남아 이름 검색 0건("검색된 내용이 없습니다", 단 목록엔 1,252건 존재).
+     `search_item_with_option` 은 라벨 "프로세스 이름"으로 select → dev 라벨은 "프로세스명"이라 select 실패.
+     (실측: 옵션 라벨 "프로세스명", **value=processName 은 빌드 무관 안정** — value: processName/sign/description)
+  2. **cross-page backdrop**: 태그 sc6 → `operation_process.navigate_to` 가 url 이 이미 main.html 이라 리로드 skip →
+     이전 태그 모달의 잔여 `modal-backdrop in` 이 좌측 메뉴(`managerGlobalCommonProcess`) 클릭을 30초 차단.
+  3. **헤더 라벨 빌드차**: dev="프로세스명" vs 실서버="프로세스 이름".
+- **수정**:
+  - `pages/npouch_operation_process_page.py`:
+    - `search_item` 이 `select#searchOption` 을 **value="processName" 로 명시 선택**(`_select_search_option`), 해시 의존 제거.
+    - `search_item_with_option` 은 라벨 → value 매핑(`_SEARCH_OPTION_VALUE`).
+    - `navigate_to` 진입 시 잔여 `.modal-backdrop` + `modal-open` 제거.
+  - `tests/test_npouch.py`, `tests/test_npouch_tag.py`: 헤더 체크가 **"프로세스명"/"프로세스 이름" 둘 다 허용**.
+- **검증**: dev 서버 재실행 **12/12 통과**(이전 6 fail), Chrome 으로 value 선택+`[AUTO` 검색 시 4건 조회 실증.
+- **파일**: `pages/npouch_operation_process_page.py`, `tests/test_npouch.py`, `tests/test_npouch_tag.py`
+
+상태: [RESOLVED]
+
+---
+
+## [2026-06-17] 공통 페이지 리포트 오판 + 생성 prefix 통일 (운용/태그/제어스위트)
+
+- **배경**: 운용프로세스/태그/제어스위트는 nPouch·SecureZone 공용 페이지(menuid 동일). 시큐어존 런에 공통 태그가 끼면
+  page_id `npouch_tag` 때문에 제품 판별이 **nPouch 로 오판**(시큐어존 런인데 `reports/nPouch/` 로 생성).
+- **수정**:
+  - `conftest.py` 제품 판별: 공통 3개(`npouch_operation_process`/`npouch_tag`/`npouch_control_suite`)를 **판별에서 제외** →
+    같이 돈 제품에 귀속(시큐어존+공통 → SecureZone). 공통만 단독 실행 시 "Common".
+  - 생성 데이터 prefix **`np` → `cm`(공통)** 통일: `[AUTO]_cm_process` 등, `[AUTO_KEEP]_sc6_cm_proc_suite`/`_tag_suite`.
+    교차참조(운용 sc6 생성 → 태그 sc6 소비) 일치. 제어스위트는 이미 `[AUTO]_sc1_step1` 식이라 무관.
+- **미적용(Phase 2 예정)**: 파일/클래스/page_id 의 `npouch_*` → `common_*` rename (app.py 6군데+ 강결합이라 별도 작업).
+- **파일**: `conftest.py`, `tests/test_npouch.py`, `tests/test_npouch_tag.py`
+
+상태: [RESOLVED] (리포트 귀속·prefix 통일 / 파일명 중립화는 Phase 2)

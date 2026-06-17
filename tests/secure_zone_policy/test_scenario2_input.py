@@ -5,6 +5,7 @@ sc2b — default 값 (타입=일반 / 모든 토글 OFF / 이름 빈값) — Chr
 sc2c — maxlength (정책이름=50 / watchFileStorePath=400 / 나머지 text=null)
 sc2d — default reset (채움→닫기→재오픈 복원)
 sc2e — 필수 ★ 마커 (span.star == 4: 타입/정책이름/드라이브설정/제어스위트설정)
+sc2f — 템플릿설정 탭 인벤토리 (탭 전환 + [설정] 6행 + 개요) — 동작은 sc3
 
 저장·picker 조작 없음 (구조만 확인). 기본반출정책 singleton 미접촉.
 """
@@ -65,10 +66,12 @@ class TestSecureZonePolicyScenario2Input(SecureZonePolicyBase):
         self._add("pass" if ("기본정책" in tab_txt and "템플릿설정" in tab_txt) else "fail",
                   "sc2a — 모달 2탭(기본정책/템플릿설정)",
                   f"탭 텍스트: 기본정책={'기본정책' in tab_txt}, 템플릿설정={'템플릿설정' in tab_txt}", sc=2)
-        tmpl_btns = page.page.locator(f"{page.SEL_MODAL} a.addTemplate").count()
-        self._add("pass" if tmpl_btns >= 2 else "fail",
+        # 기본정책 탭 드라이브/제어스위트 = button.addTemplate (2개).
+        # a.addTemplate 은 템플릿설정 탭 [설정] 버튼이라 다름 — sc2f 에서 별도 인벤토리.
+        tmpl_btns = page.page.locator(f"{page.SEL_MODAL} button.addTemplate").count()
+        self._add("pass" if tmpl_btns == 2 else "fail",
                   "sc2a — 드라이브/제어스위트 템플릿 선택 버튼 2개",
-                  f"a.addTemplate count={tmpl_btns} (기대>=2)", sc=2)
+                  f"button.addTemplate count={tmpl_btns} (기대=2: 드라이브/제어스위트)", sc=2)
         page._close_modal_if_open()
 
     def test_scenario2b_default_values(self, logged_in_page, settings):
@@ -177,4 +180,40 @@ class TestSecureZonePolicyScenario2Input(SecureZonePolicyBase):
         self._add("pass" if stars == 4 else "warn",
                   "sc2e — 필수 ★ 마커 4개 (타입/정책이름/드라이브설정/제어스위트설정)",
                   f"span.star 개수={stars} (기대=4)", sc=2)
+        page._close_modal_if_open()
+
+    def test_scenario2f_template_tab_inventory(self, logged_in_page, settings):
+        """sc2f — 템플릿설정 탭 입력 구조 인벤토리 (탭 전환 + [설정] 행 존재/개요).
+
+        sc2 책임 = 구조 존재+개요만. 실제 picker 할당/할당해제 동작은 sc3(3g/3h).
+        """
+        print("\n━━ [시큐어존 정책] 시나리오 2f: 템플릿설정 탭 인벤토리 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.open_add_modal()
+
+        # ① 탭 전환 동작 — '템플릿설정' 클릭 → 활성 탭으로 전환되는지 (sc1c 는 '존재'만 확인)
+        page.goto_modal_tab("템플릿설정")
+        active = ""
+        try:
+            active = page.page.locator(f"{page.SEL_MODAL} li.active a").first.inner_text().strip()
+        except Exception:
+            pass
+        self._add("pass" if "템플릿설정" in active else "warn",
+                  "sc2f — 템플릿설정 탭 전환 동작",
+                  f"입력: '템플릿설정' 탭 클릭 / 결과: 활성 탭='{active}' (기대 '템플릿설정')", sc=2)
+
+        # ② [설정] 행 = a.addTemplate (실측 2026-06-12: 허용·거부/예외처리/실행차단/바로가기/레지스트리/폴더동기화 = 6)
+        set_btns = page.page.locator(f"{page.SEL_MODAL} a.addTemplate").count()
+        self._add("pass" if set_btns == 6 else "warn",
+                  "sc2f — 템플릿설정 [설정] 행 6개",
+                  f"a.addTemplate(설정 버튼) count={set_btns} "
+                  "(기대=6: 허용·거부/예외처리/실행차단/바로가기/레지스트리/폴더동기화)", sc=2)
+
+        # ③ 어떤 느낌 — 탭의 가시 텍스트 개요 캡처(검수자용, 라벨 하드코딩 없음=추측 회피)
+        vis = " ".join(page.page.locator(page.SEL_MODAL).inner_text().split())
+        self._add("pass", "sc2f — 템플릿설정 탭 구조 개요(가시 텍스트)",
+                  f"개요: {vis[:160]!r}", sc=2)
+
+        page.goto_modal_tab("기본정책")   # 원복 (다음 테스트 기본 상태)
         page._close_modal_if_open()
