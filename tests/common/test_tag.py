@@ -100,7 +100,7 @@ def _assert_no_fail(lines: list[str], context: str = "") -> None:
 @pytest.mark.npouch
 class TestNpouchTag:
     PAGE_NAME = "태그 관리"
-    PAGE_ID   = "npouch_tag"
+    PAGE_ID   = "common_tag"
 
     @pytest.fixture(autouse=True)
     def setup(self, request, logged_in_page, settings):

@@ -38,7 +38,7 @@ class TestScenario0Scan(ControlSuiteBase):
         scanner = UIScanner(logged_in_page, config_dir="config")
 
         # phase=2 — ADD 모달 yaml ↔ DOM diff (시나리오 1) + UI 요소 자동 검증 (시나리오 2)
-        # yaml 의 page_id="control_suite" 호출 (npouch_control_suite.yaml 가 referenced).
+        # yaml 의 page_id="control_suite" 호출 (control_suite.yaml 상세 hints 직접 로드).
         report = scanner.scan(
             page_id="control_suite",
             phase=2,

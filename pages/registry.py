@@ -26,9 +26,9 @@ PAGE_REGISTRY: dict[str, type] = {
     "ransom_detect_policy":       RansomDetectPolicyPage,
     "rdp_policy":                 RdpPolicyPage,
     "common_process":             CommonProcessPage,
-    "npouch_operation_process":   NpouchOperationProcessPage,
-    "npouch_tag":                 NpouchTagPage,
-    "npouch_control_suite":       NpouchControlSuitePage,
+    "common_operation_process":   NpouchOperationProcessPage,
+    "common_tag":                 NpouchTagPage,
+    "common_control_suite":       NpouchControlSuitePage,
     "npouch_origin_protect":      NpouchOriginProtectPolicyPage,
     "npouch_policy":              NpouchPolicyPage,
     "secure_zone_access_control": SecureZoneAccessControlPolicyPage,
@@ -43,14 +43,17 @@ MODULE_GROUPS: dict[str, list[str]] = {
         "common_process",
     ],
     "npouch": [
-        "npouch_operation_process",  # 1. 운용 프로세스 (의존성 없음)
-        "npouch_tag",                # 2. 태그 관리 (의존성 없음)
-        "npouch_control_suite",      # 3. 제어 스위트 (운용 프로세스 참조)
+        "common_operation_process",  # 1. 운용 프로세스 (공통 — 의존성 없음)
+        "common_tag",                # 2. 태그 관리 (공통 — 의존성 없음)
+        "common_control_suite",      # 3. 제어 스위트 (공통 — 운용 프로세스 참조)
         "npouch_origin_protect",     # 4. 원본보호 정책 (제어 스위트 참조)
         "npouch_policy",             # 5. 엔파우치 정책 (원본보호 정책 참조)
     ],
     "secure_zone": [
-        "secure_zone_access_control",  # 1. 접근제어 정책 (독립 — 템플릿 의존 없음)
-        "secure_zone_agent_policy",    # 2. 시큐어존 정책 (템플릿/제어스위트 참조 — 기존 선택)
+        "common_operation_process",    # 1. 운용 프로세스 (공통 — nPouch와 동일 콘솔/menuid)
+        "common_tag",                  # 2. 태그 관리 (공통)
+        "common_control_suite",        # 3. 제어 스위트 (공통 — 시큐어존 정책이 참조)
+        "secure_zone_access_control",  # 4. 접근제어 정책 (독립 — 템플릿 의존 없음)
+        "secure_zone_agent_policy",    # 5. 시큐어존 정책 (템플릿/제어스위트 참조)
     ],
 }

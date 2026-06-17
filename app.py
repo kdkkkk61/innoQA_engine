@@ -195,19 +195,19 @@ _LIST_SCENARIOS = [
 
 # nPouch 전용: page_id ↔ 테스트 클래스명 매핑
 _NPOUCH_PAGE_TO_CLASS: dict[str, str] = {
-    "npouch_operation_process": "TestNpouchOperationProcess",
-    "npouch_tag":               "TestNpouchTag",
-    "npouch_control_suite":     "TestNpouchControlSuite",
+    "common_operation_process": "TestNpouchOperationProcess",
+    "common_tag":               "TestNpouchTag",
+    "common_control_suite":     "TestNpouchControlSuite",
     "npouch_origin_protect":    "TestNpouchOriginProtect",
     "npouch_policy":            "TestNpouchPolicy",
 }
 _NPOUCH_CLASS_TO_PAGE: dict[str, str] = {v: k for k, v in _NPOUCH_PAGE_TO_CLASS.items()}
 _NPOUCH_PAGE_TO_FILE: dict[str, str] = {
-    # 공통 페이지(운용/태그)는 tests/common/ 으로 이동 (page_id 는 호환 위해 npouch_ 유지)
-    "npouch_operation_process": "common/test_operation_process.py",
-    "npouch_tag":               "common/test_tag.py",
+    # 공통 페이지(운용/태그/제어스위트)는 tests/common/ 에 있고 page_id 도 common_ 으로 통일
+    "common_operation_process": "common/test_operation_process.py",
+    "common_tag":               "common/test_tag.py",
     # 디렉토리 매핑 — tests/<디렉토리>/ 안의 모든 test_scenario*.py 실행
-    "npouch_control_suite":     "common/control_suite",
+    "common_control_suite":     "common/control_suite",
     "npouch_origin_protect":    "origin_protect",
     "npouch_policy":            "npouch_policy",   # 디렉토리 매핑 (sc0~6 구조)
 }
@@ -258,9 +258,9 @@ def _get_pages(product_id: str) -> list[dict]:
             "ransom_detect_policy":     "탐지정책",
             "rdp_policy":               "RDP 정책",
             "common_process":           "공통 프로세스",
-            "npouch_operation_process": "운용 프로세스",
-            "npouch_tag":               "태그 관리",
-            "npouch_control_suite":     "제어 스위트",
+            "common_operation_process": "운용 프로세스",
+            "common_tag":               "태그 관리",
+            "common_control_suite":     "제어 스위트",
             "npouch_origin_protect":    "원본 보호 정책",
             "npouch_policy":            "nPouch 정책",
         }
@@ -403,7 +403,7 @@ def start():
         # 매핑값 (TestNpouchControlSuite, TestNpouchOriginProtect) 과 불일치 → match 0건 → deselect
         # 사용자 보고 2026-06-03: 5 페이지 체크해도 control_suite/origin_protect 누락.
         # 해결: 디렉토리 페이지 포함 시 -k 필터 자체 skip → test_files path 가 page 분리.
-        _dir_pages = {"npouch_control_suite", "npouch_origin_protect", "npouch_policy"}
+        _dir_pages = {"common_control_suite", "npouch_origin_protect", "npouch_policy"}
         has_dir = any(pid in _dir_pages for pid in page_ids)
         if has_dir:
             k_filter = ""
@@ -1022,9 +1022,9 @@ def finalize():
         "ransom_detect_policy":     "탐지정책",
         "rdp_policy":               "RDP 정책",
         "common_process":           "공통 프로세스",
-        "npouch_operation_process": "운용 프로세스",
-        "npouch_tag":               "태그 관리",
-        "npouch_control_suite":     "제어 스위트",
+        "common_operation_process": "운용 프로세스",
+        "common_tag":               "태그 관리",
+        "common_control_suite":     "제어 스위트",
         "npouch_origin_protect":    "원본 보호 정책",
         "npouch_policy":            "nPouch 정책",
     }.items()}

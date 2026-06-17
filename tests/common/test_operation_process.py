@@ -116,7 +116,7 @@ def _assert_no_fail(lines: list[str], context: str = "") -> None:
 @pytest.mark.npouch
 class TestNpouchOperationProcess:
     PAGE_NAME = "운용 프로세스"
-    PAGE_ID   = "npouch_operation_process"
+    PAGE_ID   = "common_operation_process"
 
     @pytest.fixture(autouse=True)
     def setup(self, request, logged_in_page, settings):

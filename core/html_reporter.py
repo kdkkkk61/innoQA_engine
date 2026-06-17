@@ -34,10 +34,11 @@ _PAGE_LABELS: dict[str, str] = {
     "ransom_detect_policy": "탐지정책",
     "rdp_policy":           "RDP 정책",
     "common_process":       "공통 프로세스",
+    # 공통 (nPouch·SecureZone)
+    "common_operation_process": "운용 프로세스",
+    "common_tag":               "태그 관리",
+    "common_control_suite":     "제어 스위트",
     # nPouch
-    "npouch_operation_process": "운용 프로세스",
-    "npouch_tag":               "태그 관리",
-    "npouch_control_suite":     "제어 스위트",
     "npouch_origin_protect":    "원본 보호 정책",
     "npouch_policy":            "nPouch 정책",
     # SecureZone
@@ -127,7 +128,7 @@ _SCENARIO_LABELS_BY_PAGE: dict[str, dict[int, str]] = {
         # sc6 KEEP 확인 (단일 페이지 마무리)
         6: "시나리오 6: KEEP 정책 보존 확인 (lifecycle 완결, 단일 페이지)",
     },
-    "npouch_control_suite": {
+    "common_control_suite": {
         0: "시나리오 0: UIScanner 자동 스캔 (신규 기능 감지 + UI 패턴 검증)",
         1: "시나리오 1: UI 구조",
         2: "시나리오 2: 입력 구조",
@@ -437,7 +438,7 @@ def _label_area_priority(r: ScanResult) -> tuple:
 
 
 # 영역별 sort 적용 page_id 목록 — 추후 다른 페이지 추가 시 여기에 추가
-_PAGE_IDS_USE_LABEL_GROUP_SORT = {"npouch_control_suite"}
+_PAGE_IDS_USE_LABEL_GROUP_SORT = {"common_control_suite"}
 
 
 def _render_results_table(report: PageScanReport, is_list_page: bool,

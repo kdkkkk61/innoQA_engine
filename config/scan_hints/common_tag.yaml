@@ -1,5 +1,5 @@
 scan_mode: list_page
-page_id: npouch_tag
+page_id: common_tag
 
 # ── 필드 정의 ──────────────────────────────────────────────────────
 fields:

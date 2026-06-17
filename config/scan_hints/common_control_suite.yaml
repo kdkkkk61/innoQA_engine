@@ -1,3 +1,3 @@
 scan_mode: list_page
-page_id: npouch_control_suite
+page_id: common_control_suite
 # 상세 hints는 control_suite.yaml 참조

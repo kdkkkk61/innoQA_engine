@@ -93,7 +93,7 @@ class ControlSuiteBase:
     각 시나리오 class 는 이 base 를 상속받아 자기 시나리오 메서드만 정의한다.
     """
 
-    PAGE_ID = "npouch_control_suite"
+    PAGE_ID = "common_control_suite"
 
     # session-level cleanup 1회 flag — sc1a 미실행 시 sc3/4/5 등 단독 실행 안전 보장.
     # 사용자 평가 (2026-05-20): "이미 등록된 이름 차단은 시스템 정상 동작 — sc1 cleanup

@@ -1,5 +1,5 @@
 scan_mode: list_page
-page_id: npouch_operation_process
+page_id: common_operation_process
 
 # ── 필드 정의 ──────────────────────────────────────────────────────
 fields:
