@@ -24,6 +24,7 @@ def _ss(page, label: str, highlight=None) -> str | None:
         safe = re.sub(r"[^\w가-힣]", "_", label)[:40]
         path = _SS_DIR / f"BUG_{safe}_{int(time.time()*1000)}.png"
         injected = False
+        clip = None
         if highlight is not None:
             try:
                 highlight.first.scroll_into_view_if_needed(timeout=1000)
@@ -33,9 +34,25 @@ def _ss(page, label: str, highlight=None) -> str | None:
                     " el.style.boxShadow='0 0 0 6px rgba(255,45,45,0.25)'; }"
                 )
                 injected = True
+                # 해당 필드 주변만 crop — 전체 viewport 에 작은 요소 하나면 증거가 묻힘.
+                # 필드 bounding box 기준 가로로 넉넉히(라벨/값 포함) 잘라 '근거 사진'이 되게.
+                box = highlight.first.bounding_box()
+                if box:
+                    vp = page.viewport_size or {"width": 1280, "height": 800}
+                    W = min(780, vp["width"])
+                    H = min(230, vp["height"])
+                    cx = box["x"] + box["width"] / 2
+                    cy = box["y"] + box["height"] / 2
+                    x = max(0, min(cx - 190, vp["width"] - W))   # 체크박스는 보통 좌측 → 우측 라벨 더 보이게
+                    y = max(0, min(cy - H / 2, vp["height"] - H))
+                    clip = {"x": x, "y": y, "width": W, "height": H}
             except Exception:
                 injected = False
-        page.screenshot(path=str(path))
+                clip = None
+        if clip:
+            page.screenshot(path=str(path), clip=clip)
+        else:
+            page.screenshot(path=str(path))
         if injected:
             try:
                 highlight.first.evaluate(
