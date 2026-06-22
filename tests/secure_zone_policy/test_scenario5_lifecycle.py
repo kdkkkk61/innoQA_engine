@@ -170,7 +170,14 @@ class TestSecureZonePolicyScenario5Lifecycle(SecureZonePolicyBase):
         readonly = page.detail_modal_readonly()
         detail1 = page.read_detail_modal()
         text1 = page.detail_modal_text()
-        page.close_detail_modal()
+        # ⚠️ 속성 모달을 '열어둔 채' 카드 emit — fail 스크린샷이 닫힌 목록이 아니라
+        #    속성 모달의 불일치 필드를 잡도록(사진이 근거가 되게). 카드 후 close_detail_modal().
+        lt, lx = self._diff(applied, detail1)
+        bad_tog = next((k for k, v in applied["toggle"].items()
+                        if v is not None and detail1["toggle"].get(k) != v), None)
+        bad_txt = next((k for k, v in applied["text"].items()
+                        if v is not None and detail1["text"].get(k) != v), None)
+        dm = page.SEL_DETAIL_MODAL
 
         self._add("pass" if readonly else "warn",
                   "sc5a-② 속성 모달 읽기전용",
@@ -178,23 +185,27 @@ class TestSecureZonePolicyScenario5Lifecycle(SecureZonePolicyBase):
                   + ("(읽기전용)" if readonly else "[입력 가능하면 결함 — 상세보기에서 수정됨]"),
                   sc=5, repro="1. 행 더블클릭 → 속성(상세정보 보기)\n2. 모든 input 읽기전용인지 확인")
 
-        lt, lx = self._diff(applied, detail1)
         self._add("pass" if not lt else "fail",
                   "sc5a-② 추가 후 속성 round-trip(토글)",
                   f"입력: 저장 직전 토글상태 / 결과: "
                   + ("속성과 전부 일치" if not lt else f"불일치 {len(lt)}건 {lt}"),
-                  sc=5, repro="1. 속성 열기\n2. 저장 직전 ON 이던 토글이 속성에서도 ON 인지 비교")
+                  sc=5,
+                  highlight=page.page.locator(f"{dm} #{bad_tog}") if bad_tog else None,
+                  repro="1. 속성 열기\n2. 저장 직전 ON 이던 토글이 속성에서도 ON 인지 비교")
         self._add("pass" if not lx else "fail",
                   "sc5a-② 추가 후 속성 round-trip(텍스트)",
                   f"입력: 저장 직전 텍스트값 / 결과: "
                   + ("속성과 전부 일치" if not lx else f"손실/불일치 {len(lx)}건 {lx} (watchFileStorePath 등 저장누락 회귀 가드)"),
-                  sc=5, repro="1. 속성 열기\n2. 저장 직전 입력값이 속성에도 그대로인지 비교")
+                  sc=5,
+                  highlight=page.page.locator(f"{dm} #{bad_txt}") if bad_txt else None,
+                  repro="1. 속성 열기\n2. 저장 직전 입력값이 속성에도 그대로인지 비교")
         proc_kept = "허용" in text1
         ext_kept = (applied["extra"].get("watch_ext") in (None, [])) or ("sc5" in text1)
         self._add("pass" if (proc_kept and ext_kept) else "warn",
                   "sc5a-② 추가 후 속성 템플릿/확장자",
                   f"입력: 허용 템플릿 + 확장자 sc5 / 결과: 속성텍스트 '허용' 포함={proc_kept}, 'sc5' 포함={ext_kept}",
                   sc=5, repro="1. 속성 열기\n2. 허용 라벨·확장자 항목 표시 확인")
+        page.close_detail_modal()
 
         # ── ③ 수정으로 수정 (ADD 와 다른 값) ─────────────────────
         new_custom = "sc5_edit"   # 입력값(기대 아님) — 변경 반영 delta 확인용
@@ -222,19 +233,23 @@ class TestSecureZonePolicyScenario5Lifecycle(SecureZonePolicyBase):
             return
         page.open_detail_modal(self._BASE)
         detail2 = page.read_detail_modal()
-        page.close_detail_modal()
         custom_before = detail1["text"].get("customOptionText")
         custom_after = detail2["text"].get("customOptionText")
         mf_before = detail1["toggle"].get("isManageFolder")
         mf_after = detail2["toggle"].get("isManageFolder")
         custom_reflected = (custom_after == new_custom) and (custom_after != custom_before)
         mf_reflected = (mf_after is False) and (mf_after != mf_before)
+        # 변경 안 된 필드를 highlight (custom 우선, 아니면 isManageFolder) — 속성 모달 열어둔 채 emit.
+        bad_sel = "customOptionText" if not custom_reflected else ("isManageFolder" if not mf_reflected else "customOptionText")
         self._add("pass" if (custom_reflected and mf_reflected) else "fail",
                   "sc5a-④ 수정 변경이 속성에 반영(before→after delta)",
                   f"입력: 커스텀 '{custom_before}'→'{new_custom}', isManageFolder ON→OFF / "
                   f"결과: 속성 커스텀='{custom_after}'(반영={custom_reflected}), "
                   f"isManageFolder={mf_after}(반영={mf_reflected})",
-                  sc=5, repro="1. 수정 후 속성 열기\n2. 바꾼 값이 속성에 새 값으로 보이는지 + 이전과 달라졌는지 확인")
+                  sc=5,
+                  highlight=page.page.locator(f"{page.SEL_DETAIL_MODAL} #{bad_sel}"),
+                  repro="1. 수정 후 속성 열기\n2. 바꾼 값이 속성에 새 값으로 보이는지 + 이전과 달라졌는지 확인")
+        page.close_detail_modal()
 
     # ══ 5b: 전 토글 OFF → 저장 → 속성으로 OFF 확인 ════════════════
     def test_scenario5b_all_off_detail(self, logged_in_page, settings):
@@ -260,16 +275,19 @@ class TestSecureZonePolicyScenario5Lifecycle(SecureZonePolicyBase):
             return
         page.open_detail_modal(self._BASE)
         detail = page.read_detail_modal()
-        page.close_detail_modal()
-        still_on = [f"{tid}({off_intended[tid]}->{detail['toggle'].get(tid)})"
-                    for tid in self._ALL_TOGGLES
-                    if off_intended.get(tid) is not None
-                    and detail["toggle"].get(tid) != off_intended[tid]]
+        still_on_ids = [tid for tid in self._ALL_TOGGLES
+                        if off_intended.get(tid) is not None
+                        and detail["toggle"].get(tid) != off_intended[tid]]
+        still_on = [f"{tid}({off_intended[tid]}->{detail['toggle'].get(tid)})" for tid in still_on_ids]
+        # 속성 모달 열어둔 채 emit — fail 스크린샷이 불일치 토글을 잡도록. 카드 후 close.
         self._add("pass" if (saved_ok and not still_on) else "fail" if still_on else "warn",
                   "sc5b — 전 토글 OFF 속성 round-trip",
                   f"입력: 전 토글 OFF 저장 / 결과: 저장={msg!r}, "
                   + ("속성에서 OFF 전부 유지" if not still_on else f"불일치 {len(still_on)}건 {still_on}"),
-                  sc=5, repro="1. 수정\n2. 전 토글 OFF\n3. 저장\n4. 속성에서 OFF 유지 확인")
+                  sc=5,
+                  highlight=page.page.locator(f"{page.SEL_DETAIL_MODAL} #{still_on_ids[0]}") if still_on_ids else None,
+                  repro="1. 수정\n2. 전 토글 OFF\n3. 저장\n4. 속성에서 OFF 유지 확인")
+        page.close_detail_modal()
 
     # ══ 5c: lifecycle cleanup — [AUTO] 일괄 삭제(정리 소유) ═════════
     def test_scenario5c_lifecycle_cleanup(self, logged_in_page, settings):
