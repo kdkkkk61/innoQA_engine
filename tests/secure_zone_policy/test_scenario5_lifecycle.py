@@ -1,19 +1,21 @@
-"""시큐어존 정책 — 시나리오 5: lifecycle (전 필드 round-trip + cleanup 소유).
+"""시큐어존 정책 — 시나리오 5: lifecycle (속성-확인 방식, cleanup 소유).
 
-sc3(ADD)/sc4(EDIT)가 '필드별 단위 동작'을 검증했다면, sc5 는 **한 정책에 전 필드를 채워
-저장 → 재오픈 시 그대로 유지되는지(round-trip)** 를 한 번에 검증한다. watchFileStorePath
-손실 전례(sc3x/sc4x)처럼 다른 필드도 저장 누락이 나는지 광범위하게 잡는 게 목적.
+접근제어 정책(tests/secure_zone)에서 깔끔하게 자리잡은 **속성 모달 확인** 설계를 확장:
+  추가 → 속성으로 확인 → 수정으로 수정 → 속성으로 확인.
+검증을 '수정 모달 재오픈'이 아니라 **읽기전용 속성 모달(detailSecureZoneAgentPolicy)** 로 한다.
+속성 모달은 행 더블클릭으로 열리는 상세정보 보기 — 모든 input disabled(읽기전용),
+토글/텍스트/라디오 id 는 수정 모달과 동일이라 같은 읽기 로직 재사용(Chrome MCP 실측 2026-06-22).
 
 판정 방식 (하드코딩 기대값 없음):
   - 저장 직전 모달의 '실제 상태'(토글 checked / 텍스트 value)를 intended 로 캡처.
-  - 저장 → 재오픈 후 같은 필드를 다시 읽어 intended 와 비교.
-  - 일치=유지(PASS), 불일치=손실(FAIL) — '무엇이 손실됐는지' 목록으로 surface.
-  설정한 값은 '입력값'일 뿐 '기대 결과'가 아니다. 유지/손실 판정은 런타임 비교로 동적 결정.
+  - 저장 → 속성 모달로 같은 필드를 다시 읽어 intended 와 비교(일치=유지, 불일치=손실).
+  - 수정 단계는 ADD 와 '다른 값'으로 바꾼 뒤, 속성에서 before→after 가 실제로 바뀌었는지(변경 반영) 확인.
+  설정/변경값은 '입력값'일 뿐 '기대 결과'가 아니다 — 유지/변경 판정은 런타임 비교로 동적 결정.
 
 ⚠️ 아래 거동 메모는 작성 시점(2026-06-22) 관측 참고일 뿐 단정 아님 — 환경/빌드/데이터에 따라
    달라질 수 있다. 나올 수 있는 이슈:
-   - full-config 저장 시 일부 필드(예: 긴 경로)에서 서버오류 또는 silent 손실이 나올 수 있음.
-   - master 토글(isWatchFile/isPrintUse/isOfflineUse) OFF 저장 후 하위값 잔존/초기화 차이가 나올 수 있음.
+   - full-config 저장 후 일부 필드(예: 긴 경로)에서 속성에 값이 안 보이거나(저장 누락) 다르게 보일 수 있음.
+   - 속성 모달이 읽기전용이 아니거나(입력 가능) 수정 변경이 속성에 반영 안 될 수 있음.
 
 cleanup 소유: sc5 가 lifecycle 마지막에 [AUTO] 일괄 삭제(sc1 세션시작과 동일 정리를 sc5 가 마무리).
 [AUTO] 접두사 정책만 생성/삭제 — 실데이터는 절대 건드리지 않음.
@@ -23,7 +25,7 @@ from tests.secure_zone_policy._base import SecureZonePolicyBase
 
 
 class TestSecureZonePolicyScenario5Lifecycle(SecureZonePolicyBase):
-    """시큐어존 정책 — 시나리오 5: 전 필드 round-trip + lifecycle cleanup."""
+    """시큐어존 정책 — 시나리오 5: 추가→속성→수정→속성 lifecycle + cleanup."""
 
     _BASE = "[AUTO]_szp_sc5"
 
@@ -117,9 +119,20 @@ class TestSecureZonePolicyScenario5Lifecycle(SecureZonePolicyBase):
             applied["extra"]["proc"] = None
         return applied
 
-    # ══ 5a: full-config 생성 → 저장 → 재오픈 전수 round-trip ════════
-    def test_scenario5a_full_config_roundtrip(self, logged_in_page, settings):
-        print("\n━━ [시큐어존 정책] 시나리오 5a: full-config round-trip ━━━")
+    @staticmethod
+    def _diff(intended: dict, observed: dict):
+        """intended(저장 직전) vs observed(속성 모달) 비교. 반환: (불일치토글[], 불일치텍스트[])."""
+        lost_t = [f"{k}({v}->{observed['toggle'].get(k)})"
+                  for k, v in intended["toggle"].items()
+                  if v is not None and observed["toggle"].get(k) != v]
+        lost_x = [f"{k}(\"{v}\"->\"{observed['text'].get(k)}\")"
+                  for k, v in intended["text"].items()
+                  if v is not None and observed["text"].get(k) != v]
+        return lost_t, lost_x
+
+    # ══ 5a: 추가 → 속성확인 → 수정 → 속성확인 (lifecycle 체인) ═══════
+    def test_scenario5a_add_detail_modify_detail(self, logged_in_page, settings):
+        print("\n━━ [시큐어존 정책] 시나리오 5a: 추가→속성→수정→속성 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         self._ensure_session_cleanup(page)
@@ -134,119 +147,129 @@ class TestSecureZonePolicyScenario5Lifecycle(SecureZonePolicyBase):
             self._add("skip", "sc5a — 대상 생성 실패", f"입력: - / 결과: {self._BASE} 미생성", sc=5)
             return
 
+        # ── ① 추가(full-config) ──────────────────────────────────
         page.open_modify_modal(self._BASE)
         applied = self._apply_full_config(page)
         msg = page.submit_and_message()
-
         saved_ok = "저장" in msg
         self._add("pass" if saved_ok else "warn",
-                  "sc5a — 전 필드 채운 정책 저장",
-                  f"입력: 전 토글 ON + 텍스트필드 + 허용 템플릿 + 확장자 / 결과: {msg!r} "
+                  "sc5a-① 전 필드 채워 저장",
+                  f"입력: 전 토글 ON + 텍스트 + 허용 템플릿 + 확장자 / 결과: {msg!r} "
                   + ("(저장 성공)" if saved_ok else "[서버오류/경고 가능 — 풀구성 저장 이슈일 수 있음]"),
                   sc=5,
-                  repro=("1. [AUTO]_szp_sc5 수정\n2. 모든 토글 ON·텍스트 입력·허용 템플릿·확장자 추가\n"
-                         "3. '수정' 저장\n4. 저장 메시지 확인"))
+                  repro="1. [AUTO]_szp_sc5 수정\n2. 모든 토글 ON·텍스트·허용 템플릿·확장자\n3. '수정' 저장")
         page._close_modal_if_open()
 
-        # 재오픈 round-trip
+        # ── ② 속성으로 확인 (추가 결과) ───────────────────────────
         page.navigate_to()
         if self._BASE not in page.get_policy_names():
-            self._add("warn", "sc5a — 재오픈 불가(저장 후 대상 없음)",
-                      f"입력: 재오픈 / 결과: {self._BASE} 목록에 없음(저장 실패 가능)", sc=5)
+            self._add("warn", "sc5a-② 속성 확인 불가(저장 후 대상 없음)",
+                      f"입력: 속성 열기 / 결과: {self._BASE} 목록에 없음(저장 실패 가능)", sc=5)
             return
-        page.open_modify_modal(self._BASE)
+        page.open_detail_modal(self._BASE)
+        readonly = page.detail_modal_readonly()
+        detail1 = page.read_detail_modal()
+        text1 = page.detail_modal_text()
+        page.close_detail_modal()
 
-        # (1) 토글 round-trip — intended(저장 직전) vs 재오픈
-        lost_tog = []
-        for tid, want in applied["toggle"].items():
-            if want is None:
-                continue
-            got = page.field_state(tid).get("checked")
-            if got != want:
-                lost_tog.append(f"{tid}({want}→{got})")
-        self._add("pass" if not lost_tog else "fail",
-                  "sc5a — 토글 round-trip(저장→재오픈 유지)",
+        self._add("pass" if readonly else "warn",
+                  "sc5a-② 속성 모달 읽기전용",
+                  f"입력: 행 더블클릭으로 속성 열기 / 결과: 모든 input disabled={readonly} "
+                  + ("(읽기전용)" if readonly else "[입력 가능하면 결함 — 상세보기에서 수정됨]"),
+                  sc=5, repro="1. 행 더블클릭 → 속성(상세정보 보기)\n2. 모든 input 읽기전용인지 확인")
+
+        lt, lx = self._diff(applied, detail1)
+        self._add("pass" if not lt else "fail",
+                  "sc5a-② 추가 후 속성 round-trip(토글)",
                   f"입력: 저장 직전 토글상태 / 결과: "
-                  + ("전부 유지" if not lost_tog else f"불일치 {len(lost_tog)}건 {lost_tog}"),
-                  sc=5, highlight=page.page.locator("div#addItemModal.in input#isWatchFile"),
-                  repro="1. 재오픈\n2. 저장 직전 ON 이던 토글들이 그대로 ON 인지 비교")
-
-        # (2) 텍스트 round-trip
-        lost_txt = []
-        for tid, want in applied["text"].items():
-            if want is None:
-                continue
-            got = page.field_state(tid).get("value")
-            if got != want:
-                lost_txt.append(f"{tid}(len {len(want or '')}→{len(got or '')})")
-        self._add("pass" if not lost_txt else "fail",
-                  "sc5a — 텍스트필드 round-trip(저장→재오픈 유지)",
+                  + ("속성과 전부 일치" if not lt else f"불일치 {len(lt)}건 {lt}"),
+                  sc=5, repro="1. 속성 열기\n2. 저장 직전 ON 이던 토글이 속성에서도 ON 인지 비교")
+        self._add("pass" if not lx else "fail",
+                  "sc5a-② 추가 후 속성 round-trip(텍스트)",
                   f"입력: 저장 직전 텍스트값 / 결과: "
-                  + ("전부 유지" if not lost_txt else f"손실 {len(lost_txt)}건 {lost_txt} "
-                     "(watchFileStorePath 등 저장 누락 회귀 가드)"),
-                  sc=5, highlight=page.page.locator("div#addItemModal.in input#watchFileStorePath"),
-                  repro="1. 재오픈\n2. 저장 직전 입력값이 필드에 그대로 있는지 비교")
-
-        # (3) 템플릿/확장자 round-trip
-        ext_now = []
-        try:
-            page.goto_modal_tab("기본정책")
-            ext_now = page.watch_extension_items()
-        except Exception:
-            pass
-        proc_label = ""
-        try:
-            proc_label = page.process_control_label()
-        except Exception:
-            pass
-        proc_kept = "허용" in proc_label
-        ext_kept = (applied["extra"].get("watch_ext") in (None, [])) or bool(ext_now)
+                  + ("속성과 전부 일치" if not lx else f"손실/불일치 {len(lx)}건 {lx} (watchFileStorePath 등 저장누락 회귀 가드)"),
+                  sc=5, repro="1. 속성 열기\n2. 저장 직전 입력값이 속성에도 그대로인지 비교")
+        proc_kept = "허용" in text1
+        ext_kept = (applied["extra"].get("watch_ext") in (None, [])) or ("sc5" in text1)
         self._add("pass" if (proc_kept and ext_kept) else "warn",
-                  "sc5a — 템플릿/확장자 round-trip",
-                  f"입력: 허용 템플릿 + 확장자 / 결과: 프로세스라벨={proc_label!r}(허용 유지={proc_kept}), "
-                  f"확장자={ext_now}(유지={ext_kept})",
-                  sc=5, repro="1. 재오픈\n2. 허용 라벨 + 확장자 항목 유지 확인")
-        page.close_edit_modal()
+                  "sc5a-② 추가 후 속성 템플릿/확장자",
+                  f"입력: 허용 템플릿 + 확장자 sc5 / 결과: 속성텍스트 '허용' 포함={proc_kept}, 'sc5' 포함={ext_kept}",
+                  sc=5, repro="1. 속성 열기\n2. 허용 라벨·확장자 항목 표시 확인")
 
-    # ══ 5b: 전 토글 OFF → 저장 → 재오픈 OFF 유지 ═══════════════════
-    def test_scenario5b_all_off_roundtrip(self, logged_in_page, settings):
-        print("\n━━ [시큐어존 정책] 시나리오 5b: 전 토글 OFF round-trip ━━━")
+        # ── ③ 수정으로 수정 (ADD 와 다른 값) ─────────────────────
+        new_custom = "sc5_edit"   # 입력값(기대 아님) — 변경 반영 delta 확인용
+        page.open_modify_modal(self._BASE)
+        try:
+            page.fill("div#addItemModal.in #customOptionText", new_custom)
+        except Exception:
+            pass
+        try:
+            page.set_toggle("isManageFolder", False)   # 토글 하나 끔(변경)
+        except Exception:
+            pass
+        msg2 = page.submit_and_message()
+        saved2 = "저장" in msg2
+        self._add("pass" if saved2 else "warn",
+                  "sc5a-③ 수정 저장(다른 값)",
+                  f"입력: 커스텀='{new_custom}' + isManageFolder OFF 로 수정 / 결과: {msg2!r}",
+                  sc=5, repro="1. 수정\n2. 커스텀 변경 + isManageFolder OFF\n3. '수정' 저장")
+        page._close_modal_if_open()
+
+        # ── ④ 속성으로 확인 (수정 변경이 반영됐는지 — before→after delta) ──
+        page.navigate_to()
+        if self._BASE not in page.get_policy_names():
+            self._add("warn", "sc5a-④ 속성 확인 불가", f"입력: 속성 열기 / 결과: 대상 없음", sc=5)
+            return
+        page.open_detail_modal(self._BASE)
+        detail2 = page.read_detail_modal()
+        page.close_detail_modal()
+        custom_before = detail1["text"].get("customOptionText")
+        custom_after = detail2["text"].get("customOptionText")
+        mf_before = detail1["toggle"].get("isManageFolder")
+        mf_after = detail2["toggle"].get("isManageFolder")
+        custom_reflected = (custom_after == new_custom) and (custom_after != custom_before)
+        mf_reflected = (mf_after is False) and (mf_after != mf_before)
+        self._add("pass" if (custom_reflected and mf_reflected) else "fail",
+                  "sc5a-④ 수정 변경이 속성에 반영(before→after delta)",
+                  f"입력: 커스텀 '{custom_before}'→'{new_custom}', isManageFolder ON→OFF / "
+                  f"결과: 속성 커스텀='{custom_after}'(반영={custom_reflected}), "
+                  f"isManageFolder={mf_after}(반영={mf_reflected})",
+                  sc=5, repro="1. 수정 후 속성 열기\n2. 바꾼 값이 속성에 새 값으로 보이는지 + 이전과 달라졌는지 확인")
+
+    # ══ 5b: 전 토글 OFF → 저장 → 속성으로 OFF 확인 ════════════════
+    def test_scenario5b_all_off_detail(self, logged_in_page, settings):
+        print("\n━━ [시큐어존 정책] 시나리오 5b: 전 토글 OFF → 속성 확인 ━━━")
         page = self._new_page(logged_in_page, settings)
         if not self._ensure_policy(page, self._BASE):
             self._add("skip", "sc5b — 대상 없음", "입력: - / 결과: base 미존재", sc=5)
             return
         page.open_modify_modal(self._BASE)
-        # 모든 토글 OFF (master OFF 시 하위 disabled — gating 동반)
         for tid in self._ALL_TOGGLES:
             try:
                 page.set_toggle(tid, False)
             except Exception:
                 pass
-        off_intended = {}
-        for tid in self._ALL_TOGGLES:
-            off_intended[tid] = page.field_state(tid).get("checked")
+        off_intended = {tid: page.field_state(tid).get("checked") for tid in self._ALL_TOGGLES}
         msg = page.submit_and_message()
         saved_ok = "저장" in msg
         page._close_modal_if_open()
 
         page.navigate_to()
         if self._BASE not in page.get_policy_names():
-            self._add("warn", "sc5b — 재오픈 불가", f"입력: OFF 저장 / 결과: {msg!r}, 대상 없음", sc=5)
+            self._add("warn", "sc5b — 속성 확인 불가", f"입력: OFF 저장 / 결과: {msg!r}, 대상 없음", sc=5)
             return
-        page.open_modify_modal(self._BASE)
-        still_on = []
-        for tid, want in off_intended.items():
-            if want is None:
-                continue
-            got = page.field_state(tid).get("checked")
-            if got != want:
-                still_on.append(f"{tid}({want}→{got})")
+        page.open_detail_modal(self._BASE)
+        detail = page.read_detail_modal()
+        page.close_detail_modal()
+        still_on = [f"{tid}({off_intended[tid]}->{detail['toggle'].get(tid)})"
+                    for tid in self._ALL_TOGGLES
+                    if off_intended.get(tid) is not None
+                    and detail["toggle"].get(tid) != off_intended[tid]]
         self._add("pass" if (saved_ok and not still_on) else "fail" if still_on else "warn",
-                  "sc5b — 전 토글 OFF round-trip(저장→재오픈 유지)",
+                  "sc5b — 전 토글 OFF 속성 round-trip",
                   f"입력: 전 토글 OFF 저장 / 결과: 저장={msg!r}, "
-                  + ("OFF 전부 유지" if not still_on else f"불일치 {len(still_on)}건 {still_on}"),
-                  sc=5, repro="1. 수정\n2. 전 토글 OFF\n3. 저장\n4. 재오픈 OFF 유지 비교")
-        page.close_edit_modal()
+                  + ("속성에서 OFF 전부 유지" if not still_on else f"불일치 {len(still_on)}건 {still_on}"),
+                  sc=5, repro="1. 수정\n2. 전 토글 OFF\n3. 저장\n4. 속성에서 OFF 유지 확인")
 
     # ══ 5c: lifecycle cleanup — [AUTO] 일괄 삭제(정리 소유) ═════════
     def test_scenario5c_lifecycle_cleanup(self, logged_in_page, settings):

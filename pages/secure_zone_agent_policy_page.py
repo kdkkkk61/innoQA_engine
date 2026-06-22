@@ -842,6 +842,108 @@ class SecureZoneAgentPolicyPage(BasePage):
             pass
 
     # ──────────────────────────────────────────────────────────────
+    # 속성 모달 (상세정보 보기) — 행 가운데 셀 더블클릭 시 팝업 (읽기전용)
+    # ──────────────────────────────────────────────────────────────
+    # Chrome MCP 실측 2026-06-22: 모달 id = detailSecureZoneAgentPolicy.
+    #   제목 "시큐어존 에이전트 정책 상세정보 보기", 2탭(기본정책/템플릿설정),
+    #   모든 input disabled(읽기전용). 토글/텍스트/라디오 id 가 수정 모달(addItemModal)과 동일
+    #   → 같은 읽기 로직 재사용(접근제어 _read_ac_state 패턴). 값은 활성 탭과 무관하게 DOM 에서 읽힘.
+    SEL_DETAIL_MODAL = "div#detailSecureZoneAgentPolicy.in"
+    SEL_DETAIL_CLOSE = (
+        "div#detailSecureZoneAgentPolicy.in button:has-text('닫기'), "
+        "div#detailSecureZoneAgentPolicy.in button[data-dismiss='modal']"
+    )
+
+    # 속성/수정 모달 공통 읽기 대상 (id 동일) — 전 토글 + 텍스트필드.
+    _DETAIL_TOGGLES = (
+        "isAllowDenyProcessUse", "isAllowProcessForceStop", "isExceptProcess",
+        "isBlockExecuteProcess", "isManageFolder", "isSyncFolder",
+        "isWatchFile", "isWatchFileExtention", "isWatchFileHeader", "isWatchFolder",
+        "isPrintUse", "isShowAgentShutdownMenu", "isShowEmergencyCodeMenu",
+        "isOfflineUse", "isTakeoutDriveBlock",
+    )
+    _DETAIL_TEXTS = (
+        "watchFileStorePath", "allowPrintModel", "exceptPrintPort",
+        "secureDriveBlockTime", "customOptionText",
+    )
+
+    def open_detail_modal(self, policy_name: str) -> None:
+        """행 가운데(비이름 셀) 더블클릭 → 속성 모달(상세정보 보기) 열기.
+
+        행 dblclick 핸들러는 JS 이벤트 위임(ng-dblclick 속성 아님) → 오버레이/좌표/actionability
+        무관하게 evaluate 로 mousedown/up/click 시퀀스 + dblclick 디스패치(접근제어와 동일 메커니즘).
+        이름 셀(td[0]) 제외하고 td[1] 사용.
+        """
+        row = self._row_locator(policy_name)
+        cell = row.locator("td").nth(1)
+        cell.evaluate(
+            "el => ['mousedown','mouseup','click','mousedown','mouseup','click','dblclick']"
+            ".forEach(t => el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window})))"
+        )
+        self.wait_for(self.SEL_DETAIL_MODAL, state="attached")
+
+    def _read_modal_state(self, modal_sel: str) -> dict:
+        """주어진 모달(속성/수정) 안의 전 토글+텍스트 상태 dict.
+
+        반환: {"toggle": {id: bool|None}, "text": {id: str|None}, "print_radio": "0"/"1"/""}.
+        토글/텍스트/라디오 id 가 속성·수정 모달 동일 → 공통. 미존재 필드는 None.
+        """
+        out: dict = {"toggle": {}, "text": {}}
+        for cid in self._DETAIL_TOGGLES:
+            loc = self.page.locator(f"{modal_sel} #{cid}").first
+            try:
+                out["toggle"][cid] = loc.is_checked() if loc.count() > 0 else None
+            except Exception:
+                out["toggle"][cid] = None
+        for tid in self._DETAIL_TEXTS:
+            loc = self.page.locator(f"{modal_sel} #{tid}").first
+            try:
+                out["text"][tid] = loc.input_value() if loc.count() > 0 else None
+            except Exception:
+                out["text"][tid] = None
+        pr = ""
+        for v in ("0", "1"):
+            r = self.page.locator(f"{modal_sel} input[name='isPrint'][value='{v}']").first
+            if r.count() > 0 and r.is_checked():
+                pr = v
+        out["print_radio"] = pr
+        return out
+
+    def read_detail_modal(self) -> dict:
+        """열린 속성 모달의 토글/텍스트/프린트 상태 dict (읽기전용 round-trip 검증용)."""
+        return self._read_modal_state(self.SEL_DETAIL_MODAL)
+
+    def read_modify_modal_state(self) -> dict:
+        """열린 수정 모달의 토글/텍스트/프린트 상태 dict (속성 모달과 값 비교용)."""
+        return self._read_modal_state(self.SEL_MODAL)
+
+    def detail_modal_readonly(self) -> bool:
+        """속성 모달의 모든 input 이 disabled(읽기전용=수정 불가)인지."""
+        inputs = self.page.locator(f"{self.SEL_DETAIL_MODAL} input").all()
+        if not inputs:
+            return False
+        return all(i.is_disabled() for i in inputs)
+
+    def detail_modal_text(self) -> str:
+        """속성 모달 본문 텍스트 (드라이브/허용 라벨·확장자 등 label 텍스트는 포함 여부로 검증)."""
+        m = self.page.locator(self.SEL_DETAIL_MODAL).first
+        if m.count() == 0:
+            return ""
+        body = m.locator(".modal-body")
+        target = body if body.count() > 0 else m
+        return " ".join(target.first.inner_text().split())
+
+    def close_detail_modal(self) -> None:
+        """속성 모달 닫기."""
+        try:
+            self.page.locator(self.SEL_DETAIL_CLOSE).first.evaluate("el => el.click()")
+            self.page.locator(self.SEL_DETAIL_MODAL).wait_for(
+                state="detached", timeout=self._TIMEOUT_MODAL
+            )
+        except Exception:
+            pass
+
+    # ──────────────────────────────────────────────────────────────
     # 모달 헬퍼 (확인/경고 모달)
     # ──────────────────────────────────────────────────────────────
     def get_modal_message(self) -> str:
