@@ -1,4 +1,4 @@
-base_url: http://192.168.13.141:40010
+base_url: http://192.168.13.141/#!/
 browser:
   headless: false
   slow_mo: 0

@@ -1989,3 +1989,27 @@
 - **파일**: `conftest.py`, `tests/test_npouch.py`, `tests/test_npouch_tag.py`
 
 상태: [RESOLVED] (리포트 귀속·prefix 통일 / 파일명 중립화는 Phase 2)
+
+---
+
+## [2026-06-18] 시큐어존 정책 템플릿 picker 행 로드 race — 허용 할당 false 빈값/false 빈목록
+
+- **증상**: `pytest tests/secure_zone_policy/` 에서 sc3g 허용 등록 FAIL(템플릿='') + sc3u/sc3w SKIP(허용 할당 실패) + sc3h 실행차단/특수폴더/폴더동기화 SKIP('picker 비어있음'). 반면 sc3g **거부 할당은 PASS**.
+- **모순 단서**: sc3f(picker_search_filters)는 실행차단 picker 20행·예외처리 18행 정상 확인 → picker 가 비어있지 않음. 즉 sc3h '비어있음' skip 은 false.
+- **근본 원인**: `assign_process_template` / `assign_template_setting` 이 `picker.wait_for(state="attached")` 직후 **행 async 로드를 안 기다리고** `rows.count()` 를 읽음 → close_picker→reopen 직후 첫 호출 시 count()==0 → 매칭 실패(빈값) / false '비어있음'. 잘 되는 `select_template_top`·`picker_search_filters` 는 `table tbody tr` `.first.wait_for(attached)` 로 대기함. 두 assign 메서드만 대기 누락. (거부는 두 번째 호출이라 picker warm → 우연히 통과 = 비결정적 race)
+- **검증**: 직접조작(Chrome MCP 2026-06-18, 콘솔 192.168.13.141) — 허용/거부 둘 다 할당·라벨 토글·cross-tab·persistence 정상 동작 확인. pytest 실패는 순수 타이밍.
+- **수정**: 두 메서드에 `picker.locator("table tbody tr").first.wait_for(state="attached", timeout=_TIMEOUT_MODAL)` + `wait_for_timeout(300)` 추가(행 로드 대기 후 스캔).
+- **파일**: `pages/secure_zone_agent_policy_page.py` (`assign_process_template`, `assign_template_setting`)
+
+상태: [RESOLVED] (재실행 검증은 사용자 pytest 재실행 대기)
+
+---
+
+## [2026-06-18] 시큐어존 정책 unassign_template_setting — 숨김 할당해제 링크 잡혀 'not visible'
+
+- **증상**: sc3v(비-허용/거부 템플릿 할당+할당해제) 예외처리 할당 직후 `unassign_template_setting()` 의 `link.click(force=True)` 가 `Locator.click: Element is not visible` 로 hard FAIL (1 failed). sc3u(허용/거부 할당해제)는 같은 메서드인데 PASS.
+- **근본 원인**: 할당해제 링크(`a.removeTemplate`)는 템플릿설정 6행 **전부 DOM 에 존재**하고 AngularJS ng-show 로 visible 만 토글. 기존 코드가 `.first` 로 **DOM 첫 번째** 링크를 잡음 → 미할당 행(허용/거부=row1)의 '숨김' 링크가 선택됨. sc3u 는 허용/거부(row1)를 할당해서 첫 링크가 곧 보이는 링크라 우연히 통과, sc3v 는 예외처리(row2)만 할당 → 첫 DOM 링크(허용/거부)가 숨김이라 실패. (force=True 도 layout 박스 없는 요소엔 'scroll into view' 단계에서 not visible)
+- **수정**: `.first` → `links` 순회하며 **첫 `is_visible()` 링크** 선택. 미할당 숨김 링크 skip.
+- **파일**: `pages/secure_zone_agent_policy_page.py` (`unassign_template_setting`)
+
+상태: [RESOLVED] (재실행 검증 대기 — sc3v 5종 할당+할당해제)

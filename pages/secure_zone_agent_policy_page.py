@@ -130,19 +130,46 @@ class SecureZoneAgentPolicyPage(BasePage):
     # ──────────────────────────────────────────────────────────────
     # 행 선택
     # ──────────────────────────────────────────────────────────────
+    def _row_locator(self, policy_name: str, active: bool = False):
+        """정책 이름 '정확' 매칭 행 locator (행 data-name 속성 사용).
+
+        ⚠️ has_text=policy_name 은 substring 매칭 → '[AUTO]_szp_sc4' 가 'sc4t'/'sc4ren' 까지 잡아
+           .first 가 엉뚱한 행 선택(실측 2026-06-22 sc4 타임아웃/오선택). data-name 정확 매칭으로 해결.
+        active=True 면 tActive 행만. data-name 없으면 has_text fallback.
+        """
+        sel = self.SEL_TABLE_ROW_ACTIVE if active else self.SEL_TABLE_ROW
+        safe = policy_name.replace("\\", "\\\\").replace('"', '\\"')
+        exact = self.page.locator(f'{sel}[data-name="{safe}"]')
+        try:
+            if exact.count() > 0:
+                return exact.first
+        except Exception:
+            pass
+        return self.page.locator(sel).filter(has_text=policy_name).first
+
     def click_policy_row(self, policy_name: str) -> None:
-        """정책 이름 행 클릭 (단일 선택, tr.tActive 확인). 최대 3회 재시도."""
-        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=policy_name).first
+        """정책 이름 행 클릭 (단일 선택, tr.tActive 확인). 최대 3회 재시도.
+
+        ⚠️ 이미 이 정책 행이 tActive 면 재클릭 생략 — 이미 선택된(tActive) AngularJS 행을
+           다시 click 하면 actionability 로 5초 타임아웃(실측 2026-06-22 sc4f/4l). 잔류 tActive 원인:
+           ① 직전 테스트가 선택한 채 끝나고 navigate_to 가 '이미 그 페이지면 리로드 생략', 또는
+           ② 호출자 이중오픈(open_modify_modal 직후 또 호출). 선택돼 있으면 그대로 사용.
+        """
+        try:
+            if self._row_locator(policy_name, active=True).count() > 0:
+                return
+        except Exception:
+            pass
+        row = self._row_locator(policy_name)
         for attempt in range(3):
             self._toggle_overlay(False)
             try:
-                row.click()
+                row.click(force=True)   # force: 중복행/잔류 backdrop actionability 우회 (AngularJS 행 선택)
             finally:
                 self._toggle_overlay(True)
             try:
-                self.page.locator(self.SEL_TABLE_ROW_ACTIVE).filter(
-                    has_text=policy_name
-                ).first.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
+                self._row_locator(policy_name, active=True).wait_for(
+                    state="attached", timeout=self._TIMEOUT_MODAL)
                 return
             except Exception:
                 print(f"\n[click_policy_row] tActive 미확인 ({attempt+1}회), 재시도...")
@@ -152,12 +179,7 @@ class SecureZoneAgentPolicyPage(BasePage):
         """정책 이름 행 체크박스 체크. [AUTO] 접두사만 허용."""
         if not policy_name.startswith("[AUTO]"):
             raise Exception("테스트 생성 정책([AUTO] 접두사)만 조작 가능합니다")
-        checkbox = (
-            self.page.locator(self.SEL_TABLE_ROW)
-            .filter(has_text=policy_name)
-            .first.locator(self.SEL_CHECKBOX)
-            .first
-        )
+        checkbox = self._row_locator(policy_name).locator(self.SEL_CHECKBOX).first
         if checkbox.is_checked():
             return
         self._toggle_overlay(False)
@@ -300,8 +322,14 @@ class SecureZoneAgentPolicyPage(BasePage):
 
         생성·수정 '액션' 검증용. 모달 없으면 '' 반환.
         성공 시('저장 하였습니다') 목록 복귀 + pageSize 복원.
+        ⚠️ btn-primary 가 ADD=등록 / EDIT=수정 2개 공존(ng-show) → 보이는 버튼 클릭(실측 2026-06-18).
         """
-        self.click_attached(self.SEL_SAVE_BTN)
+        save = self._first_visible(self.page.locator(self.SEL_SAVE_BTN))
+        if save is not None:
+            with overlay_off(self.page):
+                save.click(force=True)
+        else:
+            self.click_attached(self.SEL_SAVE_BTN)   # fallback (attached 만 잡힐 때)
         self.page.wait_for_timeout(600)
         msg = ""
         if self.is_confirm_modal_visible():
@@ -317,6 +345,50 @@ class SecureZoneAgentPolicyPage(BasePage):
             self._restore_page_size()
         return msg
 
+    def set_value_raw(self, selector: str, value: str) -> int:
+        """maxlength 우회하여 input/textarea 에 긴 값 주입 (overflow 테스트용). 반환: 실제 들어간 길이.
+
+        native value setter + input/change 이벤트로 AngularJS ng-model 동기화.
+        ⚠️ 단순 el.value=... +input 만으론 ng-model 미동기(실측 2026-06-22: 저장 시 '수정된 항목 없음').
+        native prototype setter 를 거쳐야 저장에 반영됨(라이브 검증). Playwright fill 은 maxlength 적용돼 초과 불가라 이걸 씀.
+        """
+        return self.page.locator(selector).first.evaluate(
+            """(el, v) => {
+                const proto = el.tagName === 'TEXTAREA'
+                    ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+                Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+                return el.value.length;
+            }""", value)
+
+    def _wait_picker_rows(self, picker) -> None:
+        """picker 행 async 로드 대기 — 첫 행 attached + settle(300ms). select/assign/검색 picker 공통.
+        안 기다리면 rows.count()==0 으로 매칭 실패(빈값)·false '비어있음' skip (실측 2026-06-18)."""
+        try:
+            picker.locator("table tbody tr").first.wait_for(
+                state="attached", timeout=self._TIMEOUT_MODAL)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(300)
+
+    def _first_visible(self, locator):
+        """locator 매칭 중 첫 '보이는' 요소 (ng-show 로 숨겨진 동형 요소 skip). 없으면 None.
+
+        시큐어존 모달은 동형 요소를 ng-show 로 토글 (DOM 엔 다 존재):
+        - 저장 btn-primary = [등록(ADD), 수정(EDIT)] — 모드별 1개만 visible (실측 2026-06-18).
+        - 템플릿설정 할당해제 링크 = 6행 전부 존재, 할당된 행만 visible.
+        .first 로 잡으면 숨김 요소를 클릭해 force=True 에도 'not visible' 실패.
+        """
+        for i in range(locator.count()):
+            cand = locator.nth(i)
+            try:
+                if cand.is_visible():
+                    return cand
+            except Exception:
+                continue
+        return None
+
     def select_template_top(self, btn_index: int) -> str:
         """기본정책 탭 '템플릿 선택' 버튼(0=드라이브,1=제어스위트) → picker 첫 행 선택 → 확인.
 
@@ -330,8 +402,8 @@ class SecureZoneAgentPolicyPage(BasePage):
             self.page.locator(self.SEL_TEMPLATE_BTN).nth(btn_index).click(force=True)
         picker = self.page.locator(self.SEL_PICKER)
         picker.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
+        self._wait_picker_rows(picker)
         first_row = picker.locator("table tbody tr").first
-        first_row.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
         name = ""
         try:
             cells = [c.inner_text().strip() for c in first_row.locator("td").all()]
@@ -540,11 +612,7 @@ class SecureZoneAgentPolicyPage(BasePage):
         picker.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
         # 행 async 로드 대기 — 안 기다리면 드라이브 picker 는 0건에서 재서
         # 검색 후 로드된 건수와 비교돼 filtered=True 로 false PASS 됨(실측 2026-06-12)
-        try:
-            picker.locator("table tbody tr").first.wait_for(state="attached", timeout=3000)
-        except Exception:
-            pass
-        self.page.wait_for_timeout(300)
+        self._wait_picker_rows(picker)
         before = picker.locator("table tbody tr").count()
         self.fill(self.SEL_PICKER_SEARCH, query)
         with overlay_off(self.page):
@@ -601,6 +669,7 @@ class SecureZoneAgentPolicyPage(BasePage):
                 .click(force=True))
         picker = self.page.locator(self.SEL_PICKER)
         picker.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
+        self._wait_picker_rows(picker)   # 실측 2026-06-18: 허용 첫 할당 빈값 → sc3g/3u/3w false skip 방지
         rows = picker.locator("table tbody tr")
         target = None
         name = ""
@@ -635,6 +704,7 @@ class SecureZoneAgentPolicyPage(BasePage):
                 btns.nth(btn_index).click(force=True)
             picker = self.page.locator(self.SEL_PICKER)
             picker.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
+            self._wait_picker_rows(picker)   # 실측 2026-06-18: sc3h false '비어있음' skip 방지
             rows = picker.locator("table tbody tr")
             if rows.count() == 0:
                 self.close_picker()
@@ -660,22 +730,36 @@ class SecureZoneAgentPolicyPage(BasePage):
         i = t.find("프로세스 템플릿")
         return t[i:i + 70] if i >= 0 else ""
 
+    def process_control_label(self) -> str:
+        """기본정책 탭 '프로세스 통제기능 사용' 옆 상태 라벨 텍스트 (cross-tab 반영 확인용).
+
+        허용/거부 프로세스 템플릿 할당 시 이 라벨이 함께 바뀜 (직접조작 확인 2026-06-18):
+        미선택='[허용/거부 템플릿 미선택]' / 허용='[허용프로세스] 사용중' / 거부='[거부프로세스] 사용중'.
+        """
+        self.goto_modal_tab("기본정책")
+        t = " ".join(self.page.locator("div#addItemModal.in").inner_text().split())
+        i = t.find("프로세스 통제기능")
+        return t[i:i + 40] if i >= 0 else ""
+
     def template_tab_text(self) -> str:
         """템플릿설정 탭 전체 가시 텍스트 (6행 전부 — 예외처리/레지스트리 등록 표시 확인용)."""
         self.goto_modal_tab("템플릿설정")
         return " ".join(self.page.locator("div#addItemModal.in").inner_text().split())
 
     def unassign_template_setting(self) -> bool:
-        """템플릿설정 탭에서 첫 [할당해제] 링크 클릭 → 해제. 확인 다이얼로그 시 '확인'.
+        """템플릿설정 탭에서 첫 '보이는' [할당해제] 링크 클릭 → 해제. 확인 다이얼로그 시 '확인'.
 
-        반환: [할당해제] 링크가 있어서 클릭했으면 True (없으면 False — 할당된 행 없음).
+        반환: 보이는 [할당해제] 링크가 있어서 클릭했으면 True (없으면 False — 할당된 행 없음).
         드라이브/제어스위트는 할당해제 버튼 없음(필수*) → 템플릿설정 탭 행 전용.
+        ⚠️ 할당해제 링크(a.removeTemplate)는 6행 전부 DOM 에 존재하고 ng-show 로 visible 만 토글됨.
+           .first 로 잡으면 미할당 행(예: 허용/거부)의 '숨김' 링크가 잡혀 force click 도 'not visible'
+           실패(실측 2026-06-18: sc3v 예외처리만 할당 시 첫 DOM 링크=허용/거부 숨김). → 첫 '보이는' 링크 선택.
         """
         self.goto_modal_tab("템플릿설정")
-        link = self.page.locator(
+        link = self._first_visible(self.page.locator(
             "div#addItemModal.in a:has-text('할당해제'), "
-            "div#addItemModal.in button:has-text('할당해제')").first
-        if link.count() == 0:
+            "div#addItemModal.in button:has-text('할당해제')"))
+        if link is None:
             return False
         with overlay_off(self.page):
             link.click(force=True)

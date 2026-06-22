@@ -8,8 +8,11 @@
 기본반출정책(singleton)은 확인다이얼로그 '취소'만(데이터안전). picker 선택은 overlay OFF.
 
 템플릿 동작 커버리지: 추가(드라이브 3e/제어스위트 3f/허용·거부 3g/실행차단·특수폴더·폴더동기화 3h
-/예외처리·레지스트리 3v), 변경/재설정(드라이브 3e/제어스위트 3f/허용↔거부 3g), 할당해제(3u),
-검색(3f — 3진입점 미동작 검출). 드라이브/제어스위트 할당해제는 없음(필수*).
+/비-허용거부 5종 할당+할당해제 3v), 변경/재설정(드라이브 3e/제어스위트 3f/허용↔거부 3g), 할당해제(3u 허용·거부: 행+라벨 복귀 / 3v 그외 5종),
+검색(3f — 8진입점 sweep 1카드 통합 미동작 검출 / EDIT 는 sc4h 1회), 허용/거부 라벨 토글 등록표시(3g 허용+거부).
+cross-tab 반영(3g 할당/3u 해제): 템플릿설정 탭 행 + 기본정책 탭 '프로세스 통제기능' 라벨 둘 다 변경/복귀(직접조작 확인 2026-06-18).
+저장 persistence(3w): 허용 템플릿 할당→저장→재오픈 유지(watchFileStorePath 손실 전례 회귀 가드).
+드라이브/제어스위트 할당해제는 없음(필수*).
 """
 from pages.secure_zone_agent_policy_page import SecureZoneAgentPolicyPage
 from tests.secure_zone_policy._base import SecureZonePolicyBase
@@ -29,6 +32,8 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         return page
 
     def _cleanup(self, page, name):
+        """[AUTO] 정책 삭제 헬퍼 — sc5(lifecycle, 추후 신설)용 예약. sc3 에선 호출 안 함
+        (사용자 규칙 2026-06-18: mid-stream 삭제 금지, 정리는 sc1·sc5 에서만)."""
         try:
             page.navigate_to()
             if name in page.get_policy_names():
@@ -112,7 +117,7 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
                   sc=3, highlight=page.page.locator(page.SEL_NAME),
                   repro=(f"1. '{name}'+템플릿+등록(1차)\n2. 같은 '{name}'+템플릿+등록(2차)\n3. 2차 경고 확인"))
         page._close_modal_if_open()
-        self._cleanup(page, name)
+        # cleanup 안 함 — [AUTO] 데이터 남김 (sc1/sc5 에서만 정리, mid-stream 삭제 금지). 상세: _cleanup() docstring
 
     def test_scenario3d_name_special_char(self, logged_in_page, settings):
         print("\n━━ [시큐어존 정책] 시나리오 3d: 정책이름 특수문자 ━━━")
@@ -132,7 +137,7 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
                   sc=3, highlight=page.page.locator(page.SEL_NAME),
                   repro=(f"1. 이름=\"{name}\"\n2. {_T_REPRO}\n3. 등록 → 저장/차단 확인"))
         page._close_modal_if_open()
-        self._cleanup(page, name)
+        # cleanup 안 함 — [AUTO] 데이터 남김 (sc1/sc5 에서만 정리, mid-stream 삭제 금지)
 
     # ══ 드라이브 / 제어스위트 설정 (템플릿 picker) ════════════════
     def test_scenario3e_drive_template_picker(self, logged_in_page, settings):
@@ -200,34 +205,34 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
                   repro=("1. 제어스위트 템플릿 선택(1번째)\n2. '템플릿 선택' 재클릭 → 2번째 선택 → 확인\n"
                          "3. 제어스위트 행이 2번째 템플릿으로 바뀌는지 확인"))
 
-        # picker 검색 미동작 — 모든 진입점이 동일 div#selectCommonPolicyItemModal 단일 요소 공유(근원 중복).
-        #   중복 이슈지만 사용자 검색 진입점이 8군데로 다 달라 '전 진입점' 검출(곳곳에서 노출).
-        #   기본정책 탭: 드라이브(0)/제어스위트(1)
-        #   템플릿설정 탭: 허용·거부(0)/예외처리(1)/실행차단(2)/특수폴더(3)/레지스트리(4)/폴더동기화(5)
-        #   실측 2026-06-12: 검색 미동작. 빈 picker(해당 템플릿 0건)는 필터 판정 불가 → skip.
+        # picker 검색 미동작 — 8 진입점 모두 동일 div#selectCommonPolicyItemModal 단일 컴포넌트 공유(근원 1개).
+        #   단일 결함이므로 8 진입점을 sweep 해 '1 카드 + 진입점별 before→after(scope)' 로 통합(사용자 지정 2026-06-22).
+        #   기본정책: 드라이브0/제어스위트1 / 템플릿설정: 허용거부0/예외처리1/실행차단2/특수폴더3/레지스트리4/폴더동기화5.
+        #   before==after = 필터 미동작(결함). before==0(빈 picker)은 판정 제외. EDIT 컨텍스트는 sc4 에서 1회 확인.
+        sweep = []
         for idx, nm, tab in [
-            (0, "드라이브", "기본정책"),
-            (1, "제어스위트", "기본정책"),
-            (0, "템플릿설정 허용/거부", "템플릿설정"),
-            (1, "템플릿설정 예외처리", "템플릿설정"),
-            (2, "템플릿설정 실행차단", "템플릿설정"),
-            (3, "템플릿설정 특수폴더", "템플릿설정"),
-            (4, "템플릿설정 레지스트리", "템플릿설정"),
-            (5, "템플릿설정 폴더동기화", "템플릿설정"),
+            (0, "드라이브", "기본정책"), (1, "제어스위트", "기본정책"),
+            (0, "허용거부", "템플릿설정"), (1, "예외처리", "템플릿설정"),
+            (2, "실행차단", "템플릿설정"), (3, "특수폴더", "템플릿설정"),
+            (4, "레지스트리", "템플릿설정"), (5, "폴더동기화", "템플릿설정"),
         ]:
             res = page.picker_search_filters(idx, "전사", tab=tab)
-            if res["before"] == 0:
-                self._add("skip", f"sc3f — {nm} picker 검색 (빈 목록)",
-                          f"입력: [{tab}] {nm} picker / 결과: 검색 전 0건 — 필터 판정 불가, 생략", sc=3)
-                page.close_picker()
-                continue
-            self._add("warn" if not res["filtered"] else "pass",
-                      f"sc3f — {nm} 템플릿 picker 검색 필터 동작",
-                      f"입력: [{tab}] {nm} picker 검색창 '전사' + 검색 버튼 / 결과: 검색 전 {res['before']} → 후 {res['after']}건 "
-                      + ("[결함: 결과 불변 = 검색 미동작(낮음). 공유 컴포넌트라 근원 중복이나 진입점마다 노출]" if not res["filtered"] else "[필터 동작]"),
-                      sc=3, highlight=page.page.locator(page.SEL_PICKER_SEARCH),
-                      repro=f"1. [{tab}] {nm} '템플릿 선택/설정' → picker\n2. 검색창 '전사' 입력\n3. 검색 버튼\n4. 결과 건수 변화 확인")
+            sweep.append((nm, res["before"], res["after"]))
             page.close_picker()
+        tested = [s for s in sweep if s[1] > 0]            # before>0 만 필터 판정 가능
+        broken = [s for s in tested if s[1] == s[2]]       # before==after = 필터 미동작
+        detail = " · ".join(f"{nm} {b}→{a}" for nm, b, a in sweep)
+        if not tested:
+            self._add("skip", "sc3f — picker 검색 (전 진입점 빈 목록)",
+                      f"입력: 8진입점 sweep / 결과: 전부 0건 — 판정 불가 ({detail})", sc=3)
+        else:
+            self._add("warn" if broken else "pass",
+                      "sc3f — 템플릿 picker 검색 미동작 (공유 컴포넌트, 전 진입점 통합)",
+                      f"입력: 8진입점 picker 검색창 '전사' 입력+검색 / 결과: {len(broken)}/{len(tested)} 진입점 필터 미반영 — {detail} "
+                      + ("[결함: 검색어 입력+검색해도 결과 불변 = 필터 미동작. 근원 1개(selectCommonPolicyItemModal)이나 "
+                         "사용자 노출 진입점 8군데 전부. 검색→선택 불가라 행 직접 선택 fallback]" if broken else "[전 진입점 필터 동작]"),
+                      sc=3, highlight=page.page.locator(page.SEL_PICKER_SEARCH),
+                      repro="1. 각 picker(드라이브/제어스위트/허용거부/예외처리/실행차단/특수폴더/레지스트리/폴더동기화) 검색창 '전사' 입력+검색\n2. 결과 건수 불변 확인")
         page._close_modal_if_open()
 
     # ══ 프로세스 통제기능 ═════════════════════════════════════════
@@ -258,6 +263,7 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
                   repro="1. '프로세스 통제기능 사용' ON\n2. '강제종료' 활성 여부 확인")
         page.set_toggle("isAllowDenyProcessUse", False)   # 다시 OFF (검증A 준비)
 
+        # (picker 검색 미동작은 sc3f 가 8진입점 통합 1카드로 검출 — 여기 중복 카드 제거. 2026-06-22)
         # 검증A: 프로세스통제 OFF 상태에서 템플릿설정 탭에 허용 템플릿 '할당 가능'한지
         allow_nm = page.assign_process_template("허용")
         # 등록 표시: 허용 등록 후 행이 '없음'→'허용 프로세스 [할당해제] {명}' 으로 정확히 뜨는지
@@ -269,6 +275,14 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
                   "(기대: '없음' → '허용 프로세스 [할당해제] 템플릿명')",
                   sc=3, repro=("1. 허용/거부 프로세스 [설정] → 허용 선택 → 확인\n"
                                "2. 행이 '허용 프로세스 [할당해제] {템플릿명}'으로 정확히 뜨는지 확인"))
+        # cross-tab(직접조작 확인 2026-06-18): 허용 할당 시 기본정책 탭 '프로세스 통제기능 사용' 옆 라벨도 함께 바뀜
+        ctl_allow = page.process_control_label()
+        self._add("pass" if "[허용프로세스] 사용중" in ctl_allow else "fail",
+                  "sc3g — 허용 할당 → 기본정책 탭 '프로세스 통제기능' 라벨 반영",
+                  f"입력: 허용 템플릿 할당 후 기본정책 탭 라벨 확인 / 결과: {ctl_allow!r} "
+                  "(기대: '[허용/거부 템플릿 미선택]' → '[허용프로세스] 사용중')",
+                  sc=3, repro=("1. 템플릿설정 탭 → 허용 템플릿 할당\n"
+                               "2. 기본정책 탭 → '프로세스 통제기능 사용' 옆 라벨이 '[허용프로세스] 사용중'으로 바뀌는지 확인"))
         page.goto_modal_tab("기본정책")
         master_after = page.field_state("isAllowDenyProcessUse")
         assigned = bool(allow_nm)
@@ -300,6 +314,25 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
 
         # 검증B-거부: 거부 템플릿으로 교체 → 강제종료 막힘
         deny_nm = page.assign_process_template("거부")
+        # 등록 표시(직접조작 확인 2026-06-18): 거부 선택 시 영역이 '허용'이 아니라 '거부 프로세스'로 토글되는지.
+        #   라이브: "전사 시큐어존 거부" 선택 → "거부 프로세스 ... 할당해제 {명}", "허용 프로세스" 미표시(hasAllowLabel=false).
+        #   라벨이 선택한 템플릿 설정(허용/거부)대로 바뀌는지가 핵심 검증(사용자 지정 2026-06-18).
+        deny_area = page.process_template_area_text()
+        deny_shown = ("거부 프로세스" in deny_area) and ("허용 프로세스" not in deny_area) and ("할당해제" in deny_area)
+        self._add("pass" if deny_shown else "fail",
+                  "sc3g — 거부 프로세스 템플릿 등록 표시 정확성(라벨 토글)",
+                  f"입력: 거부 템플릿('{deny_nm}') 할당 / 결과: 프로세스 템플릿 행={deny_area!r} "
+                  "(기대: '거부 프로세스 [할당해제] 템플릿명' — '허용 프로세스' 아님)",
+                  sc=3, repro=("1. 허용/거부 프로세스 [설정] → 거부 템플릿 선택 → 확인\n"
+                               "2. 행이 '허용'이 아닌 '거부 프로세스 [할당해제] {템플릿명}'으로 바뀌는지 확인"))
+        # cross-tab(직접조작 확인 2026-06-18): 거부 할당 시 기본정책 탭 라벨도 '[거부프로세스] 사용중'으로 바뀜
+        ctl_deny = page.process_control_label()
+        self._add("pass" if "[거부프로세스] 사용중" in ctl_deny else "fail",
+                  "sc3g — 거부 할당 → 기본정책 탭 '프로세스 통제기능' 라벨 반영",
+                  f"입력: 거부 템플릿 할당 후 기본정책 탭 라벨 확인 / 결과: {ctl_deny!r} "
+                  "(기대: '[허용프로세스] 사용중' → '[거부프로세스] 사용중')",
+                  sc=3, repro=("1. 템플릿설정 탭 → 거부 템플릿으로 교체\n"
+                               "2. 기본정책 탭 → 라벨이 '[거부프로세스] 사용중'으로 바뀌는지 확인"))
         page.goto_modal_tab("기본정책")
         f_deny = page.field_state("isAllowProcessForceStop")
         self._add("pass" if f_deny.get("disabled") is True else "fail",
@@ -399,7 +432,7 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
         page._close_modal_if_open()
 
     def test_scenario3j_watchpath_data_loss(self, logged_in_page, settings):
-        """보관소 400자 저장 → 재오픈 시 빈값(데이터 손실 🔴)."""
+        """보관소 400자 저장 → 재오픈 시 빈값(데이터 손실)."""
         print("\n━━ [시큐어존 정책] 시나리오 3j: 보관소 값 손실 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
@@ -425,15 +458,15 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
             saved_len = len(st.get("value") or "")
             empty = saved_len == 0
             self._add("fail" if empty else "pass",
-                      ("🔴 sc3j — 저장 후 재오픈 시 보관소 경로 값 유지" if empty
+                      ("sc3j — 저장 후 재오픈 시 보관소 경로 값 유지" if empty
                        else "sc3j — 저장 후 재오픈 시 보관소 경로 값 유지"),
                       f"입력: 400자 저장 정책 '{name}' 재오픈 / 결과: 파일감시={wf.get('checked')}, "
                       f"저장된 보관소 길이={saved_len}자 (기대 400) "
-                      + ("[🔴 결함: 저장 성공인데 값 비워져 저장됨 = 데이터 손실]" if empty else ""),
+                      + ("[결함: 저장 성공인데 값 비워져 저장됨 = 데이터 손실]" if empty else ""),
                       sc=3, highlight=page.page.locator(sel),
                       repro=(f"1. '{name}' 선택 → 수정\n2. 보관소 값/길이 확인"))
             page.close_edit_modal()
-        self._cleanup(page, name)
+        # cleanup 안 함 — [AUTO] 데이터 남김 (sc1/sc5 에서만 정리, mid-stream 삭제 금지)
 
     def test_scenario3k_extension_cases(self, logged_in_page, settings):
         """확장자 입력 8케이스: 단일/;다중/빈값/중복/특수문자/한글/와일드카드/삭제."""
@@ -793,30 +826,161 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
                   sc=3, repro=("1. 템플릿설정 탭 → 허용/거부 [설정] → 허용 선택 → 확인\n"
                                "2. '허용 프로세스 [할당해제] {명}'에서 [할당해제] 클릭\n"
                                "3. '없음'으로 복귀하는지 확인"))
+        # cross-tab(직접조작 확인 2026-06-18): 할당해제 시 기본정책 탭 라벨도 '[허용/거부 템플릿 미선택]'로 복귀
+        ctl_after = page.process_control_label()
+        ctl_reverted = "[허용/거부 템플릿 미선택]" in ctl_after
+        self._add("pass" if ctl_reverted else "fail",
+                  "sc3u — 할당해제 → 기본정책 탭 '프로세스 통제기능' 라벨도 복귀",
+                  f"입력: 할당해제 후 기본정책 탭 라벨 확인 / 결과: {ctl_after!r} "
+                  "(기대: '[허용프로세스] 사용중' → '[허용/거부 템플릿 미선택]')",
+                  sc=3, repro=("1. 허용 템플릿 할당 → [할당해제]\n"
+                               "2. 기본정책 탭 → 라벨이 '[허용/거부 템플릿 미선택]'로 복귀하는지 확인"))
         page._close_modal_if_open()
 
-    # ══ 템플릿설정 탭: 예외처리/레지스트리 [설정] 할당 (3g/3h 미커버분) ══
+    # ══ 템플릿설정 탭: 비-허용/거부 템플릿 할당+할당해제 (5종) ══
     def test_scenario3v_remaining_template_settings(self, logged_in_page, settings):
-        """6행 중 sc3g(허용/거부)·sc3h(실행차단/특수폴더/폴더동기화) 미커버분 = 예외처리(1)/레지스트리(4) 할당."""
-        print("\n━━ [시큐어존 정책] 시나리오 3v: 예외처리/레지스트리 템플릿 할당 ━━━")
+        """허용/거부 외 5종(예외처리/실행차단/바로가기/레지스트리/폴더동기화) — 타입 분리 없이 할당+할당해제만 검증.
+
+        사용자 지정 2026-06-18: 이 템플릿들은 허용/거부 구분이 없어 그냥 '할당 → 할당해제' 수준만 본다.
+        각 종류: [설정] → 맨 위 템플릿 할당 → 등록 표시 → [할당해제] → '없음' 복귀.
+        할당 가능 템플릿 없으면(picker 빈목록) graceful skip. (idx: 1예외처리 2실행차단 3바로가기 4레지스트리 5폴더동기화)"""
+        print("\n━━ [시큐어존 정책] 시나리오 3v: 비-허용/거부 템플릿 할당+할당해제 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
-        if self._skip_if_missing(page, "sc3v 예외처리/레지스트리 할당",
+        if self._skip_if_missing(page, "sc3v 비-허용/거부 템플릿 할당+할당해제",
                                  [f"div#addItemModal.in {page.SEL_NAME}"], sc=3):
             page._close_modal_if_open(); return
 
-        for btn_idx, feat in [(1, "예외처리 프로세스"), (4, "레지스트리 변경")]:
+        for btn_idx, feat in [(1, "예외처리 프로세스"), (2, "실행차단 프로세스"),
+                              (3, "바로가기(Link)"), (4, "레지스트리 변경"), (5, "폴더동기화")]:
             nm = page.assign_template_setting(btn_idx)
             if not nm:
                 self._add("skip", f"sc3v — '{feat}' (할당 가능 템플릿 없음)",
                           f"입력: {feat} [설정] / 결과: picker 비어있음/실패 — 검증 생략", sc=3)
                 continue
+            # ① 할당 등록 표시
             txt = page.template_tab_text()
             shown = nm.split()[0] in txt
             self._add("pass" if shown else "fail",
-                      f"sc3v — '{feat}' 템플릿 할당 등록 표시",
-                      f"입력: {feat} [설정] → 맨 위 템플릿('{nm}') / 결과: 탭 텍스트에 표시={shown}", sc=3,
+                      f"sc3v — '{feat}' 할당 등록 표시",
+                      f"입력: {feat} [설정] → 맨 위 템플릿('{nm}') / 결과: 탭 텍스트 표시={shown}", sc=3,
                       repro=(f"1. 템플릿설정 탭 → {feat} [설정]\n2. 맨 위 템플릿 선택 → 확인\n"
-                             f"3. 행에 '[할당해제] 템플릿명'으로 등록 표시되는지 확인"))
+                             f"3. 행에 '[할당해제] 템플릿명'으로 표시되는지 확인"))
+            # ② 할당해제 → 제거 (한 번에 한 종류만 할당 상태 → 첫 [할당해제] = 방금 할당분)
+            released = page.unassign_template_setting()
+            txt2 = page.template_tab_text()
+            gone = released and (nm.split()[0] not in txt2)
+            self._add("pass" if gone else "fail",
+                      f"sc3v — '{feat}' 할당해제 → '없음' 복귀",
+                      f"입력: '{nm}' 할당 후 [할당해제] / 결과: 해제={released}, 제거됨={gone} "
+                      + ("(템플릿명 사라짐)" if gone else "[결함: 할당해제 후에도 잔존]"),
+                      sc=3, repro=(f"1. {feat} 할당 상태에서 [할당해제] 클릭\n"
+                                   "2. 행이 '없음'으로 복귀(템플릿명 사라짐) 확인"))
         page._close_modal_if_open()
+
+    # ══ 템플릿 할당 저장 persistence (데이터 손실 회귀 가드) ══════════
+    def test_scenario3w_template_assignment_persists(self, logged_in_page, settings):
+        """허용 프로세스 템플릿 할당 → 저장 → 재오픈 시 유지되는지 (round-trip 검증).
+
+        watchFileStorePath 저장값 손실 버그(sc3j) 전례 있어 템플릿 할당도 round-trip 검증 필요.
+        직접조작 확인 2026-06-18(콘솔 192.168.13.141): 허용 템플릿 저장→재오픈 유지됨
+        (템플릿설정 '허용 프로세스 ... {명}' + 기본정책 라벨 '[허용프로세스] 사용중'). [AUTO] 만 생성+cleanup.
+        ※ 검증A 연계: 프로세스통제 토글 OFF여도 템플릿은 저장됨 → 리스트 '프로세스 허용/거부' 컬럼은 '사용안함'(토글 상태)."""
+        print("\n━━ [시큐어존 정책] 시나리오 3w: 템플릿 할당 저장 persistence ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        name = f"{page.AUTO_NAME_PREFIX}_tmplpersist"
+        page.open_add_modal()
+        if self._skip_if_missing(page, "sc3w 템플릿 할당 persistence",
+                                 [f"div#addItemModal.in {page.SEL_NAME}"], sc=3):
+            page._close_modal_if_open(); return
+        page.fill(page.SEL_NAME, name)
+        page.select_template_top(0)   # 드라이브(필수)
+        page.select_template_top(1)   # 제어스위트(필수)
+        allow_nm = page.assign_process_template("허용")
+        if not allow_nm:
+            self._add("skip", "sc3w — persistence (할당 가능 허용 템플릿 없음)",
+                      "입력: - / 결과: 허용 템플릿 할당 실패 — 생략", sc=3)
+            page._close_modal_if_open(); return
+        msg = page.submit_and_message()
+        saved = "저장" in msg and "오류" not in msg
+        self._add("pass" if saved else "fail", "sc3w — 허용 템플릿 포함 정책 저장",
+                  f"입력: 이름='{name}'+드라이브/제어스위트+허용('{allow_nm}') / 결과: {msg!r}", sc=3,
+                  repro=(f"1. 이름='{name}'\n2. 드라이브/제어스위트 선택\n3. 템플릿설정 → 허용 템플릿 할당\n4. 등록"))
+        if saved and name in page.get_policy_names():
+            page.open_modify_modal(name)
+            area = page.process_template_area_text()
+            label = page.process_control_label()
+            persisted = ("허용 프로세스" in area) and ("[허용프로세스] 사용중" in label)
+            self._add("pass" if persisted else "fail",
+                      "sc3w — 저장 후 재오픈 시 허용 템플릿 유지(데이터 손실 없음)",
+                      f"입력: 허용 템플릿('{allow_nm}') 저장 후 재오픈 / 결과: 템플릿영역={area!r}, 기본정책라벨={label!r} "
+                      + ("(유지됨 — round-trip 정상)" if persisted
+                         else "[결함: 저장 후 템플릿 사라짐 — watchFileStorePath 같은 silent 손실]"),
+                      sc=3, repro=(f"1. '{name}' 선택 → 수정\n"
+                                   "2. 템플릿설정 탭 '허용 프로세스 ... {명}' 유지 확인\n"
+                                   "3. 기본정책 라벨 '[허용프로세스] 사용중' 유지 확인"))
+            page.close_edit_modal()
+        # cleanup 안 함 — [AUTO] 데이터 남김 (sc1/sc5 에서만 정리, mid-stream 삭제 금지)
+
+    # ══ 입력 필드 overflow(3000자) — 서버오류/silent손실/정상유지 전수 분류 ══
+    def test_scenario3x_field_overflow(self, logged_in_page, settings):
+        """maxlength 없는/긴 텍스트 필드에 3000자 입력 → 저장 거동 전수 분류 (실측 2026-06-22).
+
+        실측 거동(직접조작): watchFileStorePath=저장+값손실 / 프린트 브랜드·포트=서버오류 / 커스텀=저장+유지.
+        분류: 서버오류=WARN(ungraceful) / 저장+재오픈손실=FAIL(데이터 무결성) / 저장+유지=PASS(정상).
+        저장 성공 필드는 재오픈해 값 유지/손실 판정. [AUTO] 만 생성, cleanup 안 함."""
+        print("\n━━ [시큐어존 정책] 시나리오 3x: 입력 필드 overflow(3000자) 분류 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        BIG = "X" * 3000
+        # (label, field_sel, toggle_id, field_id_for_state)
+        fields = [
+            ("감시파일 보관소", "div#addItemModal.in input#watchFileStorePath", "isWatchFile", "watchFileStorePath"),
+            ("프린트 허용 브랜드", "div#addItemModal.in textarea#allowPrintModel", "isPrintUse", "allowPrintModel"),
+            ("프린트 제외 포트", "div#addItemModal.in textarea#exceptPrintPort", "isPrintUse", "exceptPrintPort"),
+            ("커스텀 옵션값", "div#addItemModal.in input#customOptionText", None, "customOptionText"),
+        ]
+        for label, sel, toggle, fid in fields:
+            name = f"{page.AUTO_NAME_PREFIX}_ovf_{fid[:7]}"
+            page.navigate_to()
+            page.open_add_modal()
+            if self._skip_if_missing(page, f"sc3x {label} overflow",
+                                     [f"div#addItemModal.in {page.SEL_NAME}"], sc=3):
+                page._close_modal_if_open(); continue
+            page.fill(page.SEL_NAME, name)
+            page.select_template_top(0); page.select_template_top(1)
+            if toggle:
+                page.set_toggle(toggle, True)
+            raw_len = page.set_value_raw(sel, BIG)
+            msg = page.submit_and_message()
+            if ("서버" in msg) or ("오류" in msg):
+                self._add("warn", f"sc3x — '{label}' 3000자 → 서버오류(저장 거부)",
+                          f"입력: {label} {raw_len}자 저장 / 결과: {msg!r} [maxlength 클라 가드 없이 서버에서 거부 — ungraceful 처리(클라 길이 검증 부재)]",
+                          sc=3, highlight=page.page.locator(sel),
+                          repro=f"1. {label}에 3000자 입력(maxlength 우회)\n2. 등록\n3. '서버에서 오류' 확인")
+                page._close_modal_if_open()
+                continue
+            if "저장" not in msg:
+                self._add("warn", f"sc3x — '{label}' 3000자 → 기타 메시지",
+                          f"입력: {label} {raw_len}자 / 결과: {msg!r}", sc=3)
+                page._close_modal_if_open(); continue
+            # 저장 성공 → 재오픈 persistence. ⚠️ _add 는 모달 '열린 채' 호출(스크린샷이 빈 필드를 잡도록), 그 뒤 close.
+            page.navigate_to()
+            if name not in page.get_policy_names():
+                self._add("warn", f"sc3x — '{label}' 3000자 저장 후 정책 미존재", f"입력: {label} {raw_len}자 / 결과: {msg!r}인데 목록 없음", sc=3)
+                continue
+            page.open_modify_modal(name)
+            persisted = len(page.field_state(fid).get("value") or "")
+            if persisted == 0:
+                self._add("fail", f"sc3x — '{label}' 3000자 저장 성공인데 값 손실",
+                          f"입력: {label} {raw_len}자 저장→재오픈 / 결과: {msg!r} + 저장값 0자 [결함: 저장 성공 메시지인데 값 비워짐 = silent 데이터 손실]",
+                          sc=3, highlight=page.page.locator(sel),
+                          repro=f"1. {label} 3000자 저장\n2. 재오픈 → 값 0자(손실) 확인")
+            else:
+                self._add("pass", f"sc3x — '{label}' 3000자 저장+유지(정상)",
+                          f"입력: {label} {raw_len}자 저장→재오픈 / 결과: 저장값 {persisted}자 유지 (서버 수용+round-trip 정상)",
+                          sc=3, highlight=page.page.locator(sel),
+                          repro=f"1. {label} 3000자 저장\n2. 재오픈 → 값 유지 확인")
+            page.close_edit_modal()
+        # cleanup 안 함 — [AUTO] 데이터 남김 (sc1/sc5 에서만 정리)

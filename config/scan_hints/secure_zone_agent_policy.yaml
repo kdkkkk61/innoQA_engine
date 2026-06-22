@@ -109,3 +109,32 @@ modal_actions:
   submit_add:    "div#addItemModal.in button.btn-primary"
   submit_modify: "div#addItemModal.in button.btn-primary"
   close:         "div#addItemModal.in button.btn-default"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# [템플릿설정] 탭 — 6행 [설정] picker (id 없는 a.addTemplate 앵커 + picker 기반).
+#   sc0 baseline(기본정책 탭 id 요소) 범위 밖 → diff 대상 아닌 '참조용' 섹션.
+#   동작 검증은 sc3g(허용/거부)·sc3h(실행차단/특수폴더/폴더동기화)·sc3u(할당해제)·sc3v(예외처리/레지스트리).
+#   값 출처: 직접조작 확인 2026-06-18 (콘솔 192.168.13.141, 저장 안 함·취소).
+# ──────────────────────────────────────────────────────────────────────────────
+template_setting_tab:
+  tab_label:    "템플릿설정"
+  opener:       "div#addItemModal.in a.addTemplate"   # nth: 0허용/거부 1예외처리 2실행차단 3바로가기 4레지스트리 5폴더동기화
+  picker_modal: "div#selectCommonPolicyItemModal.in"  # "SecureZone - 템플릿 관리" (Bootstrap → attached 로 대기)
+  picker_search:
+    input:  "div#selectCommonPolicyItemModal.in input#searchText"
+    button: "div#selectCommonPolicyItemModal.in button#searchBtn"
+    bug:    "🔴 검색 미동작 — 'auto'/'[AUTO'/'전사' 모두 필터 0 반영 (라이브 2026-06-18: 20행/69건 불변). 전 picker 공유 컴포넌트. → [AUTO 검색 불가 → 맨 위/매칭행 fallback. sc3f(8진입점)/sc3g(허용·거부) WARN 검출."
+  rows:                                               # 6행 (label / 기본정책 탭 종속 토글)
+    - { label: "허용/거부 프로세스", opener_nth: 0, basic_toggle: "isAllowDenyProcessUse" }
+    - { label: "예외처리 프로세스",   opener_nth: 1, basic_toggle: "isExceptProcess" }
+    - { label: "실행차단 프로세스",   opener_nth: 2, basic_toggle: "isBlockExecuteProcess" }
+    - { label: "바로가기(Link)",      opener_nth: 3, basic_toggle: "isManageFolder" }
+    - { label: "레지스트리 변경",     opener_nth: 4, basic_toggle: "isManageFolder" }
+    - { label: "폴더동기화",          opener_nth: 5, basic_toggle: "isSyncFolder" }
+  allow_deny_picker:                                  # 허용/거부 프로세스 picker 상세
+    columns:        [템플릿이름, "허용/거부", 만든이, 등록일]
+    selection:      "허용·거부 혼재 라디오 단일선택 (1개만, 상호배타). 69건."
+    assigned_row:   "'허용/거부 프로세스 없음' → '{허용|거부} 프로세스 [설정][할당해제] {템플릿명}' (선택 type 으로 라벨 토글)"
+    cross_tab_label: "기본정책 탭 '프로세스 통제기능 사용' 옆 라벨 동시 변경 — 미선택 '[허용/거부 템플릿 미선택]' → 허용 '[허용프로세스] 사용중' / 거부 '[거부프로세스] 사용중'"
+    example_rows:   { allow: "퀵테스트 허용 / test_ujcho", deny: "전사 시큐어존 거부 / yh_거부프로세스" }
+  unassign:         "할당해제 링크 클릭 → 행 '없음' 복귀. 드라이브/제어스위트는 할당해제 없음(필수*). 템플릿설정 6행만 해당."
