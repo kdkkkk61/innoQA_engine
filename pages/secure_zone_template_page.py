@@ -12,7 +12,7 @@ URL: #!/managerSecureZoneTemplate?...&selectedTab=SECURE_DRIVE
 - 서브 모달 addSecureDrive "시큐어드라이브 추가/수정": secureDriveLabel* / secureDriveLetter* / secureDrivePath*
   / isSecureDrivePathHide / isSystemDriveWarningQuota(→systemDriveWarningQuota 조건부)
   / secureDriveQuotaTypeWrite(WRITE)·secureDriveQuotaTypeSync(SYNC) radio* / secureDriveQuota(조건부 WRITE) / description
-  · 서브 '추가' = 항목을 메인 리스트에 커밋 + 필드 클리어 + **서브 열린 채 유지(multi-add)** → '닫기'로 메인 복귀
+  · 서브 '추가' = 항목을 메인 리스트에 커밋 + **서브모달 자동 닫힘**(정상 입력 시, 실측 2026-06-23)
 - 저장 필수: 이름 + 시큐어드라이브 항목 ≥1(서브) + 반출드라이브 4필드. (반출 누락 시 '반출드라이브 생성위치를 입력해 주세요')
 - 속성(상세) 모달 detailSecureZoneTemplate "템플릿 상세정보 보기": 행 더블클릭, 읽기전용,
   대부분 텍스트 표시(input 은 체크박스 isRegistEcmDrive/isTakeoutDrivePathHide 2개뿐) → 값은 모달 텍스트로 대조.
@@ -295,10 +295,10 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
     # ──────────────────────────────────────────────────────────────
     def add_secure_drive(self, label: str, letter: str, path: str,
                          quota_type: str = "WRITE", quota: str = "100") -> None:
-        """addSecureDriveBtn → 서브모달 채우기 → '추가'(메인 리스트 커밋) → 서브 '닫기'.
+        """addSecureDriveBtn → 서브모달 채우기 → '추가'(항목을 메인 리스트에 커밋).
 
-        quota_type: 'WRITE'(직접입력→quota MB) | 'SYNC'(잔여용량 동기화). 서브 '추가'는
-        항목 커밋 후 필드 클리어하고 서브를 열린 채 둠(multi-add) → 닫기로 메인 복귀(실측 2026-06-23).
+        quota_type: 'WRITE'(직접입력→quota MB) | 'SYNC'(잔여용량 동기화).
+        정상 추가 시 서브모달이 자동으로 닫히며 항목이 메인 리스트에 반영됨(실측 2026-06-23).
         """
         with overlay_off(self.page):
             self.page.locator(self.SEL_ADD_DRIVE_BTN).first.click(force=True)
@@ -315,11 +315,14 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         with overlay_off(self.page):
             self.page.locator(self.SEL_SUB_ADD).first.click(force=True)
         self.page.wait_for_timeout(400)
-        # 추가 후 경고 모달(검증 실패 등) 있으면 surface 위해 닫지 않고 둠 — 정상이면 서브만 닫기
-        if self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).count() == 0:
-            with overlay_off(self.page):
-                self.page.locator(self.SEL_SUB_CLOSE).first.click(force=True)
+        # 정상 추가 시 서브모달이 '자동으로 닫히고' 항목이 메인 리스트에 커밋됨(실측 2026-06-23).
+        # 경고 모달(검증 실패)이면 surface 위해 그대로 둠 — 호출자(add_secure_drive_msg)가 처리.
+        # 드물게 서브가 안 닫혔으면(엣지) 그때만 닫기 (이미 닫힌 서브에 닫기 클릭 → 타임아웃 방지).
+        if (self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).count() == 0
+                and self.page.locator(self.SEL_SUB).count() > 0):
             try:
+                with overlay_off(self.page):
+                    self.page.locator(self.SEL_SUB_CLOSE).first.click(force=True, timeout=2000)
                 self.page.locator(self.SEL_SUB).wait_for(state="detached", timeout=self._TIMEOUT_MODAL)
             except Exception:
                 pass

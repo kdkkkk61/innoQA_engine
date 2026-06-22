@@ -2025,3 +2025,14 @@
 - **파일**: `tests/secure_zone_policy/test_scenario5_lifecycle.py` (`_apply_full_config.txt`)
 
 상태: [RESOLVED] (코드 수정 완료 / 실행 round-trip 결과는 사용자 pytest 실행 대기)
+
+---
+
+## [2026-06-23] 시큐어존 템플릿(시큐어 드라이브) add_secure_drive — 추가 후 자동 닫힌 서브에 '닫기' 클릭 타임아웃
+
+- **증상**: sc3b/3c/3d/3e FAIL — `add_secure_drive` 에서 `Locator.click: Timeout 5000ms` (대상: `div#addSecureDrive.in button:has-text('닫기')`). sc1/sc2/sc3a 는 PASS.
+- **근본 원인**: 서브모달 '추가'(SEL_SUB_ADD) 가 **정상 항목이면 메인 리스트에 커밋 + 서브모달을 자동으로 닫음**(직접조작 Chrome MCP 2026-06-23 확정: subStillOpen=false). 코드가 "추가 후에도 서브 열린 채 유지(multi-add)"로 잘못 가정해 무조건 SEL_SUB_CLOSE 를 클릭 → 이미 닫힌(`div#addSecureDrive.in` 부재) 서브라 locator 0건 대기 → 5초 타임아웃. (작성 시점 첫 관측의 'multi-add' 는 오관측)
+- **수정**: 추가 후 `SEL_SUB.count()>0` 일 때만(엣지) 닫기 시도. 정상(자동 닫힘)이면 close 생략. 경고 모달 있으면 그대로 둠(surface). docstring/헤더 주석의 multi-add 설명 정정.
+- **파일**: `pages/secure_zone_template_page.py` (`add_secure_drive`)
+
+상태: [RESOLVED] (재실행 검증은 사용자 pytest 재실행 대기)
