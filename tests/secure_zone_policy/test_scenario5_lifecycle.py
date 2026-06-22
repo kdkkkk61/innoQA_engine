@@ -131,9 +131,18 @@ class TestSecureZonePolicyScenario5Lifecycle(SecureZonePolicyBase):
 
     # ── 비교 헬퍼 (게이팅 인식) ───────────────────────────────────
     def _toggle_diff(self, intended: dict, observed: dict, gate: dict):
-        """intended vs observed 토글 비교. gate 에서 master 가 False 인 하위 토글은 제외(게이팅)."""
+        """intended vs observed 토글 비교. sc5 가 직접 제어하는 토글(_ALL_TOGGLES)만 대상.
+        gate 에서 master 가 False 인 하위 토글은 제외(게이팅).
+
+        ⚠️ _DETAIL_TOGGLES 엔 isAllowDenyProcessUse/isAllowProcessForceStop/isExceptProcess(프로세스 통제)
+           도 있지만 이건 sc5 가 안 만지고 허용/거부 '템플릿'으로 제어됨(검증은 sc3). 속성 모달에서 OFF 일 때
+           마스터 체크박스를 다르게 그려 None 으로 읽히는데, 비교에 넣으면 false 불일치(실측 2026-06-22 sc5b
+           'isAllowDenyProcessUse(False->None)'). → 관리 토글만 비교.
+        """
         out = []
         for tid, want in intended.items():
+            if tid not in self._ALL_TOGGLES:
+                continue
             if want is None:
                 continue
             m = self._SUB_TO_MASTER.get(tid)
