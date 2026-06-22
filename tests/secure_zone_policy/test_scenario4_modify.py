@@ -4,11 +4,12 @@ EDIT 모달은 ADD 와 같은 컨테이너(#addItemModal) 재사용 → 필드 g
 ADD(sc3)와 동일하지만, **수정 컨텍스트에서도 동일하게 성립하는지 + 변경이 '수정' 저장으로 반영되는지**를
 sc3 의 전 영역에 대해 검증 (사용자 지정 2026-06-18: 생성 시나리오에서 한 테스트는 수정에서도 다).
 
-직접조작 확정 (Chrome MCP 2026-06-18, 콘솔 192.168.13.141):
-  - 저장 버튼: btn-primary 2개 공존(ng-show) — EDIT 에선 "수정"(보임)/"등록"(숨김). submit_and_message 가 _first_visible 로 보이는 버튼 클릭.
-  - EDIT 저장은 정상 in-place UPDATE (같은 이름/rename 모두 레코드 불변). 신규생성 아님.
-  - 빈값 이름 수정 → "저장 하였습니다"(거짓 성공) + 이름 silent revert. ADD(필수 차단)와 불일치.
-  - 기존 이름으로 rename → "이미 등록된 이름" 차단(정상).
+관측 (Chrome MCP 2026-06-18, 콘솔 192.168.13.141). ⚠️ 아래는 작성 시점 관측 참고일 뿐 단정 아님 —
+테스트는 실제 결과로 PASS/WARN/FAIL 동적 판정하며, 환경/빌드/데이터에 따라 달라질 수 있음. 나올 수 있는 이슈:
+  - 저장 버튼: btn-primary 2개 공존(ng-show) — EDIT 에선 "수정"(보임)/"등록"(숨김). submit_and_message 가 _first_visible 로 보이는 버튼 클릭(구조).
+  - EDIT 저장이 in-place UPDATE 로 관측됨(같은 이름/rename 모두 레코드 불변 = 신규생성 아닌 것으로 보임).
+  - 빈값 이름 수정 시 "저장 하였습니다"+이름 미변경(silent revert) 이 나올 수 있음 → ADD(필수 차단)와 불일치 가능.
+  - 기존 이름으로 rename 시 "이미 등록된 이름" 차단이 나올 수 있음.
 
 cleanup 안 함 — [AUTO] 데이터 남김(sc1 세션시작/sc5 추후 신설에서만 정리, mid-stream 삭제 금지).
 편집 대상: [AUTO]_szp_sc4(없으면 생성). gating/토글 카드는 변경 후 저장 안 하고 취소(base 보존).
@@ -222,7 +223,7 @@ class TestSecureZonePolicyScenario4Modify(SecureZonePolicyBase):
                   highlight=page.page.locator(page.SEL_TEMPLATE_BTN).nth(1),
                   repro="1. 수정\n2. 제어스위트 재선택\n3. 갱신 확인")
         # picker 검색 미동작 — ADD(sc3f)가 8진입점 통합 검출, EDIT 는 여기서 1회 대표 확인('수정에 한번').
-        #   같은 공유 컴포넌트(selectCommonPolicyItemModal)라 EDIT 진입점도 동일 미동작 = '수정 컨텍스트' 확정용.
+        #   같은 공유 컴포넌트(selectCommonPolicyItemModal)라 EDIT 진입점도 동일 미동작이 '나올 수 있음' — 수정 컨텍스트 확인용(단정 아님).
         res = page.picker_search_filters(1, "전사", tab="기본정책")
         if res["before"] == 0:
             self._add("skip", "sc4h — EDIT picker 검색 (빈 목록)", "입력: - / 결과: 0건", sc=4)

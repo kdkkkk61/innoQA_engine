@@ -4,7 +4,8 @@
   타입 → 정책이름 → 드라이브/제어스위트 picker → 프로세스통제 → 기타토글 → 파일감시(보관소/확장자/헤더/예외폴더)
   → 프린트 → 메뉴 → 오프라인 → 커스텀 → 정상생성/삭제.
 각 토글: 존재→기본값→ON동작→OFF gating(disabled+추가/수정/삭제 무반응)→이슈.
-보고서엔 _add(detail="입력:X / 결과:Y", repro="단계") 로 상세 기록. [AUTO] 만 생성+자체 cleanup.
+보고서엔 _add(detail="입력:X / 결과:Y", repro="단계") 로 상세 기록. [AUTO] 만 생성, cleanup 은 sc1(세션시작)/sc5 에서만(자체 cleanup 안 함).
+※ 모든 카드는 실제 결과로 PASS/WARN/FAIL 동적 판정 — 주석/docstring 의 거동은 작성 시점 관측 참고일 뿐 단정 아님(환경/빌드 따라 다를 수 있음).
 기본반출정책(singleton)은 확인다이얼로그 '취소'만(데이터안전). picker 선택은 overlay OFF.
 
 템플릿 동작 커버리지: 추가(드라이브 3e/제어스위트 3f/허용·거부 3g/실행차단·특수폴더·폴더동기화 3h
@@ -926,11 +927,12 @@ class TestSecureZonePolicyScenario3Add(SecureZonePolicyBase):
 
     # ══ 입력 필드 overflow(3000자) — 서버오류/silent손실/정상유지 전수 분류 ══
     def test_scenario3x_field_overflow(self, logged_in_page, settings):
-        """maxlength 없는/긴 텍스트 필드에 3000자 입력 → 저장 거동 전수 분류 (실측 2026-06-22).
+        """maxlength 없는/긴 텍스트 필드에 3000자 입력 → 저장 거동 전수 '분류'(하드코딩 아님, 실제 결과로 판정).
 
-        실측 거동(직접조작): watchFileStorePath=저장+값손실 / 프린트 브랜드·포트=서버오류 / 커스텀=저장+유지.
-        분류: 서버오류=WARN(ungraceful) / 저장+재오픈손실=FAIL(데이터 무결성) / 저장+유지=PASS(정상).
-        저장 성공 필드는 재오픈해 값 유지/손실 판정. [AUTO] 만 생성, cleanup 안 함."""
+        ⚠️ 작성 시점 관측 예(2026-06-22, 단정 아님 — 환경/빌드 따라 다를 수 있음):
+           watchFileStorePath=저장+값손실 / 프린트 브랜드·포트=서버오류 / 커스텀=저장+유지 가 나올 수 있음.
+        런타임 분류(고정 아님): 서버오류→WARN(ungraceful) / 저장 후 재오픈 손실→FAIL(데이터 무결성 이슈 가능)
+           / 저장+유지→PASS(정상). 저장 성공 필드만 재오픈해 값 유지/손실을 실제로 읽어 판정. [AUTO] 만 생성, cleanup 안 함."""
         print("\n━━ [시큐어존 정책] 시나리오 3x: 입력 필드 overflow(3000자) 분류 ━━━")
         page = self._new_page(logged_in_page, settings)
         BIG = "X" * 3000
