@@ -918,11 +918,23 @@ class SecureZoneAgentPolicyPage(BasePage):
         return self._read_modal_state(self.SEL_MODAL)
 
     def detail_modal_readonly(self) -> bool:
-        """속성 모달의 모든 input 이 disabled(읽기전용=수정 불가)인지."""
-        inputs = self.page.locator(f"{self.SEL_DETAIL_MODAL} input").all()
-        if not inputs:
-            return False
-        return all(i.is_disabled() for i in inputs)
+        """속성 모달의 '핵심 정책 필드'(토글/텍스트/라디오)가 전부 disabled(읽기전용)인지.
+
+        ⚠️ 'div 내 모든 input' 으로 보면 파일감시 ON 등에서 나타나는 보조 입력(확장자/예외폴더
+           tag-input 등)이 disabled 가 아니라 false WARN 이 남(실측 2026-06-22 sc5a-②). 핵심 필드만 본다.
+           실제 클릭 변경 여부는 detail_modal_try_change 로 별도 능동 검증.
+        """
+        m = self.SEL_DETAIL_MODAL
+        sels = ([f"#{t}" for t in self._DETAIL_TOGGLES]
+                + [f"#{t}" for t in self._DETAIL_TEXTS]
+                + ["input[name='isPrint']", "input[name='szAgentPolicyType']"])
+        seen = False
+        for sel in sels:
+            for loc in self.page.locator(f"{m} {sel}").all():
+                seen = True
+                if not loc.is_disabled():
+                    return False
+        return seen
 
     # 능동 읽기전용 검증 대상 (속성 모달 토글/라디오 대표 — 클릭해도 안 바뀌어야 정상).
     _DETAIL_TRY_CLICK = (
