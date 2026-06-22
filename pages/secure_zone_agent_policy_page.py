@@ -924,6 +924,46 @@ class SecureZoneAgentPolicyPage(BasePage):
             return False
         return all(i.is_disabled() for i in inputs)
 
+    # 능동 읽기전용 검증 대상 (속성 모달 토글/라디오 대표 — 클릭해도 안 바뀌어야 정상).
+    _DETAIL_TRY_CLICK = (
+        "#isBlockExecuteProcess", "#isManageFolder", "#isWatchFileHeader",
+        "#isShowAgentShutdownMenu", "input[name='isPrint'][value='1']",
+    )
+
+    def detail_modal_try_change(self) -> dict:
+        """속성 모달 요소에 실제 클릭 시도 → 값이 바뀌는지(읽기전용 우회/UI 변동 버그) 능동 검출.
+
+        disabled 속성만으론 못 잡는 '읽기전용인데 실제로는 클릭에 반응' 케이스 검출.
+        반환: {selector: {'before','after','changed'}}. 바뀌었으면 원복 시도. (직접조작 확인 2026-06-22:
+        정상 빌드에선 disabled 라 전부 changed=False — 하나라도 True 면 결함 가능)
+        """
+        m = self.SEL_DETAIL_MODAL
+        out: dict = {}
+        for sel in self._DETAIL_TRY_CLICK:
+            loc = self.page.locator(f"{m} {sel}").first
+            if loc.count() == 0:
+                continue
+            try:
+                before = loc.is_checked()
+            except Exception:
+                continue
+            try:
+                loc.evaluate("el => el.click()")
+                self.page.wait_for_timeout(100)
+            except Exception:
+                pass
+            try:
+                after = loc.is_checked()
+            except Exception:
+                after = before
+            out[sel] = {"before": before, "after": after, "changed": before != after}
+            if before != after:   # 읽기전용 우회됨 → 원복 시도
+                try:
+                    loc.evaluate("el => el.click()")
+                except Exception:
+                    pass
+        return out
+
     def detail_modal_text(self) -> str:
         """속성 모달 본문 텍스트 (드라이브/허용 라벨·확장자 등 label 텍스트는 포함 여부로 검증)."""
         m = self.page.locator(self.SEL_DETAIL_MODAL).first

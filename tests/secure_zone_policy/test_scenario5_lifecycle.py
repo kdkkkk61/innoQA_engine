@@ -180,10 +180,22 @@ class TestSecureZonePolicyScenario5Lifecycle(SecureZonePolicyBase):
         dm = page.SEL_DETAIL_MODAL
 
         self._add("pass" if readonly else "warn",
-                  "sc5a-② 속성 모달 읽기전용",
+                  "sc5a-② 속성 모달 읽기전용(disabled 속성)",
                   f"입력: 행 더블클릭으로 속성 열기 / 결과: 모든 input disabled={readonly} "
                   + ("(읽기전용)" if readonly else "[입력 가능하면 결함 — 상세보기에서 수정됨]"),
                   sc=5, repro="1. 행 더블클릭 → 속성(상세정보 보기)\n2. 모든 input 읽기전용인지 확인")
+
+        # 능동 검증 — disabled 속성만 보는 게 아니라 실제 클릭해 값이 바뀌거나 움직이는지 확인.
+        changes = page.detail_modal_try_change()
+        changed_any = [s for s, v in changes.items() if v.get("changed")]
+        self._add("pass" if not changed_any else "fail",
+                  "sc5a-② 속성 모달 능동 읽기전용(클릭해도 값 불변)",
+                  f"입력: 속성 모달 토글/라디오 클릭 시도 / 결과: "
+                  + ("클릭해도 전부 불변(읽기전용 정상)" if not changed_any
+                     else f"클릭에 반응해 값 변경 {changed_any} [읽기전용 우회/UI 변동 버그 가능]"),
+                  sc=5,
+                  highlight=(page.page.locator(f"{dm} {changed_any[0]}") if changed_any else None),
+                  repro="1. 속성 열기\n2. 토글/라디오 클릭 시도\n3. 읽기전용이면 값이 바뀌면 안 됨")
 
         self._add("pass" if not lt else "fail",
                   "sc5a-② 추가 후 속성 round-trip(토글)",
