@@ -2013,3 +2013,15 @@
 - **파일**: `pages/secure_zone_agent_policy_page.py` (`unassign_template_setting`)
 
 상태: [RESOLVED] (재실행 검증 대기 — sc3v 5종 할당+할당해제)
+
+---
+
+## [2026-06-22] 시큐어존 정책 sc5(lifecycle) — 프린트 brand/port 는 textarea(‘input#’ 선택자 미매칭)
+
+- **증상**: sc5 `_apply_full_config` 의 텍스트 입력 헬퍼가 `page.fill("div#addItemModal.in input#{id}")` 로 채우는데, `allowPrintModel`(프린트 허용모델)·`exceptPrintPort`(예외 포트) 두 필드가 채워지지 않아 round-trip 검증에서 **조용히 누락**(applied 값 None → 비교 대상 제외).
+- **근본 원인**: 직접조작(Chrome MCP 2026-06-22, 콘솔 192.168.13.141) — 두 필드 `.tagName === 'TEXTAREA'`. `input#id` 선택자는 `<textarea id=...>` 를 매칭하지 못함. (나머지 텍스트필드 watchFileStorePath/secureDriveBlockTime/customOptionText 는 `<input>` 이라 영향 없음)
+- **수정**: 헬퍼 선택자를 태그 무관 `div#addItemModal.in #{id}` 로 변경(input·textarea 모두 매칭). 읽기용 `field_state` 는 이미 태그 무관 `#{id}` 라 영향 없었음.
+- **부수 확인(검증 사실, 단정 아님)**: full-config(전 토글 ON + 텍스트 + 확장자) 저장은 "저장 하였습니다" 성공 — 짧은 정상값에선 서버오류 없이 저장됨. round-trip 재오픈 검증 자체는 AngularJS 행 선택에 real mousedown(tActive) 이 필요해 raw JS 로는 재현 불가 → Playwright force-click 을 쓰는 sc5(pytest)가 담당.
+- **파일**: `tests/secure_zone_policy/test_scenario5_lifecycle.py` (`_apply_full_config.txt`)
+
+상태: [RESOLVED] (코드 수정 완료 / 실행 round-trip 결과는 사용자 pytest 실행 대기)
