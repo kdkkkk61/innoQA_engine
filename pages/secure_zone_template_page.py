@@ -213,6 +213,50 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         except Exception:
             pass
 
+    # ── 메인 모달 필드 / 서브모달 (sc1+ UI 구조용) ────────────────
+    SEL_ECM           = "div#addModifySecureZoneSecureDriveTemplate.in input#isRegistEcmDrive"
+    SEL_OLD_DRIVE     = "div#addModifySecureZoneSecureDriveTemplate.in textarea#registOldDrive"
+    SEL_TAKEOUT_PATH  = "div#addModifySecureZoneSecureDriveTemplate.in input#takeoutDrivePath"
+    SEL_TAKEOUT_LETTER= "div#addModifySecureZoneSecureDriveTemplate.in input#takeoutDriveLetter"
+    SEL_TAKEOUT_LABEL = "div#addModifySecureZoneSecureDriveTemplate.in input#takeoutDriveLabel"
+    SEL_TAKEOUT_QUOTA = "div#addModifySecureZoneSecureDriveTemplate.in input#takeoutDriveQuota"
+    SEL_ADD_DRIVE_BTN = "div#addModifySecureZoneSecureDriveTemplate.in button#addSecureDriveBtn"
+    SEL_TAKEOUT_HIDE  = "div#addModifySecureZoneSecureDriveTemplate.in input#isTakeoutDrivePathHide"
+
+    SEL_SUB        = "div#addSecureDrive.in"
+    SEL_SUB_LABEL  = "div#addSecureDrive.in input#secureDriveLabel"
+    SEL_SUB_LETTER = "div#addSecureDrive.in input#secureDriveLetter"
+    SEL_SUB_PATH   = "div#addSecureDrive.in input#secureDrivePath"
+    SEL_SUB_QTYPE_WRITE = "div#addSecureDrive.in input#secureDriveQuotaTypeWrite"
+    SEL_SUB_QTYPE_SYNC  = "div#addSecureDrive.in input#secureDriveQuotaTypeSync"
+    SEL_SUB_CLOSE  = ("div#addSecureDrive.in button:has-text('닫기'), "
+                      "div#addSecureDrive.in button[data-dismiss='modal']")
+
+    def column_headers(self) -> list[str]:
+        """리스트 컬럼 헤더 텍스트."""
+        return [h.inner_text().strip()
+                for h in self.page.locator("table thead th").all()
+                if h.inner_text().strip()]
+
+    def field_present(self, selector: str) -> bool:
+        return self.page.locator(selector).count() > 0
+
+    def open_sub_modal(self) -> None:
+        """메인 모달에서 시큐어드라이브 추가(addSecureDriveBtn) → 서브모달(addSecureDrive) 열림.
+        실측 2026-06-23: 정상 입력 후 '추가' 시 서브 자동 닫힘 / '닫기'로 메인 복귀(항목 미커밋)."""
+        with overlay_off(self.page):
+            self.page.locator(self.SEL_ADD_DRIVE_BTN).first.click(force=True)
+        self.page.locator(self.SEL_SUB).wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
+
+    def close_sub_modal(self) -> None:
+        """서브모달 '닫기' (항목 미커밋, 메인 모달 유지)."""
+        try:
+            with overlay_off(self.page):
+                self.page.locator(self.SEL_SUB_CLOSE).first.click(force=True, timeout=2000)
+            self.page.locator(self.SEL_SUB).wait_for(state="detached", timeout=self._TIMEOUT_MODAL)
+        except Exception:
+            pass
+
     def _close_all_modals(self) -> None:
         for _ in range(6):
             modals = self.page.locator(".modal-wrap.in, .modal.in")
