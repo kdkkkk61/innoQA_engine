@@ -263,6 +263,7 @@ def _get_pages(product_id: str) -> list[dict]:
             "common_control_suite":     "제어 스위트",
             "npouch_origin_protect":    "원본 보호 정책",
             "npouch_policy":            "nPouch 정책",
+            "secure_zone_template_secure_drive": "템플릿(시큐어드라이브)",
         }
         return [
             {"id": pid, "label": page_label.get(pid, pid)}
@@ -1027,6 +1028,7 @@ def finalize():
         "common_control_suite":     "제어 스위트",
         "npouch_origin_protect":    "원본 보호 정책",
         "npouch_policy":            "nPouch 정책",
+        "secure_zone_template_secure_drive": "템플릿(시큐어드라이브)",
     }.items()}
     for it in items:
         if not it.get("manual"):
