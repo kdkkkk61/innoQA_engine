@@ -271,6 +271,24 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         self.page.wait_for_timeout(150)
         return len(loc.input_value())
 
+    SEL_SUB_ADD = "div#addSecureDrive.in button:has-text('추가')"
+
+    def sub_add_message(self) -> str:
+        """서브모달 '추가' 클릭 → 경고 메시지 반환 + dismiss (서브 필수/경로형식 검증용).
+        정상이면 항목 커밋 후 서브 자동 닫힘 → '' 반환."""
+        with overlay_off(self.page):
+            self.page.locator(self.SEL_SUB_ADD).first.click(force=True)
+        self.page.wait_for_timeout(500)
+        msg = ""
+        if self.is_confirm_modal_visible():
+            try:
+                msg = self.get_modal_message()
+            except Exception:
+                msg = ""
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+        return msg
+
     def submit_and_message(self) -> str:
         """메인 '확인'(저장) 클릭 → 확인/경고 모달 메시지 반환 + dismiss. 성공 시 목록 복귀.
         sc2 필수검증(빈값→경고) / sc3 CRUD 공용."""

@@ -236,3 +236,57 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
                   + ("(잘림 — 클라 가드 동작)" if clamped else "[미적용 — 초과 입력됨]"), sc=2,
                   highlight=loc, repro=f"1. 이름에 {limit+5}자\n2. {limit}자로 잘리는지 확인")
         page._close_modal_if_open()
+
+    def test_scenario2h_sub_required_sequence(self, logged_in_page, settings):
+        """서브모달(시큐어드라이브 항목) '추가' 시 필수 순서 + 경로 형식 검증 (안쪽 검증)."""
+        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2h: 서브모달 필수 순서 + 경로 형식 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.open_add_modal()
+        page.open_sub_modal()
+        # 직접조작 확인(2026-06-23): 빈값→문자(라벨 별표 있으나 문자부터) / 문자→생성위치 / qwe→정상적인 경로
+        steps = [
+            (None,                              "시큐어드라이브 문자를 입력해 주세요.",   "빈값(라벨* 있어도 문자부터)"),
+            (("secureDriveLetter", "Q"),        "시큐어드라이브 생성위치를 입력해 주세요.", "+문자"),
+            (("secureDrivePath",   "qwe"),      "정상적인 경로를 입력해 주세요.",          "+생성위치 qwe(잘못된 경로)"),
+        ]
+        # 라벨은 먼저 채워둠(별표 필수 표기) — 그래도 문자부터 경고 뜨는지 확인
+        page.fill(page.SEL_SUB_LABEL, "lbl")
+        for fill, expect_sub, desc in steps:
+            if fill:
+                page.fill(f"{page.SEL_SUB} input#{fill[0]}", fill[1])
+            msg = page.sub_add_message()
+            hit = expect_sub in msg
+            self._add("pass" if hit else "fail",
+                      f"sc2h — 서브 필수/형식: {desc} → 경고",
+                      f"입력: {desc} 후 추가 / 결과: 경고={msg!r} (기대 포함 {expect_sub!r})", sc=2,
+                      repro=f"1. 서브모달 {desc}\n2. 추가 → 해당 경고 확인")
+        page._close_sub_if_open()
+        page._close_modal_if_open()
+
+    def test_scenario2i_takeout_path_format_consistency(self, logged_in_page, settings):
+        """반출드라이브 생성위치 경로 형식 검증 여부 — 서브모달 생성위치(있음)와 일관성.
+
+        직접조작(2026-06-23): 서브 생성위치는 'qwe'→"정상적인 경로" 차단. 반출 생성위치는 'qwe' 통과(미검증).
+        → 불일치(반출 경로 형식 검증 누락) 검출.
+        """
+        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2i: 반출 생성위치 경로 형식(서브와 일관성) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.open_add_modal()
+        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", "[AUTO]_sztpl_pathchk")
+        page.fill(page.SEL_TAKEOUT_PATH, "qwe")            # 잘못된 경로
+        page.fill(page.SEL_TAKEOUT_LETTER, "T")
+        page.fill(page.SEL_TAKEOUT_LABEL, "lbl")
+        page.fill(page.SEL_TAKEOUT_QUOTA, "1024")
+        msg = page.submit_and_message()
+        path_validated = "정상적인 경로" in msg
+        self._add("pass" if path_validated else "warn",
+                  "sc2i — 반출 생성위치 경로 형식 검증 (서브모달과 일관성)",
+                  f"입력: 반출경로='qwe'(잘못된 경로) 저장 / 결과: {msg!r} "
+                  + ("(형식 검증 있음 — 서브와 일관)"
+                     if path_validated else
+                     "[형식 검증 없음 — 서브모달 생성위치는 '정상적인 경로' 차단하나 반출경로는 통과, 불일치 결함]"),
+                  sc=2, highlight=page.page.locator(page.SEL_TAKEOUT_PATH),
+                  repro="1. 반출경로에 'qwe'(잘못된 경로)\n2. 저장\n3. 서브처럼 '정상적인 경로' 차단되는지(불일치)")
+        page._close_modal_if_open()
