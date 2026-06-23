@@ -15,6 +15,7 @@ sc2f — 필수 검증 1차: 빈값 제출 → 경고 떴는가
 sc2g — 글자수 제한: 이름 maxlength 초과 → 잘림
 """
 from pages.secure_zone_template_page import SecureZoneTemplateSecureDrivePage
+from pages.shared._overlay import overlay_off
 from tests.secure_zone_template._base import SecureZoneTemplateBase
 
 
@@ -201,30 +202,72 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
                       repro=f"1. {desc} 상태로 저장\n2. 해당 필수 필드 짚는 경고 확인")
         page._close_modal_if_open()
 
-    def test_scenario2g_maxlength_clamp(self, logged_in_page, settings):
-        """md: 글자수 제한 — 경계값+1 입력 → 실제 잘림 (maxlength 있는 필드)."""
-        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2g: 글자수 제한(이름) ━━━")
-        page = self._new_page(logged_in_page, settings)
-        page.navigate_to()
-        page.open_add_modal()
-        sel = f"{page.SEL_MODAL} {page.SEL_NAME}"
+    def _clamp_card(self, page, label, sel):
+        """maxlength 있는 필드: 경계값+5 타이핑 → 실제 잘림 확인 (md: maxlength 있는 모든 필드)."""
         loc = page.page.locator(sel).first
+        if loc.count() == 0:
+            self._add("skip", f"sc2g — '{label}' 글자수 제한", "대상 미존재", sc=2); return
         ml = loc.get_attribute("maxlength")
         try:
             limit = int(ml)
         except Exception:
-            limit = None
-        if limit is None:
-            self._add("pass", "sc2g — 이름 글자수 제한",
-                      "결과: maxlength 없음 — 서버 측 검증 의존(클램핑 검증 해당 없음)", sc=2)
-            page._close_modal_if_open(); return
+            self._add("pass", f"sc2g — '{label}' 글자수 제한",
+                      "결과: maxlength 없음 — 서버 측 검증 의존(클램핑 해당 없음)", sc=2); return
         actual = page.type_clamped(sel, "a" * (limit + 5))
         clamped = actual <= limit
         self._add("pass" if clamped else "fail",
-                  "sc2g — 이름 maxlength 초과 입력 시 잘림",
-                  f"입력: {limit+5}자 타이핑(maxlength={limit}) / 결과: 실제 {actual}자 "
+                  f"sc2g — '{label}' maxlength({limit}) 초과 입력 시 잘림",
+                  f"입력: {limit+5}자 타이핑 / 결과: 실제 {actual}자 "
                   + ("(잘림 — 클라 가드 동작)" if clamped else "[미적용 — 초과 입력됨]"), sc=2,
-                  highlight=loc, repro=f"1. 이름에 {limit+5}자\n2. {limit}자로 잘리는지 확인")
+                  highlight=loc, repro=f"1. {label}에 {limit+5}자\n2. {limit}자로 잘리는지 확인")
+
+    def test_scenario2g_maxlength_clamp(self, logged_in_page, settings):
+        """md: 글자수 제한 — maxlength 있는 '모든' 필드(메인 이름·반출4 + 서브 4) 경계값+1 입력 → 잘림."""
+        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2g: 글자수 제한(전 필드) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.open_add_modal()
+        for label, sel in [
+            ("템플릿 이름", f"{page.SEL_MODAL} {page.SEL_NAME}"),
+            ("반출 생성위치", page.SEL_TAKEOUT_PATH),
+            ("반출 문자", page.SEL_TAKEOUT_LETTER),
+            ("반출 라벨", page.SEL_TAKEOUT_LABEL),
+            ("반출 용량", page.SEL_TAKEOUT_QUOTA),
+        ]:
+            self._clamp_card(page, label, sel)
+        page.open_sub_modal()
+        for label, sel in [
+            ("서브 드라이브 라벨", page.SEL_SUB_LABEL),
+            ("서브 드라이브 문자", page.SEL_SUB_LETTER),
+            ("서브 생성위치", page.SEL_SUB_PATH),
+            ("서브 용량", f"{page.SEL_SUB} #secureDriveQuota"),
+        ]:
+            self._clamp_card(page, label, sel)
+        page.close_sub_modal()
+        page._close_modal_if_open()
+
+    def test_scenario2j_sub_quota_type_gating(self, logged_in_page, settings):
+        """서브모달 용량방식(WRITE/SYNC) 종속 — WRITE: 용량(MB) 보임 / SYNC: 숨김 (직접조작 확인 2026-06-23)."""
+        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2j: 용량방식 종속(WRITE/SYNC→용량) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.open_add_modal()
+        page.open_sub_modal()
+        quota = page.page.locator(f"{page.SEL_SUB} #secureDriveQuota").first
+        # default(WRITE) → 용량 보임
+        write_vis = quota.is_visible()
+        # SYNC → 용량 숨김
+        with overlay_off(page.page):
+            page.page.locator(page.SEL_SUB_QTYPE_SYNC).first.click(force=True)
+        page.page.wait_for_timeout(300)
+        sync_vis = quota.is_visible()
+        ok = (write_vis is True) and (sync_vis is False)
+        self._add("pass" if ok else "warn",
+                  "sc2j — 용량방식 종속: WRITE→용량 보임 / SYNC→용량 숨김",
+                  f"입력: 용량방식 전환 / 결과: WRITE 시 용량 visible={write_vis}, SYNC 시 visible={sync_vis} "
+                  "(기대: WRITE 보임/SYNC 숨김)", sc=2,
+                  repro="1. 서브모달\n2. 용량방식 WRITE→용량 보임\n3. SYNC 클릭→용량 숨김 확인")
+        page.close_sub_modal()
         page._close_modal_if_open()
 
     def test_scenario2h_sub_field_validation(self, logged_in_page, settings):
