@@ -167,20 +167,48 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
         page.close_sub_modal()
         page._close_modal_if_open()
 
-    def test_scenario2f_required_empty_warning(self, logged_in_page, settings):
-        """md: 필수 검증 1차 — 빈값 제출 → 경고 떴는가 (추정 금지)."""
-        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2f: 필수 검증 1차(빈값→경고) ━━━")
+    def test_scenario2f_required_submit_sequence(self, logged_in_page, settings):
+        """md: 필수 검증 1차 — 저장 누르며 '무엇을 입력하라'는 경고가 필드 순서대로 뜨는지.
+
+        직접조작 확인 순서(2026-06-23): 빈값→이름 / 이름→반출경로 / +경로→반출문자
+        / +문자→반출라벨 / +라벨→반출용량(최소100MB) / +용량→시큐어드라이브 등록.
+        각 단계 = 해당 필수 필드 미입력 시 그 필드를 짚는 경고가 뜨는가(추정 금지, 메시지 == 비교).
+        + 메시지에 raw i18n 키(COLUMN.NAME...) 노출 시 별도 버그 카드.
+        """
+        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2f: 필수 입력 순서(저장 시 경고 순서) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
+        self._ensure_session_cleanup(page)
         page.open_add_modal()
-        msg = page.submit_and_message()
-        warned = ("저장" not in msg) and bool(msg)
-        self._add("pass" if warned else "fail",
-                  "sc2f — 필수 빈값 제출 → 경고",
-                  f"입력: 전 필드 빈값 + 확인 / 결과: 경고={msg!r} "
-                  + ("(경고 떴음)" if warned else "[경고 없이 통과 — 클라 검증 누락]"), sc=2,
-                  highlight=page.page.locator(f"{page.SEL_MODAL} {page.SEL_NAME}"),
-                  repro="1. 추가 모달\n2. 빈값으로 확인\n3. 필수 경고 떴는지(추정 금지)")
+
+        # (직전에 채울 필드 id·값, 기대 경고 부분문자열, 단계 설명)
+        steps = [
+            (None,                            "템플릿 이름을 입력해 주세요.",            "전부 빈값"),
+            (("templateName", "[AUTO]_sztpl_seq"), "반출드라이브 생성위치를 입력해 주세요.", "이름만"),
+            (("takeoutDrivePath", "C:\\seq_to"),   "반출드라이브 문자를 입력해 주세요.",      "+반출경로"),
+            (("takeoutDriveLetter", "T"),          "반출드라이브 라벨을 입력해 주세요.",      "+반출문자"),
+            (("takeoutDriveLabel", "seqlbl"),      "용량",                                  "+반출라벨(용량 경고)"),
+            (("takeoutDriveQuota", "1024"),        "시큐어드라이브를 등록해 주세요.",         "+반출용량"),
+        ]
+        i18n_leak = []
+        for fill, expect_sub, desc in steps:
+            if fill:
+                page.fill(f"{page.SEL_MODAL} input#{fill[0]}", fill[1])
+            msg = page.submit_and_message()
+            if "COLUMN." in msg or "NAME." in msg:
+                i18n_leak.append((desc, msg))
+            hit = expect_sub in msg
+            self._add("pass" if hit else "fail",
+                      f"sc2f — 필수 순서: {desc} → 경고",
+                      f"입력: {desc} 후 저장 / 결과: 경고={msg!r} (기대 포함 {expect_sub!r})", sc=2,
+                      repro=f"1. {desc} 상태로 저장\n2. 해당 필수 필드 짚는 경고 확인")
+        # i18n 키 미번역(raw COLUMN.NAME...) 노출 = 제품 결함
+        self._add("pass" if not i18n_leak else "warn",
+                  "sc2f — 경고 메시지 i18n 키 미번역 노출 점검",
+                  "결과: " + ("raw 키 노출 없음" if not i18n_leak
+                              else f"미번역 키 노출 {len(i18n_leak)}건 {i18n_leak} "
+                                   "[버그: 사용자에게 COLUMN.NAME.* 원문 키가 보임 — 번역 누락]"),
+                  sc=2, repro="1. 필수 경고 메시지 확인\n2. COLUMN.NAME 같은 raw 키가 노출되는지")
         page._close_modal_if_open()
 
     def test_scenario2g_maxlength_clamp(self, logged_in_page, settings):
