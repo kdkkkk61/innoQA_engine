@@ -257,6 +257,25 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         except Exception:
             pass
 
+    def submit_and_message(self) -> str:
+        """메인 '확인'(저장) 클릭 → 확인/경고 모달 메시지 반환 + dismiss. 성공 시 목록 복귀.
+        sc2 필수검증(빈값→경고) / sc3 CRUD 공용."""
+        with overlay_off(self.page):
+            self.page.locator(self.SEL_SAVE_BTN).first.click(force=True)
+        self.page.wait_for_timeout(600)
+        msg = ""
+        if self.is_confirm_modal_visible():
+            try:
+                msg = self.get_modal_message()
+            except Exception:
+                msg = ""
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+        if (self.page.locator(self.SEL_ADD_BTN).count() > 0
+                and self.page.locator(self.SEL_MODAL).count() == 0):
+            self.wait_for(self.SEL_ADD_BTN)
+        return msg
+
     def _close_all_modals(self) -> None:
         for _ in range(6):
             modals = self.page.locator(".modal-wrap.in, .modal.in")
