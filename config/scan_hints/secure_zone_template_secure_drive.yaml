@@ -43,22 +43,22 @@ text_inputs:
     order:      20
   - selector:   "input#takeoutDrivePath"
     label:      "반출 생성위치"
-    maxlength:  null
+    maxlength:  300
     required:   true
     order:      30
   - selector:   "input#takeoutDriveLetter"
     label:      "반출 드라이브 문자"
-    maxlength:  null
+    maxlength:  100
     required:   true
     order:      31
   - selector:   "input#takeoutDriveLabel"
     label:      "반출 드라이브 라벨"
-    maxlength:  null
+    maxlength:  100
     required:   true
     order:      32
   - selector:   "input#takeoutDriveQuota"
     label:      "반출 드라이브 용량"
-    maxlength:  null
+    maxlength:  20
     required:   true
     order:      33
 
