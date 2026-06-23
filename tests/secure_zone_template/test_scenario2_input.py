@@ -237,56 +237,99 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
                   highlight=loc, repro=f"1. 이름에 {limit+5}자\n2. {limit}자로 잘리는지 확인")
         page._close_modal_if_open()
 
-    def test_scenario2h_sub_required_sequence(self, logged_in_page, settings):
-        """서브모달(시큐어드라이브 항목) '추가' 시 필수 순서 + 경로 형식 검증 (안쪽 검증)."""
-        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2h: 서브모달 필수 순서 + 경로 형식 ━━━")
+    def test_scenario2h_sub_field_validation(self, logged_in_page, settings):
+        """서브모달(시큐어드라이브 항목) 입력 검증 전수 — 필수 + 형식(문자 A-Z / 경로 / 용량 min).
+
+        직접조작(2026-06-23): 문자 빈값→"문자 입력"(라벨* 있어도 문자부터) / 문자 '1'→"A-Z 하나만"
+        / 경로 'qwe'→"정상적인 경로" / 용량 '50'(<100)→"시큐어드라이브...최소 100MB"(번역 정상).
+        """
+        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2h: 서브모달 입력 검증(필수+형식) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
         page.open_sub_modal()
-        # 직접조작 확인(2026-06-23): 빈값→문자(라벨 별표 있으나 문자부터) / 문자→생성위치 / qwe→정상적인 경로
-        steps = [
-            (None,                              "시큐어드라이브 문자를 입력해 주세요.",   "빈값(라벨* 있어도 문자부터)"),
-            (("secureDriveLetter", "Q"),        "시큐어드라이브 생성위치를 입력해 주세요.", "+문자"),
-            (("secureDrivePath",   "qwe"),      "정상적인 경로를 입력해 주세요.",          "+생성위치 qwe(잘못된 경로)"),
+        page.fill(page.SEL_SUB_LABEL, "lbl")  # 라벨 채워둠
+
+        # (필드 id, 넣을 값, 기대 경고 부분문자열, 단계 설명) — 매 추가 시 1개만 위반
+        cases = [
+            ("secureDriveLetter", "",    "시큐어드라이브 문자를 입력해 주세요.", "문자 빈값(필수)"),
+            ("secureDriveLetter", "1",   "A-Z",                                "문자 '1'(형식: A-Z 하나)"),
+            ("secureDriveLetter", "Q",   None,                                  None),  # 문자 정상화
+            ("secureDrivePath",   "qwe", "정상적인 경로를 입력해 주세요.",       "생성위치 'qwe'(경로 형식)"),
+            ("secureDrivePath",   "C:\\sdtest", None, None),                            # 경로 정상화
+            ("secureDriveQuota",  "50",  "100MB",                              "용량 '50'(min 100)"),
         ]
-        # 라벨은 먼저 채워둠(별표 필수 표기) — 그래도 문자부터 경고 뜨는지 확인
-        page.fill(page.SEL_SUB_LABEL, "lbl")
-        for fill, expect_sub, desc in steps:
-            if fill:
-                page.fill(f"{page.SEL_SUB} input#{fill[0]}", fill[1])
+        for fid, val, expect_sub, desc in cases:
+            page.fill(f"{page.SEL_SUB} input#{fid}", val)
+            if desc is None:
+                continue  # 값 정상화만(검증 안 함)
             msg = page.sub_add_message()
             hit = expect_sub in msg
             self._add("pass" if hit else "fail",
-                      f"sc2h — 서브 필수/형식: {desc} → 경고",
+                      f"sc2h — 서브 {desc} → 경고",
                       f"입력: {desc} 후 추가 / 결과: 경고={msg!r} (기대 포함 {expect_sub!r})", sc=2,
-                      repro=f"1. 서브모달 {desc}\n2. 추가 → 해당 경고 확인")
+                      repro=f"1. 서브모달 {desc}\n2. 추가 → 경고 확인")
         page._close_sub_if_open()
         page._close_modal_if_open()
 
-    def test_scenario2i_takeout_path_format_consistency(self, logged_in_page, settings):
-        """반출드라이브 생성위치 경로 형식 검증 여부 — 서브모달 생성위치(있음)와 일관성.
+    def test_scenario2i_takeout_validation_gaps(self, logged_in_page, settings):
+        """반출드라이브 필드 형식 검증 — 서브모달엔 있는 검증이 반출엔 누락(불일치) + 용량 i18n 키 미번역.
 
-        직접조작(2026-06-23): 서브 생성위치는 'qwe'→"정상적인 경로" 차단. 반출 생성위치는 'qwe' 통과(미검증).
-        → 불일치(반출 경로 형식 검증 누락) 검출.
+        직접조작(2026-06-23): 서브는 문자 A-Z·경로 형식 검증하나 반출은 '1'/'qwe' 통과(형식 검증 없음).
+        반출 용량 경고는 'COLUMN.NAME.TAKEOUT_DRIVE_QUOTA' raw 키 노출(서브는 '시큐어드라이브'로 번역됨).
         """
-        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2i: 반출 생성위치 경로 형식(서브와 일관성) ━━━")
+        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2i: 반출드라이브 형식 검증 누락 + i18n ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
+
+        # ① 반출 경로 형식 — 'qwe' 차단되는가 (서브는 차단)
         page.open_add_modal()
-        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", "[AUTO]_sztpl_pathchk")
-        page.fill(page.SEL_TAKEOUT_PATH, "qwe")            # 잘못된 경로
+        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", "[AUTO]_sztpl_v")
+        page.fill(page.SEL_TAKEOUT_PATH, "qwe")
         page.fill(page.SEL_TAKEOUT_LETTER, "T")
         page.fill(page.SEL_TAKEOUT_LABEL, "lbl")
         page.fill(page.SEL_TAKEOUT_QUOTA, "1024")
-        msg = page.submit_and_message()
-        path_validated = "정상적인 경로" in msg
-        self._add("pass" if path_validated else "warn",
-                  "sc2i — 반출 생성위치 경로 형식 검증 (서브모달과 일관성)",
-                  f"입력: 반출경로='qwe'(잘못된 경로) 저장 / 결과: {msg!r} "
-                  + ("(형식 검증 있음 — 서브와 일관)"
-                     if path_validated else
-                     "[형식 검증 없음 — 서브모달 생성위치는 '정상적인 경로' 차단하나 반출경로는 통과, 불일치 결함]"),
+        msg_path = page.submit_and_message()
+        path_ok = "정상적인 경로" in msg_path
+        self._add("pass" if path_ok else "warn",
+                  "sc2i — 반출 생성위치 경로 형식 검증",
+                  f"입력: 반출경로='qwe' 저장 / 결과: {msg_path!r} "
+                  + ("(형식 검증 있음)" if path_ok else
+                     "[형식 검증 없음 — 서브 생성위치는 '정상적인 경로' 차단하나 반출은 통과, 불일치]"),
                   sc=2, highlight=page.page.locator(page.SEL_TAKEOUT_PATH),
-                  repro="1. 반출경로에 'qwe'(잘못된 경로)\n2. 저장\n3. 서브처럼 '정상적인 경로' 차단되는지(불일치)")
+                  repro="1. 반출경로 'qwe'\n2. 저장\n3. '정상적인 경로' 차단되는지")
+        page._close_modal_if_open()
+
+        # ② 반출 문자 형식 — '1' 차단되는가 (서브는 A-Z 차단)
+        page.navigate_to(); page.open_add_modal()
+        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", "[AUTO]_sztpl_v")
+        page.fill(page.SEL_TAKEOUT_PATH, "C:\\to")
+        page.fill(page.SEL_TAKEOUT_LETTER, "1")
+        msg_letter = page.submit_and_message()
+        letter_ok = "A-Z" in msg_letter
+        self._add("pass" if letter_ok else "warn",
+                  "sc2i — 반출 드라이브 문자 형식 검증(A-Z)",
+                  f"입력: 반출문자='1' 저장 / 결과: {msg_letter!r} "
+                  + ("(형식 검증 있음)" if letter_ok else
+                     "[형식 검증 없음 — 서브 문자는 'A-Z 하나' 차단하나 반출은 통과, 불일치]"),
+                  sc=2, highlight=page.page.locator(page.SEL_TAKEOUT_LETTER),
+                  repro="1. 반출문자 '1'\n2. 저장\n3. 'A-Z' 차단되는지")
+        page._close_modal_if_open()
+
+        # ③ 반출 용량 경고 i18n 키 미번역 (서브는 번역됨)
+        page.navigate_to(); page.open_add_modal()
+        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", "[AUTO]_sztpl_v")
+        page.fill(page.SEL_TAKEOUT_PATH, "C:\\to")
+        page.fill(page.SEL_TAKEOUT_LETTER, "T")
+        page.fill(page.SEL_TAKEOUT_LABEL, "lbl")
+        page.fill(page.SEL_TAKEOUT_QUOTA, "50")  # min 미만 → 용량 경고
+        msg_quota = page.submit_and_message()
+        leaked = "COLUMN." in msg_quota or "NAME." in msg_quota
+        self._add("warn" if leaked else "pass",
+                  "sc2i — 반출 용량 경고 i18n 키 번역",
+                  f"입력: 반출용량='50'(min 미만) 저장 / 결과: {msg_quota!r} "
+                  + ("[버그: raw i18n 키(COLUMN.NAME.*) 노출 — 서브는 '시큐어드라이브'로 번역됨]"
+                     if leaked else "(정상 번역)"),
+                  sc=2, highlight=page.page.locator(page.SEL_TAKEOUT_QUOTA),
+                  repro="1. 반출용량 '50'\n2. 저장\n3. 경고에 COLUMN.NAME raw 키 노출되는지")
         page._close_modal_if_open()
