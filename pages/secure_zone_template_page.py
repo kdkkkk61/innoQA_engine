@@ -289,6 +289,24 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
             self.wait_for_modal_closed()
         return msg
 
+    def submit_no_dismiss(self) -> str:
+        """메인 '확인' 클릭 → 경고 메시지 반환하되 '닫지 않고 둠'(경고 떠 있는 채 스크린샷용).
+        이후 호출자가 dismiss_confirm() 로 닫아야 함."""
+        with overlay_off(self.page):
+            self.page.locator(self.SEL_SAVE_BTN).first.click(force=True)
+        self.page.wait_for_timeout(600)
+        if self.is_confirm_modal_visible():
+            try:
+                return self.get_modal_message()
+            except Exception:
+                return ""
+        return ""
+
+    def dismiss_confirm(self) -> None:
+        if self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).count() > 0:
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+
     def submit_and_message(self) -> str:
         """메인 '확인'(저장) 클릭 → 확인/경고 모달 메시지 반환 + dismiss. 성공 시 목록 복귀.
         sc2 필수검증(빈값→경고) / sc3 CRUD 공용."""

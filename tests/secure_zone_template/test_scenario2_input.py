@@ -190,25 +190,15 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
             (("takeoutDriveLabel", "seqlbl"),      "용량",                                  "+반출라벨(용량 경고)"),
             (("takeoutDriveQuota", "1024"),        "시큐어드라이브를 등록해 주세요.",         "+반출용량"),
         ]
-        i18n_leak = []
         for fill, expect_sub, desc in steps:
             if fill:
                 page.fill(f"{page.SEL_MODAL} input#{fill[0]}", fill[1])
             msg = page.submit_and_message()
-            if "COLUMN." in msg or "NAME." in msg:
-                i18n_leak.append((desc, msg))
             hit = expect_sub in msg
             self._add("pass" if hit else "fail",
                       f"sc2f — 필수 순서: {desc} → 경고",
                       f"입력: {desc} 후 저장 / 결과: 경고={msg!r} (기대 포함 {expect_sub!r})", sc=2,
                       repro=f"1. {desc} 상태로 저장\n2. 해당 필수 필드 짚는 경고 확인")
-        # i18n 키 미번역(raw COLUMN.NAME...) 노출 = 제품 결함
-        self._add("pass" if not i18n_leak else "warn",
-                  "sc2f — 경고 메시지 i18n 키 미번역 노출 점검",
-                  "결과: " + ("raw 키 노출 없음" if not i18n_leak
-                              else f"미번역 키 노출 {len(i18n_leak)}건 {i18n_leak} "
-                                   "[버그: 사용자에게 COLUMN.NAME.* 원문 키가 보임 — 번역 누락]"),
-                  sc=2, repro="1. 필수 경고 메시지 확인\n2. COLUMN.NAME 같은 raw 키가 노출되는지")
         page._close_modal_if_open()
 
     def test_scenario2g_maxlength_clamp(self, logged_in_page, settings):
@@ -272,64 +262,30 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
         page.close_sub_modal()
         page._close_modal_if_open()
 
-    def test_scenario2i_takeout_validation_gaps(self, logged_in_page, settings):
-        """반출드라이브 필드 형식 검증 — 서브모달엔 있는 검증이 반출엔 누락(불일치) + 용량 i18n 키 미번역.
+    def test_scenario2i_takeout_quota_i18n(self, logged_in_page, settings):
+        """반출 용량 경고 메시지 i18n 키 미번역 — 경고 떠 있는 채 캡처(어디가 문제인지 보이게).
 
-        직접조작(2026-06-23): 서브는 문자 A-Z·경로 형식 검증하나 반출은 '1'/'qwe' 통과(형식 검증 없음).
-        반출 용량 경고는 'COLUMN.NAME.TAKEOUT_DRIVE_QUOTA' raw 키 노출(서브는 '시큐어드라이브'로 번역됨).
+        직접조작(2026-06-23): 반출 용량 < 100 저장 시 경고가 'COLUMN.NAME.TAKEOUT_DRIVE_QUOTA의
+        입력 가능 용량은 최소 100MB...' — raw i18n 키 노출(서브모달 용량 경고는 '시큐어드라이브...'로 번역됨).
+        ※ 반출 경로/문자 형식 검증 누락(서브엔 있음)은 '전부 유효+저장' 으로 확인해야 확실 → sc3(CRUD).
         """
-        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2i: 반출드라이브 형식 검증 누락 + i18n ━━━")
+        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2i: 반출 용량 경고 i18n 키 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
-
-        # ① 반출 경로 형식 — 'qwe' 차단되는가 (서브는 차단)
         page.open_add_modal()
-        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", "[AUTO]_sztpl_v")
-        page.fill(page.SEL_TAKEOUT_PATH, "qwe")
-        page.fill(page.SEL_TAKEOUT_LETTER, "T")
-        page.fill(page.SEL_TAKEOUT_LABEL, "lbl")
-        page.fill(page.SEL_TAKEOUT_QUOTA, "1024")
-        msg_path = page.submit_and_message()
-        path_ok = "정상적인 경로" in msg_path
-        self._add("pass" if path_ok else "warn",
-                  "sc2i — 반출 생성위치 경로 형식 검증",
-                  f"입력: 반출경로='qwe' 저장 / 결과: {msg_path!r} "
-                  + ("(형식 검증 있음)" if path_ok else
-                     "[형식 검증 없음 — 서브 생성위치는 '정상적인 경로' 차단하나 반출은 통과, 불일치]"),
-                  sc=2, highlight=page.page.locator(page.SEL_TAKEOUT_PATH),
-                  repro="1. 반출경로 'qwe'\n2. 저장\n3. '정상적인 경로' 차단되는지")
-        page._close_modal_if_open()
-
-        # ② 반출 문자 형식 — '1' 차단되는가 (서브는 A-Z 차단)
-        page.navigate_to(); page.open_add_modal()
-        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", "[AUTO]_sztpl_v")
-        page.fill(page.SEL_TAKEOUT_PATH, "C:\\to")
-        page.fill(page.SEL_TAKEOUT_LETTER, "1")
-        msg_letter = page.submit_and_message()
-        letter_ok = "A-Z" in msg_letter
-        self._add("pass" if letter_ok else "warn",
-                  "sc2i — 반출 드라이브 문자 형식 검증(A-Z)",
-                  f"입력: 반출문자='1' 저장 / 결과: {msg_letter!r} "
-                  + ("(형식 검증 있음)" if letter_ok else
-                     "[형식 검증 없음 — 서브 문자는 'A-Z 하나' 차단하나 반출은 통과, 불일치]"),
-                  sc=2, highlight=page.page.locator(page.SEL_TAKEOUT_LETTER),
-                  repro="1. 반출문자 '1'\n2. 저장\n3. 'A-Z' 차단되는지")
-        page._close_modal_if_open()
-
-        # ③ 반출 용량 경고 i18n 키 미번역 (서브는 번역됨)
-        page.navigate_to(); page.open_add_modal()
-        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", "[AUTO]_sztpl_v")
+        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", "[AUTO]_sztpl_i18n")
         page.fill(page.SEL_TAKEOUT_PATH, "C:\\to")
         page.fill(page.SEL_TAKEOUT_LETTER, "T")
         page.fill(page.SEL_TAKEOUT_LABEL, "lbl")
-        page.fill(page.SEL_TAKEOUT_QUOTA, "50")  # min 미만 → 용량 경고
-        msg_quota = page.submit_and_message()
-        leaked = "COLUMN." in msg_quota or "NAME." in msg_quota
+        page.fill(page.SEL_TAKEOUT_QUOTA, "50")          # min 100 미만 → 용량 경고
+        msg = page.submit_no_dismiss()                    # 경고 닫지 않고 둠(캡처용)
+        leaked = "COLUMN." in msg or "NAME." in msg
         self._add("warn" if leaked else "pass",
                   "sc2i — 반출 용량 경고 i18n 키 번역",
-                  f"입력: 반출용량='50'(min 미만) 저장 / 결과: {msg_quota!r} "
-                  + ("[버그: raw i18n 키(COLUMN.NAME.*) 노출 — 서브는 '시큐어드라이브'로 번역됨]"
+                  f"입력: 반출용량='50'(min 미만) 저장 / 결과 경고: {msg!r} "
+                  + ("[버그: raw i18n 키(COLUMN.NAME.TAKEOUT_DRIVE_QUOTA) 노출 — 서브는 '시큐어드라이브'로 번역됨]"
                      if leaked else "(정상 번역)"),
-                  sc=2, highlight=page.page.locator(page.SEL_TAKEOUT_QUOTA),
-                  repro="1. 반출용량 '50'\n2. 저장\n3. 경고에 COLUMN.NAME raw 키 노출되는지")
+                  sc=2, highlight=page.page.locator(page.SEL_CONFIRM_MODAL_OPENED),
+                  repro="1. 반출용량 '50'\n2. 저장\n3. 경고 팝업에 COLUMN.NAME raw 키 노출되는지")
+        page.dismiss_confirm()
         page._close_modal_if_open()
