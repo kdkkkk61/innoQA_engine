@@ -1,156 +1,131 @@
-# 시큐어존 템플릿 — 시큐어 드라이브 탭 : 수집 내용 + 테스트 방향성 기록
+# 시큐어존 템플릿 — 시큐어 드라이브 탭 : 방식 B (list_page + sc0 UIScanner)
 #
-# ⚠️ 이 파일은 UIScanner 구동용(yaml-driven 자동검증)이 아니라 "기록/참조용"이다.
-#    (서브모달·2단계 구조라 modal_form 단일모달 전제의 yaml-driven 스캔이 안 맞음 — 사용자 결정 2026-06-23)
-#    용도: ① 직접조작으로 수집한 요소를 적어두고 ② 시나리오별 '놓치면 안 되는 테스트 방향'을 적어둠.
-#    테스트 코드는 최근 패턴(클래스 기반 + 직접조작 검증 + 속성-확인)으로 한 시나리오씩 작성.
+# sc0(UIScanner phase=2)의 yaml↔DOM diff 입력 + 참조 메모.
+# 메인 ADD 모달(addModifySecureZoneSecureDriveTemplate)을 스캔.
+# ⚠️ 시큐어드라이브 항목은 '서브모달(addSecureDrive)'에 있어 메인 모달 스캔엔 안 잡힘 → 수동 sc2/sc3 에서 검증.
+#    (서브모달 필드는 아래 sub_modal_ref 에 참조로만 기록 — UIScanner 자동 스캔 대상 아님)
 #
 # 수집: Chrome MCP 직접조작 (2026-06-23, 콘솔 192.168.13.141)
 
-page:
-  id: "secure_zone_template_secure_drive"
-  menu: "managerAppSetting > a.managerSecureZone > managerSecureZoneTemplate"
-  url_hash: "#!/managerSecureZoneTemplate?...&selectedTab=SECURE_DRIVE"
-  tab: "시큐어 드라이브 (selectedTab=SECURE_DRIVE)"
-  type: "list_page + 메인모달 + 서브모달 (2단계)"
-  confirmed: true
-  confirmed_date: "2026-06-23"
+page_id: "secure_zone_template_secure_drive"
+modal_id: "addModifySecureZoneSecureDriveTemplate"
+scan_mode: "list_page"
+detect_hidden: true   # 변경사항(숨김) 감지 opt-in — discovered_hidden (nPouch sc0 패턴)
 
-# ── 리스트 ────────────────────────────────────────────────────────────
-list:
-  toolbar:
-    add:    "button#addItemBtn"      # 템플릿 추가
-    modify: "button#modifyItemBtn"   # 수정
-    copy:   "button#copyItemBtn"     # 복사
-    delete: "button#removeItemBtn"   # 삭제
-  columns: ["템플릿 이름", "시큐어드라이브 정보", "반출드라이브 정보", "등록일", "수정일"]
-  row_select: "행 클릭(tActive). el.click() 무반응 → mousedown/up/click 디스패치 or Playwright click(force)"
-  detail_open: "행 td[1] 더블클릭 → 속성(상세) 모달"
+# 모달 진입점
+modal_trigger:
+  add:    "button#addItemBtn"
+  modify: "button#modifyItemBtn"
 
-# ── 메인 모달 (ADD/EDIT 공용) ─────────────────────────────────────────
-main_modal:
-  id: "addModifySecureZoneSecureDriveTemplate"
-  title: "시큐어존 시큐어드라이브 추가/수정"
-  save_button: "확인"            # btn-primary 아님, 텍스트 '확인'
-  close_button: "닫기 / ×"
-  fields:
-    - id: templateName
-      label: "템플릿 이름"
-      type: text
-      required: true
-      maxlength_dom: 100
-    - id: isRegistEcmDrive
-      label: "ECM드라이브 연동"
-      type: checkbox
-      default: false
-    - id: registOldDrive
-      label: "예외 드라이브(문자, ; 구분)"
-      type: textarea
-    # 반출드라이브 설정 (필수 묶음)
-    - id: takeoutDrivePath
-      label: "반출 생성위치"
-      type: text
-      required: true
-    - id: isTakeoutDrivePathHide
-      label: "반출 폴더 숨김"
-      type: checkbox
-      default: false
-    - id: takeoutDriveLetter
-      label: "반출 드라이브 문자"
-      type: text
-      required: true
-    - id: takeoutDriveLabel
-      label: "반출 드라이브 라벨"
-      type: text
-      required: true
-    - id: takeoutDriveQuota
-      label: "반출 드라이브 용량"
-      type: text
-      required: true
-  add_secure_drive_button: "button#addSecureDriveBtn"   # → 서브모달
+# 필수 입력 순서 (메인 모달, Chrome MCP 실측 2026-06-23)
+#   빈 제출 → "템플릿 이름을 입력해 주세요."
+#   이름+시큐어드라이브만(반출 빈값) → "반출드라이브 생성위치를 입력해 주세요."
+required_submit_sequence:
+  - step:                1
+    description:         "아무것도 입력 안 함"
+    fill:               []
+    expected_msg:       "템플릿 이름을 입력해 주세요."
+    missing_field:      "templateName"
+    missing_field_label: "템플릿 이름"
 
-# ── 서브 모달 (시큐어드라이브 항목, N건) — 이 탭의 핵심 ───────────────
-sub_modal:
+# 텍스트 입력 (메인 모달)
+text_inputs:
+  - selector:   "input#templateName"
+    label:      "템플릿 이름"
+    maxlength:  100
+    required:   true
+    test_value: "[AUTO]_sztpl_sd_t"
+    order:      10
+  - selector:   "textarea#registOldDrive"
+    label:      "예외 드라이브(문자, ; 구분)"
+    maxlength:  null      # DOM 제한 없음 — 서버측
+    required:   false
+    order:      20
+  - selector:   "input#takeoutDrivePath"
+    label:      "반출 생성위치"
+    maxlength:  null
+    required:   true
+    order:      30
+  - selector:   "input#takeoutDriveLetter"
+    label:      "반출 드라이브 문자"
+    maxlength:  null
+    required:   true
+    order:      31
+  - selector:   "input#takeoutDriveLabel"
+    label:      "반출 드라이브 라벨"
+    maxlength:  null
+    required:   true
+    order:      32
+  - selector:   "input#takeoutDriveQuota"
+    label:      "반출 드라이브 용량"
+    maxlength:  null
+    required:   true
+    order:      33
+
+# 체크박스 (메인 모달, 단독 — 종속 필드 없음)
+plain_checkboxes:
+  - selector: "input#isRegistEcmDrive"
+    label:    "ECM드라이브 연동"
+    default:  false
+    order:    40
+  - selector: "input#isTakeoutDrivePathHide"
+    label:    "반출 폴더 숨김"
+    default:  false
+    order:    41
+
+# 모달 액션 (저장 = '확인' 텍스트 버튼, btn-primary 아님)
+modal_actions:
+  submit_add:    "div#addModifySecureZoneSecureDriveTemplate.in button:has-text('확인')"
+  submit_modify: "div#addModifySecureZoneSecureDriveTemplate.in button:has-text('확인')"
+  close:         "div#addModifySecureZoneSecureDriveTemplate.in button:has-text('닫기')"
+
+# ── 서브모달 참조 (UIScanner 스캔 대상 아님 — 수동 sc2/sc3 검증) ──────────
+# addSecureDriveBtn → addSecureDrive 모달. '추가' 시 항목을 메인 리스트에 커밋 + 서브 자동 닫힘(실측).
+sub_modal_ref:
   id: "addSecureDrive"
-  title: "시큐어드라이브 추가/수정"
-  behavior: "'추가' 시 정상이면 항목을 메인 리스트에 커밋 + 서브모달 자동 닫힘 (실측 2026-06-23)"
-  buttons: ["×", "추가", "닫기"]
+  trigger: "div#addModifySecureZoneSecureDriveTemplate.in button#addSecureDriveBtn"
   fields:
-    - id: secureDriveLabel
-      label: "드라이브 라벨"
-      type: text
-      required: true
-    - id: secureDriveLetter
-      label: "드라이브 문자"
-      type: text
-      required: true
-    - id: secureDrivePath
-      label: "생성위치"
-      type: text
-      required: true
-    - id: isSecureDrivePathHide
-      label: "생성위치 숨김"
-      type: checkbox
-    - id: isSystemDriveWarningQuota
-      label: "용량부족 경고"
-      type: checkbox
-      dependent: "systemDriveWarningQuota (경고 ON 시 입력)"
-    - id: systemDriveWarningQuota
-      label: "경고 용량(GB)"
-      type: text
-    - id: secureDriveQuotaTypeWrite
-      label: "용량 방식 — 직접입력(WRITE)"
-      type: radio
-      group: "용량 방식(필수)"
-      dependent: "secureDriveQuota (WRITE 시 입력)"
-    - id: secureDriveQuotaTypeSync
-      label: "용량 방식 — 잔여용량 동기화(SYNC)"
-      type: radio
-      group: "용량 방식(필수)"
-    - id: secureDriveQuota
-      label: "용량(MB)"
-      type: text
-    - id: description
-      label: "설명"
-      type: textarea
+    - {id: secureDriveLabel,  label: "드라이브 라벨",   required: true}
+    - {id: secureDriveLetter, label: "드라이브 문자",   required: true}
+    - {id: secureDrivePath,   label: "생성위치",        required: true}
+    - {id: isSecureDrivePathHide,       label: "생성위치 숨김",  type: checkbox}
+    - {id: isSystemDriveWarningQuota,   label: "용량부족 경고",  type: checkbox, dependent: systemDriveWarningQuota}
+    - {id: systemDriveWarningQuota,     label: "경고 용량(GB)",  type: text}
+    - {id: secureDriveQuotaTypeWrite,   label: "용량방식 직접입력(WRITE)", type: radio, group: 용량방식, dependent: secureDriveQuota}
+    - {id: secureDriveQuotaTypeSync,    label: "용량방식 잔여동기화(SYNC)", type: radio, group: 용량방식}
+    - {id: secureDriveQuota, label: "용량(MB)", type: text}
+    - {id: description,      label: "설명",     type: textarea}
 
-# ── 속성(상세) 모달 — 읽기전용 ────────────────────────────────────────
-detail_modal:
+# ── 속성(상세) 모달 참조 (sc5 표시검증용) ────────────────────────────────
+detail_modal_ref:
   id: "detailSecureZoneTemplate"
-  title: "템플릿 상세정보 보기"
   open: "행 td[1] 더블클릭"
   readonly: true
-  note: "대부분의 값을 '텍스트'로 표시. input 은 체크박스 2개(isRegistEcmDrive/isTakeoutDrivePathHide)뿐
-         → sc5 속성-확인은 입력칸이 아니라 모달 텍스트 포함 여부로 대조."
+  note: "대부분 텍스트 표시. input 은 체크박스 2개(isRegistEcmDrive/isTakeoutDrivePathHide)뿐 → 값은 모달 텍스트로 대조."
 
-# ── 저장 동작 / 메시지 (실측) ─────────────────────────────────────────
+# ── 저장 규칙 / 메시지 (실측) ────────────────────────────────────────────
 save_rules:
   required_for_save: "이름 + 시큐어드라이브 항목 ≥1(서브) + 반출드라이브 4필드"
   messages:
-    empty_name:    "템플릿 이름을 입력해 주세요."          # 전 필드 빈값 제출
-    no_takeout:    "반출드라이브 생성위치를 입력해 주세요."  # 이름+시큐어드라이브만, 반출 빈값
-    success:       "저장 하였습니다."
+    success: "저장 하였습니다."
 
-# ── 방향성: 시나리오별 놓치면 안 되는 테스트 (표준 + 이 페이지 특이점) ──
-# 표준(docs/test_scenario_standard.md): 한 시나리오씩 직접조작 + 실행확인. 추정 금지.
+# ── 명명 / cleanup 라이프사이클 (방식 B + 연계) ─────────────────────────
+# 템플릿은 시큐어존 정책이 참조(연계) → [AUTO_<날짜>] KEEP 항목을 남겨 정책 테스트가 참조.
+naming:
+  volatile: "[AUTO]_sztpl_sd..."        # 휘발성 — sc5c cleanup 대상
+  keep:     "[AUTO_0623]_sztpl_sd..."   # KEEP(연계용) — sc5c 보존, sc1 시작 시에만 전체 삭제
+cleanup_lifecycle:
+  sc1_start: "delete_all_test_data() — [AUTO]_ + [AUTO_<날짜>]_ 둘 다 (clean slate)"
+  sc2_3_4:   "cleanup 없음 (재사용)"
+  sc5c:      "delete_all_auto() — [AUTO]_ 만, [AUTO_<날짜>]_ 보존(연계)"
+  sc6:       "TBD — [AUTO_<날짜>]_ 연계 또는 단일 정리"
+
+# ── 시나리오별 방향성 (놓치면 안 될 테스트) ──────────────────────────────
 test_directions:
-  sc1_ui:
-    - "툴바 4버튼 / 리스트 컬럼 / 메인모달·서브모달 열림닫힘"
-    - "(list_page 라 yaml-driven DOM↔yaml 자동스캔 대신 수동 구조 확인)"
-  sc2_input:
-    - "입력 검증 동작(1차): 필수 빈값 제출 → 경고 떴는가 (Yes=pass). 추정 금지."
-    - "이름 maxlength(=100 실측) / default(이름 빈값, 체크박스 OFF, 용량방식 미선택)"
-    - "필수 별표(*) 마커 — 이름/반출4/서브 label·letter·path·용량방식"
-  sc3_action:
-    - "정상 생성(이름+시큐어드라이브1+반출) → 목록 등록"
-    - "★핵심: 서브모달로 시큐어드라이브 항목 N건 추가 → 메인 리스트 반영 (WRITE/SYNC 둘 다)"
-    - "이름 중복 차단 / 반출 누락 차단 / 빈값 차단"
-    - "서브 항목 삭제(제거) / 용량 방식 WRITE↔SYNC 종속 필드(quota) gating"
-  sc4_modify:
-    - "저장값 로드 → 수정 → 재확인 (sc3 전 영역 미러)"
-    - "4-3 위반입력 결과: 중복 rename 차단 / 빈값 이름 등"
-    - "서브 항목 추가/삭제가 수정에도 반영"
-  sc5_lifecycle:
-    - "속성-확인 법칙: 추가 → 수정모달 확인(저장 기준) → 속성모달 확인(표시 검증, 텍스트 대조)"
-    - "전 필드 채워 저장 → round-trip / cleanup 소유([AUTO] 일괄 삭제)"
-  sc6_suite: "TBD (연계 대상 여부 미정)"
+  sc0: "UIScanner phase=2 — 메인 모달 yaml↔DOM 3종 변경감지(추가/삭제/숨김) + 명세 UI 자동검증"
+  sc1: "툴바4 / 컬럼 / 메인·서브모달 열림닫힘 + sc1 시작 cleanup"
+  sc2: "입력검증 동작(필수 빈값→경고, 추정금지) / maxlength(이름100) / default / 필수별표"
+  sc3: "정상생성 / ★서브모달 시큐어드라이브 N건 추가(WRITE·SYNC) → 메인 리스트 / 중복 / 반출필수 / 항목삭제 / 용량방식 종속"
+  sc4: "저장값 로드→수정→재확인(sc3 미러) / 4-3 위반입력 결과"
+  sc5: "속성-확인(추가→수정확인→속성표시검증, 텍스트대조) / [AUTO] cleanup, [AUTO_<날짜>] 보존"
+  sc6: "TBD"
