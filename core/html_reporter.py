@@ -657,14 +657,14 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .page-label { font-size: 15px; font-weight: 600; margin: 20px 0 10px; color: #1e3a5f; }
 
 /* 결과 테이블 */
-.result-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.result-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .result-table th { background: #f0f4f8; padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #ddd; }
-.result-table td { padding: 9px 12px; border-bottom: 1px solid #eee; vertical-align: top; }
+.result-table td { padding: 9px 12px; border-bottom: 1px solid #eee; vertical-align: top; word-break: keep-all; overflow-wrap: anywhere; }
 /* tr:hover 하얘지는 효과 제거 (사용자 요청 2026-05-29 — 가독성 향상) */
-.col-label    { width: 40%; }
-.col-status   { width: 10%; text-align: center; white-space: nowrap; }
-.col-expected { width: 22%; font-size: 12px; color: #555; }
-.col-actual   { width: 28%; font-size: 12px; color: #555; }
+.col-label    { width: 44%; }
+.col-status   { width: 9%; text-align: center; white-space: nowrap; }
+.col-expected { width: 23%; font-size: 12px; color: #555; }
+.col-actual   { width: 24%; font-size: 12px; color: #555; }
 .row-bug-high td { background: #fff8f8; }
 .row-bug-low td  { background: #fffdf0; }
 .row-error td    { background: #fdf0ff; }
