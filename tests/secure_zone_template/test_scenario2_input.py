@@ -151,11 +151,7 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
             self._add("warn", "sc2e — 이름 글자수 제한",
                       "결과: maxlength 속성 없음 — 클라 클램핑 검증 불가(서버검증 의존)", sc=2)
             page._close_modal_if_open(); return
-        loc.click()
-        loc.fill("")
-        loc.press_sequentially("a" * (limit + 5), delay=2)
-        page.page.wait_for_timeout(200)
-        actual = len(loc.input_value())
+        actual = page.type_clamped(sel, "a" * (limit + 5))
         clamped = actual <= limit
         self._add("pass" if clamped else "fail",
                   "sc2e — 이름 maxlength 초과 입력 시 잘림",

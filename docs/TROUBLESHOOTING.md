@@ -2036,3 +2036,14 @@
 - **파일**: `pages/secure_zone_template_page.py` (`add_secure_drive`)
 
 상태: [RESOLVED] (재실행 검증은 사용자 pytest 재실행 대기)
+
+---
+
+## [2026-06-23] 시큐어존 템플릿 sc2e 글자수 제한 — overlay 막혀 raw click 타임아웃
+
+- **증상**: sc2e(이름 maxlength 초과 입력) FAIL — `Locator.click: Timeout 5000ms`. (나머지 sc0/1/2 PASS)
+- **근본 원인**: 클램핑 검증에 press_sequentially(실타이핑) 쓰려고 `loc.click()` 으로 focus 시도 → qa-block-overlay(pointer-events:all, z-index 99998)가 클릭 가로채 actionability 타임아웃. overlay_off/force 누락(테스트 코드 버그, 제품 무관).
+- **수정**: page 객체에 `type_clamped(selector,text)` 추가 — overlay OFF + click(force=True) 후 fill("")+press_sequentially → 실제 입력 길이 반환(정책 type_block_time 패턴). fill() 은 maxlength 무시라 클램핑 검증엔 press_sequentially 필수.
+- **파일**: `pages/secure_zone_template_page.py`(type_clamped) / `tests/secure_zone_template/test_scenario2_input.py`(sc2e)
+
+상태: [RESOLVED] (재실행 검증은 사용자 pytest 재실행 대기)

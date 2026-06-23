@@ -257,6 +257,20 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         except Exception:
             pass
 
+    def type_clamped(self, selector: str, text: str) -> int:
+        """실제 per-key 타이핑 → 입력된 실제 길이 반환 (maxlength 클램핑 검증용).
+
+        ⚠️ fill() 은 maxlength 무시(value 직접 설정)라 클램핑 검증 불가 → press_sequentially 사용.
+        qa-block-overlay 때문에 raw click 은 타임아웃 → overlay OFF + force click 후 타이핑(정책 type_block_time 패턴).
+        """
+        loc = self.page.locator(selector).first
+        with overlay_off(self.page):
+            loc.click(force=True)
+        loc.fill("")
+        loc.press_sequentially(text, delay=2)
+        self.page.wait_for_timeout(150)
+        return len(loc.input_value())
+
     def submit_and_message(self) -> str:
         """메인 '확인'(저장) 클릭 → 확인/경고 모달 메시지 반환 + dismiss. 성공 시 목록 복귀.
         sc2 필수검증(빈값→경고) / sc3 CRUD 공용."""
