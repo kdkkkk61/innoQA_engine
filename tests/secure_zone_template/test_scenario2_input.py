@@ -269,7 +269,7 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
                       f"sc2h — 서브 {desc} → 경고",
                       f"입력: {desc} 후 추가 / 결과: 경고={msg!r} (기대 포함 {expect_sub!r})", sc=2,
                       repro=f"1. 서브모달 {desc}\n2. 추가 → 경고 확인")
-        page._close_sub_if_open()
+        page.close_sub_modal()
         page._close_modal_if_open()
 
     def test_scenario2i_takeout_validation_gaps(self, logged_in_page, settings):

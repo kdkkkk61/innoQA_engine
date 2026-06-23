@@ -18,17 +18,16 @@ modal_trigger:
   modify: "button#modifyItemBtn"
 
 # 필수 입력 순서 (메인 모달, Chrome MCP 실측 2026-06-23)
-#   빈 제출 → "템플릿 이름을 입력해 주세요."
-#   이름+시큐어드라이브만(반출 빈값) → "반출드라이브 생성위치를 입력해 주세요."
+# ⚠️ UIScanner(sc0)는 fill 값을 자체 생성하므로 step1(빈 제출)만 신뢰성 있게 실행 가능.
+#    전체 순서(progressive 유효값 fill)는 sc2f 에서 통제 검증 — 아래는 '수집 기록'(주석).
+#   step1 빈값            → "템플릿 이름을 입력해 주세요."
+#   step2 +이름           → "반출드라이브 생성위치를 입력해 주세요."
+#   step3 +반출경로       → "반출드라이브 문자를 입력해 주세요."
+#   step4 +반출문자       → "반출드라이브 라벨을 입력해 주세요."
+#   step5 +반출라벨(용량 빈값) → "COLUMN.NAME.TAKEOUT_DRIVE_QUOTA의 입력 가능 용량은 최소 100MB..." (★i18n 키 미번역 버그)
+#   step6 +반출용량       → "시큐어드라이브를 등록해 주세요."
 required_submit_sequence:
-  # 직접조작 확인(2026-06-23) — 저장 시 필수 필드 순서대로 경고. 메시지 == 비교.
-  - {step: 1, fill: [],                  expected_msg: "템플릿 이름을 입력해 주세요."}
-  - {step: 2, fill: [templateName],      expected_msg: "반출드라이브 생성위치를 입력해 주세요."}
-  - {step: 3, fill: [takeoutDrivePath],  expected_msg: "반출드라이브 문자를 입력해 주세요."}
-  - {step: 4, fill: [takeoutDriveLetter],expected_msg: "반출드라이브 라벨을 입력해 주세요."}
-  # ⚠️ 버그: 용량 경고에 raw i18n 키 노출 + 빈값인데 'min 100MB' 메시지
-  - {step: 5, fill: [takeoutDriveLabel], expected_msg: "COLUMN.NAME.TAKEOUT_DRIVE_QUOTA의 입력 가능 용량은 최소 100MB 부터 가능합니다."}
-  - {step: 6, fill: [takeoutDriveQuota], expected_msg: "시큐어드라이브를 등록해 주세요."}
+  - {step: 1, fill: [], expected_msg: "템플릿 이름을 입력해 주세요."}
 
 # 텍스트 입력 (메인 모달)
 text_inputs:
