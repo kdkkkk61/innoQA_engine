@@ -285,7 +285,8 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
                   f"입력: 반출용량='50'(min 미만) 저장 / 결과 경고: {msg!r} "
                   + ("[버그: raw i18n 키(COLUMN.NAME.TAKEOUT_DRIVE_QUOTA) 노출 — 서브는 '시큐어드라이브'로 번역됨]"
                      if leaked else "(정상 번역)"),
-                  sc=2, highlight=page.page.locator(page.SEL_CONFIRM_MODAL_OPENED),
+                  sc=2,
+                  highlight=page.page.locator(f"{page.SEL_CONFIRM_MODAL_OPENED} {page.SEL_MODAL_BODY_TEXT}"),
                   repro="1. 반출용량 '50'\n2. 저장\n3. 경고 팝업에 COLUMN.NAME raw 키 노출되는지")
         page.dismiss_confirm()
         page._close_modal_if_open()
