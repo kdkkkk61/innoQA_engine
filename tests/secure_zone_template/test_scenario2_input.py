@@ -1,6 +1,7 @@
 """시큐어존 템플릿(시큐어 드라이브) — 시나리오 2: 입력 구조 (docs/scenario_2_input.md 준수).
 
-개념별 분리(묶지 않음): 존재 / 초기값 / maxlength / 필수marker / 필수검증1차 / 글자수.
+개념별 분리(묶지 않음): 존재 / 초기값 / maxlength속성 / 필수marker / 필수검증1차 / i18n / 종속.
+sc2 = 구조·속성 확인 + 필수 1차. **실제 값을 직접 입력해보는 동작(글자수 clamp·형식검증)은 sc3**(역할 분리, 2026-06-23).
 - maxlength=null 은 '서버 측 검증' 정상 상태 → PASS (버그 아님, nPouch sc2 동일). 클라 가드 있으면 값 보고.
 - 초기값 빈값은 필수/선택 무관 정상 → PASS (선택 필드 빈값을 문제처럼 적지 않음).
 중복은 sc3(데이터 필요), 위반입력 저장값(2차)은 sc4-3.
@@ -9,10 +10,12 @@
 sc2a — 모달 기본(제목/저장/닫기)
 sc2b — 필드 존재 (메인+서브, 전체)
 sc2c — 초기값 (토글 OFF / 텍스트 빈값 / 용량방식 WRITE)
-sc2d — maxlength (전체, 값 보고 — null=서버검증/N=클라가드, 둘 다 PASS)
+sc2d — maxlength 속성값 보고 (null=서버검증/N=클라가드, 둘 다 PASS / 실입력 클램핑은 sc3)
 sc2e — 필수 marker(별표) 메인/서브
 sc2f — 필수 검증 1차: 빈값 제출 → 경고 떴는가
-sc2g — 글자수 제한: 이름 maxlength 초과 → 잘림
+sc2g — 용량방식 종속(WRITE→용량 보임/SYNC→숨김)
+※ 글자수 clamp·서브 형식검증(필수+형식)은 sc3(동작 검증)으로 이동
+※ 검증 메시지 i18n 키 노출(반출용량·경고용량 등)은 sc3 '검증 메시지 i18n 전수(sweep)'로 통합 — 카테고리 전수 검사
 """
 from pages.secure_zone_template_page import SecureZoneTemplateSecureDrivePage
 from pages.shared._overlay import overlay_off
@@ -202,53 +205,9 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
                       repro=f"1. {desc} 상태로 저장\n2. 해당 필수 필드 짚는 경고 확인")
         page._close_modal_if_open()
 
-    def _clamp_card(self, page, label, sel):
-        """maxlength 있는 필드: 경계값+5 타이핑 → 실제 잘림 확인 (md: maxlength 있는 모든 필드)."""
-        loc = page.page.locator(sel).first
-        if loc.count() == 0:
-            self._add("skip", f"sc2g — '{label}' 글자수 제한", "대상 미존재", sc=2); return
-        ml = loc.get_attribute("maxlength")
-        try:
-            limit = int(ml)
-        except Exception:
-            self._add("pass", f"sc2g — '{label}' 글자수 제한",
-                      "결과: maxlength 없음 — 서버 측 검증 의존(클램핑 해당 없음)", sc=2); return
-        actual = page.type_clamped(sel, "a" * (limit + 5))
-        clamped = actual <= limit
-        self._add("pass" if clamped else "fail",
-                  f"sc2g — '{label}' maxlength({limit}) 초과 입력 시 잘림",
-                  f"입력: {limit+5}자 타이핑 / 결과: 실제 {actual}자 "
-                  + ("(잘림 — 클라 가드 동작)" if clamped else "[미적용 — 초과 입력됨]"), sc=2,
-                  highlight=loc, repro=f"1. {label}에 {limit+5}자\n2. {limit}자로 잘리는지 확인")
-
-    def test_scenario2g_maxlength_clamp(self, logged_in_page, settings):
-        """md: 글자수 제한 — maxlength 있는 '모든' 필드(메인 이름·반출4 + 서브 4) 경계값+1 입력 → 잘림."""
-        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2g: 글자수 제한(전 필드) ━━━")
-        page = self._new_page(logged_in_page, settings)
-        page.navigate_to()
-        page.open_add_modal()
-        for label, sel in [
-            ("템플릿 이름", f"{page.SEL_MODAL} {page.SEL_NAME}"),
-            ("반출 생성위치", page.SEL_TAKEOUT_PATH),
-            ("반출 문자", page.SEL_TAKEOUT_LETTER),
-            ("반출 라벨", page.SEL_TAKEOUT_LABEL),
-            ("반출 용량", page.SEL_TAKEOUT_QUOTA),
-        ]:
-            self._clamp_card(page, label, sel)
-        page.open_sub_modal()
-        for label, sel in [
-            ("서브 드라이브 라벨", page.SEL_SUB_LABEL),
-            ("서브 드라이브 문자", page.SEL_SUB_LETTER),
-            ("서브 생성위치", page.SEL_SUB_PATH),
-            ("서브 용량", f"{page.SEL_SUB} #secureDriveQuota"),
-        ]:
-            self._clamp_card(page, label, sel)
-        page.close_sub_modal()
-        page._close_modal_if_open()
-
-    def test_scenario2j_sub_quota_type_gating(self, logged_in_page, settings):
+    def test_scenario2g_sub_quota_type_gating(self, logged_in_page, settings):
         """서브모달 용량방식(WRITE/SYNC) 종속 — WRITE: 용량(MB) 보임 / SYNC: 숨김 (직접조작 확인 2026-06-23)."""
-        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2j: 용량방식 종속(WRITE/SYNC→용량) ━━━")
+        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2g: 용량방식 종속(WRITE/SYNC→용량) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.open_add_modal()
@@ -263,73 +222,11 @@ class TestSecureZoneTemplateScenario2Input(SecureZoneTemplateBase):
         sync_vis = quota.is_visible()
         ok = (write_vis is True) and (sync_vis is False)
         self._add("pass" if ok else "warn",
-                  "sc2j — 용량방식 종속: WRITE→용량 보임 / SYNC→용량 숨김",
+                  "sc2g — 용량방식 종속: WRITE→용량 보임 / SYNC→용량 숨김",
                   f"입력: 용량방식 전환 / 결과: WRITE 시 용량 visible={write_vis}, SYNC 시 visible={sync_vis} "
                   "(기대: WRITE 보임/SYNC 숨김)", sc=2,
                   repro="1. 서브모달\n2. 용량방식 WRITE→용량 보임\n3. SYNC 클릭→용량 숨김 확인")
         page.close_sub_modal()
         page._close_modal_if_open()
 
-    def test_scenario2h_sub_field_validation(self, logged_in_page, settings):
-        """서브모달(시큐어드라이브 항목) 입력 검증 전수 — 필수 + 형식(문자 A-Z / 경로 / 용량 min).
-
-        직접조작(2026-06-23): 문자 빈값→"문자 입력"(라벨* 있어도 문자부터) / 문자 '1'→"A-Z 하나만"
-        / 경로 'qwe'→"정상적인 경로" / 용량 '50'(<100)→"시큐어드라이브...최소 100MB"(번역 정상).
-        """
-        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2h: 서브모달 입력 검증(필수+형식) ━━━")
-        page = self._new_page(logged_in_page, settings)
-        page.navigate_to()
-        page.open_add_modal()
-        page.open_sub_modal()
-        page.fill(page.SEL_SUB_LABEL, "lbl")  # 라벨 채워둠
-
-        # (필드 id, 넣을 값, 기대 경고 부분문자열, 단계 설명) — 매 추가 시 1개만 위반
-        cases = [
-            ("secureDriveLetter", "",    "시큐어드라이브 문자를 입력해 주세요.", "문자 빈값(필수)"),
-            ("secureDriveLetter", "1",   "A-Z",                                "문자 '1'(형식: A-Z 하나)"),
-            ("secureDriveLetter", "Q",   None,                                  None),  # 문자 정상화
-            ("secureDrivePath",   "qwe", "정상적인 경로를 입력해 주세요.",       "생성위치 'qwe'(경로 형식)"),
-            ("secureDrivePath",   "C:\\sdtest", None, None),                            # 경로 정상화
-            ("secureDriveQuota",  "50",  "100MB",                              "용량 '50'(min 100)"),
-        ]
-        for fid, val, expect_sub, desc in cases:
-            page.fill(f"{page.SEL_SUB} input#{fid}", val)
-            if desc is None:
-                continue  # 값 정상화만(검증 안 함)
-            msg = page.sub_add_message()
-            hit = expect_sub in msg
-            self._add("pass" if hit else "fail",
-                      f"sc2h — 서브 {desc} → 경고",
-                      f"입력: {desc} 후 추가 / 결과: 경고={msg!r} (기대 포함 {expect_sub!r})", sc=2,
-                      repro=f"1. 서브모달 {desc}\n2. 추가 → 경고 확인")
-        page.close_sub_modal()
-        page._close_modal_if_open()
-
-    def test_scenario2i_takeout_quota_i18n(self, logged_in_page, settings):
-        """반출 용량 경고 메시지 i18n 키 미번역 — 경고 떠 있는 채 캡처(어디가 문제인지 보이게).
-
-        직접조작(2026-06-23): 반출 용량 < 100 저장 시 경고가 'COLUMN.NAME.TAKEOUT_DRIVE_QUOTA의
-        입력 가능 용량은 최소 100MB...' — raw i18n 키 노출(서브모달 용량 경고는 '시큐어드라이브...'로 번역됨).
-        ※ 반출 경로/문자 형식 검증 누락(서브엔 있음)은 '전부 유효+저장' 으로 확인해야 확실 → sc3(CRUD).
-        """
-        print("\n━━ [시큐어존 템플릿/SD] 시나리오 2i: 반출 용량 경고 i18n 키 ━━━")
-        page = self._new_page(logged_in_page, settings)
-        page.navigate_to()
-        page.open_add_modal()
-        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", "[AUTO]_sztpl_i18n")
-        page.fill(page.SEL_TAKEOUT_PATH, "C:\\to")
-        page.fill(page.SEL_TAKEOUT_LETTER, "T")
-        page.fill(page.SEL_TAKEOUT_LABEL, "lbl")
-        page.fill(page.SEL_TAKEOUT_QUOTA, "50")          # min 100 미만 → 용량 경고
-        msg = page.submit_no_dismiss()                    # 경고 닫지 않고 둠(캡처용)
-        leaked = "COLUMN." in msg or "NAME." in msg
-        self._add("warn" if leaked else "pass",
-                  "sc2i — 반출 용량 경고 i18n 키 번역",
-                  f"입력: 반출용량='50'(min 미만) 저장 / 결과 경고: {msg!r} "
-                  + ("[버그: raw i18n 키(COLUMN.NAME.TAKEOUT_DRIVE_QUOTA) 노출 — 서브는 '시큐어드라이브'로 번역됨]"
-                     if leaked else "(정상 번역)"),
-                  sc=2,
-                  highlight=page.page.locator(f"{page.SEL_CONFIRM_MODAL_OPENED} {page.SEL_MODAL_BODY_TEXT}"),
-                  repro="1. 반출용량 '50'\n2. 저장\n3. 경고 팝업에 COLUMN.NAME raw 키 노출되는지")
-        page.dismiss_confirm()
-        page._close_modal_if_open()
+    # (반출 용량 i18n 키 노출은 sc3 '검증 메시지 i18n 전수(sweep)'로 통합 — 카테고리 전수 검사로 이동)

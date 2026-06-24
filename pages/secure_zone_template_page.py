@@ -213,6 +213,85 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         except Exception:
             pass
 
+    def open_modify_modal(self, name: str) -> None:
+        """행 활성화(tActive) → 수정 버튼 → 수정 모달(저장값 로드).
+        실측 2026-06-23: 수정은 체크박스 선택 미반영('선택된 항목이 없습니다') →
+        실제 행 클릭(tActive) 필요. 클릭 후 modifyItemBtn → 저장값 로드된 모달."""
+        if not self._AUTO_ANY.match(name):
+            raise Exception("테스트 생성 템플릿([AUTO]/[AUTO_날짜] 접두사)만 조작 가능합니다")
+        with overlay_off(self.page):
+            self._row_locator(name).click(force=True)
+        self.page.wait_for_timeout(200)
+        self.click(self.SEL_MODIFY_BTN)
+        self.wait_for(self.SEL_MODAL, state="attached")
+
+    SEL_SEARCH_INPUT = "input#searchText"
+    SEL_SEARCH_BTN   = "span#searchBtn"
+    SEL_SUB_PATH_HIDE   = "div#addSecureDrive.in input#isSecureDrivePathHide"
+    SEL_SUB_WARN_TOGGLE = "div#addSecureDrive.in input#isSystemDriveWarningQuota"
+
+    def checkbox_toggles(self, selector: str):
+        """체크박스 토글 동작 — 클릭 시 상태 반전, 다시 클릭 시 복귀하는지. 반환 bool / 미존재 None."""
+        loc = self.page.locator(selector).first
+        if loc.count() == 0:
+            return None
+        before = loc.is_checked()
+        with overlay_off(self.page):
+            loc.click(force=True)
+        self.page.wait_for_timeout(120)
+        mid = loc.is_checked()
+        with overlay_off(self.page):
+            loc.click(force=True)
+        self.page.wait_for_timeout(120)
+        end = loc.is_checked()
+        return (mid != before) and (end == before)
+
+    def radio_exclusive(self, sel_a: str, sel_b: str):
+        """라디오 상호배타 — A 선택 시 A만/ B 선택 시 B만 체크되는지. 반환 (a_ok, b_ok, exclusive)."""
+        a = self.page.locator(sel_a).first
+        b = self.page.locator(sel_b).first
+        with overlay_off(self.page):
+            a.click(force=True)
+        self.page.wait_for_timeout(120)
+        a_ok = a.is_checked() and not b.is_checked()
+        with overlay_off(self.page):
+            b.click(force=True)
+        self.page.wait_for_timeout(120)
+        b_ok = b.is_checked() and not a.is_checked()
+        return a_ok, b_ok, (a_ok and b_ok)
+
+    def search(self, query: str) -> None:
+        """리스트 검색(템플릿 이름 필터). searchText 입력 + span#searchBtn 클릭.
+        실측 2026-06-23: searchTextOption=templateName 으로 이름 부분일치 필터. 빈값=전체 복귀."""
+        self.fill(self.SEL_SEARCH_INPUT, query)
+        with overlay_off(self.page):
+            self.page.locator(self.SEL_SEARCH_BTN).first.click(force=True)
+        self.page.wait_for_timeout(800)
+
+    def copy_template(self, name: str) -> str:
+        """체크박스 선택 + 복사 버튼 → '복사 하시겠습니까?' 확인 → 복사본(원본+'_copy') 생성.
+        반환: 복사본 이름. 실측 2026-06-23: 복사는 체크박스 선택(tActive 아님), 확인 시 즉시 복사.
+        [AUTO]/[AUTO_날짜] 접두사만 허용(데이터 안전 — 복사본도 접두사 유지)."""
+        if not self._AUTO_ANY.match(name):
+            raise Exception("테스트 생성 템플릿([AUTO]/[AUTO_날짜] 접두사)만 조작 가능합니다")
+        self.check_row(name)
+        self.click(self.SEL_COPY_BTN)
+        if not self.is_confirm_modal_visible():
+            raise Exception("복사 버튼 클릭 후 확인 모달 없음")
+        msg = self.get_modal_message()
+        if "복사" not in msg:
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+            raise Exception(f"복사 확인 모달 예상과 다름: {msg!r}")
+        self.click_attached(self.SEL_CONFIRM_BTN)
+        self.page.wait_for_timeout(500)
+        # 성공 메시지 모달이 따로 뜨면 닫기
+        if self.is_confirm_modal_visible():
+            self.click_attached(self.SEL_CONFIRM_BTN)
+        self.wait_for_modal_closed()
+        self.wait_for(self.SEL_ADD_BTN)
+        return f"{name}_copy"
+
     # ── 메인 모달 필드 / 서브모달 (sc1+ UI 구조용) ────────────────
     SEL_ECM           = "div#addModifySecureZoneSecureDriveTemplate.in input#isRegistEcmDrive"
     SEL_OLD_DRIVE     = "div#addModifySecureZoneSecureDriveTemplate.in textarea#registOldDrive"
@@ -306,6 +385,130 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         if self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).count() > 0:
             self.click_attached(self.SEL_CONFIRM_BTN)
             self.wait_for_modal_closed()
+
+    SEL_SUB_QUOTA = "div#addSecureDrive.in input#secureDriveQuota"
+    SEL_SUB_ADD   = "div#addSecureDrive.in button:has-text('추가')"
+
+    def add_secure_drive(self, label: str, letter: str, path: str,
+                         quota_type: str = "WRITE", quota: str = "100"):
+        """addSecureDriveBtn → 서브모달 채우기 → '추가'.
+        - 정상: 항목 커밋 + 서브 자동 닫힘 → None 반환.
+        - 검증실패(예: 생성위치 중복): 경고 모달 메시지 반환 + dismiss + 서브 닫기.
+        실측 2026-06-23: 생성위치는 같은 루트(C:\\)면 폴더가 달라도
+        '이미 등록된 드라이브의 생성위치와 동일합니다' 차단(정상 검증). 다른 루트(D:\\)는 추가됨.
+        SYNC 선택 시 용량(MB) 필드 숨김(sc2j)."""
+        self.open_sub_modal()
+        self.fill(self.SEL_SUB_LABEL, label)
+        self.fill(self.SEL_SUB_LETTER, letter)
+        self.fill(self.SEL_SUB_PATH, path)
+        rid = self.SEL_SUB_QTYPE_WRITE if quota_type == "WRITE" else self.SEL_SUB_QTYPE_SYNC
+        with overlay_off(self.page):
+            self.page.locator(rid).first.click(force=True)
+        self.page.wait_for_timeout(150)
+        if quota_type == "WRITE":
+            self.fill(self.SEL_SUB_QUOTA, quota)
+        with overlay_off(self.page):
+            self.page.locator(self.SEL_SUB_ADD).first.click(force=True)
+        self.page.wait_for_timeout(400)
+        if self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).count() > 0:
+            msg = self.page.locator(
+                f"{self.SEL_CONFIRM_MODAL_OPENED} {self.SEL_MODAL_BODY_TEXT}").first.inner_text().strip()
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.page.wait_for_timeout(200)
+            self.close_sub_modal()
+            return msg
+        if self.page.locator(self.SEL_SUB).count() > 0:
+            self.close_sub_modal()
+        return None
+
+    SEL_SUB_WARN_QUOTA = "div#addSecureDrive.in input#systemDriveWarningQuota"
+
+    def iter_validation_messages(self):
+        """검증 메시지 i18n 전수 — 모든 min/max/길이/형식 검증을 하나씩 트리거하며 (라벨, 메시지)를 yield.
+        ★경고 모달을 '열어둔 채' yield → 호출자가 그 시점에 캡처(빨간박스) 가능. resume 시 닫고 다음으로.
+        raw i18n 키 누출 판정은 호출측(sc3 sweep). 데이터 저장 없음.
+        spot-check 아닌 카테고리 전수 — 실측 2026-06-24: 반출용량(COLUMN.NAME.TAKEOUT_DRIVE_QUOTA)·
+        경고용량(systemDriveWarningQuota) raw 키 노출, 나머지 번역 정상."""
+        try:
+            self.open_add_modal()
+            self.fill(f"{self.SEL_MODAL} {self.SEL_NAME}", f"{self.AUTO_NAME_PREFIX}_i18n")
+            # ── 서브모달 검증 메시지 ──
+            self.open_sub_modal()
+            self.fill(self.SEL_SUB_LABEL, "lbl")
+            self.fill(self.SEL_SUB_LETTER, "Q")
+            self.fill(self.SEL_SUB_PATH, "C:\\sw")
+            with overlay_off(self.page):
+                self.page.locator(self.SEL_SUB_QTYPE_WRITE).first.click(force=True)
+            self.page.wait_for_timeout(150)
+            self.fill(self.SEL_SUB_QUOTA, "100")
+
+            def _sub_trigger(sel, bad):
+                self.fill(sel, bad)
+                with overlay_off(self.page):
+                    self.page.locator(self.SEL_SUB_ADD).first.click(force=True)
+                self.page.wait_for_timeout(450)
+                if self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).count() > 0:
+                    return self.page.locator(
+                        f"{self.SEL_CONFIRM_MODAL_OPENED} {self.SEL_MODAL_BODY_TEXT}").first.inner_text().strip()
+                return ""
+
+            sub_cases = [
+                (self.SEL_SUB_QUOTA, "50", "100", "서브 용량(min 100)"),
+                (self.SEL_SUB_WARN_QUOTA, "1234567890123", "", "경고용량(길이 12)"),
+                (self.SEL_SUB_LETTER, "1", "Q", "서브 문자(형식 A-Z)"),
+                (self.SEL_SUB_PATH, "qwe", "C:\\sw", "서브 경로(형식)"),
+            ]
+            for sel, bad, good, label in sub_cases:
+                msg = _sub_trigger(sel, bad)
+                yield label, msg                 # 경고 열린 채 yield(캡처)
+                self.dismiss_confirm()            # resume 후 닫고 정상화
+                self.fill(sel, good)
+            # 유효 상태로 커밋 → 서브 닫힘(메인 반출 검증 도달용)
+            with overlay_off(self.page):
+                self.page.locator(self.SEL_SUB_ADD).first.click(force=True)
+            self.page.wait_for_timeout(450)
+            if self.page.locator(self.SEL_SUB).count() > 0:
+                self.close_sub_modal()
+            # ── 메인 반출 검증 메시지 ──
+            self.fill_takeout("C:\\to", "T", "lbl", "1024")
+            main_cases = [
+                (self.SEL_TAKEOUT_QUOTA, "50", "1024", "반출 용량(min 100)"),
+                (self.SEL_OLD_DRIVE, "a" * 3000, "", "예외드라이브(길이 500)"),
+            ]
+            for sel, bad, good, label in main_cases:
+                self.fill(sel, bad)
+                msg = self.submit_no_dismiss()    # 경고 열어둠
+                yield label, msg
+                self.dismiss_confirm()
+                self.fill(sel, good)
+        finally:
+            self._close_modal_if_open()
+
+    def fill_takeout(self, path: str, letter: str, label: str, quota: str) -> None:
+        """반출드라이브 4필수 필드 입력."""
+        self.fill(self.SEL_TAKEOUT_PATH, path)
+        self.fill(self.SEL_TAKEOUT_LETTER, letter)
+        self.fill(self.SEL_TAKEOUT_LABEL, label)
+        self.fill(self.SEL_TAKEOUT_QUOTA, quota)
+
+    def secure_drive_rows(self) -> list[str]:
+        """메인 모달의 시큐어드라이브 항목 리스트 행 텍스트."""
+        m = self.page.locator(self.SEL_MODAL).first
+        if m.count() == 0:
+            return []
+        return [r.inner_text().replace("\n", " ").strip()
+                for r in m.locator("table tbody tr").all()]
+
+    def create_basic_template(self, name: str, sd_letter: str = "Q", to_letter: str = "T",
+                              to_path: str = "C:\\sztpl_to") -> str:
+        """최소 정상 생성: 이름 + 시큐어드라이브 항목 1건 + 반출드라이브 4필드 → 확인. 반환: 결과 메시지.
+        [AUTO]/[AUTO_날짜] 접두사만 허용(데이터 안전)."""
+        if not self._AUTO_ANY.match(name):
+            raise Exception("테스트 생성 템플릿([AUTO]/[AUTO_날짜] 접두사)만 허용")
+        self.fill(f"{self.SEL_MODAL} {self.SEL_NAME}", name)
+        self.add_secure_drive("sd_lbl", sd_letter, "C:\\sztpl_sd", "WRITE", "100")
+        self.fill_takeout(to_path, to_letter, "to_lbl", "1024")
+        return self.submit_and_message()
 
     def submit_and_message(self) -> str:
         """메인 '확인'(저장) 클릭 → 확인/경고 모달 메시지 반환 + dismiss. 성공 시 목록 복귀.

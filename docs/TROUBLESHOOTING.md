@@ -2047,3 +2047,44 @@
 - **파일**: `pages/secure_zone_template_page.py`(type_clamped) / `tests/secure_zone_template/test_scenario2_input.py`(sc2e)
 
 상태: [RESOLVED] (재실행 검증은 사용자 pytest 재실행 대기)
+
+---
+
+## sc3 — 정상 검증(생성위치 중복검사)을 버그로 오표기 (수집 누락) — 2026-06-23
+
+- **증상**: 시큐어존 템플릿 sc3h(시큐어드라이브 N건 추가)가 BUG(심각도 높음)로 표기. 2건째(SYNC) 추가 시 "이미 등록된 드라이브의 생성위치와 동일합니다" 경고 + 미추가.
+- **근본 원인**: 멀티 추가 동작을 **직접조작 수집 없이** 코딩. 1건/2건 모두 `C:\` 루트 경로(`C:\sd_w`, `C:\sd_s`) 사용 → 제품의 **정상 생성위치 중복검사**(같은 루트면 폴더 달라도 차단)에 걸린 것. 제품 오동작 아님, 테스트 설계 오류.
+- **직접조작 확정(Chrome MCP)**: 1건 `C:\loc1` → 추가됨 / 2건 `C:\loc2`(같은 루트) → "생성위치 동일" 차단 / 3건 `D:\uniq`(다른 루트) → 추가됨. 서브 재오픈 시 필드 미잔존. SYNC는 용량(MB) 숨김.
+- **수정**: ① sc3h를 다른 루트(WRITE `C:\`+SYNC `D:\`)로 변경 → 정상 PASS. ② 중복검사는 sc3i 별도 카드(같은 루트 차단=PASS)로 분리. ③ `add_secure_drive`가 경고 메시지 반환하도록(+`SEL_SUB_ADD` 정의 누락 수정).
+- **추가 수정(캡처)**: 형식버그(3e/3f)는 리스트 캡처로 '어디가 버그인지' 불명 → 수정 모달 재오픈해 저장된 잘못된 값 필드를 highlight 캡처(직관적 증거)로 변경.
+- **파일**: `pages/secure_zone_template_page.py` / `tests/secure_zone_template/test_scenario3_add.py` / `config/scan_hints/secure_zone_template_secure_drive.yaml`
+- **교훈**: 생성 동작은 코딩 전 직접조작 수집 필수(제품 검증 규칙 먼저 확인). 정상 검증을 버그로 표기하지 않는다.
+
+상태: [RESOLVED] (재실행 검증은 사용자 pytest 재실행 대기)
+
+---
+
+## 제품 버그 — 복사 경로 이름 중복검사 누락 (silent 중복 생성) — 2026-06-23
+
+- **대상**: 시큐어존 템플릿(시큐어 드라이브) 복사 기능(copyItemBtn).
+- **증상**: '원본'을 복사하면 자동으로 '원본_copy' 이름 생성. 이미 '원본_copy'가 존재해도 **이름 중복검사 없이 동일 이름이 또 생성**됨(서버오류·경고 없음). 반복할수록 동일 이름 누적(직접조작 3회 재현, e_copy 3개).
+- **불일치**: 수동 생성(템플릿 추가)은 동일 이름 시 "이미 등록된 이름 입니다." 차단. **복사 경로만 이 검사를 건너뜀.**
+- **직접조작 확정(Chrome MCP)**: `[AUTO]_sztpl_sd_e` + `[AUTO]_sztpl_sd_e_copy` 공존 상태에서 `_e` 복사 → "선택한 항목을 복사 하시겠습니까?" 확인 → 결과 메시지 없음, `_e_copy` 개수 2→3 증가.
+- **분류**: 제품 버그(테스트 코드 무관). 테스트는 sc3n(`test_scenario3n_copy_name_collision`)에서 WARN으로 기록.
+- **참고**: 사용자가 기억한 "서버오류"는 현재 빌드에서 재현 안 됨 — 실제는 silent 중복 생성.
+- **파일**: `tests/secure_zone_template/test_scenario3_add.py`(sc3n) / `config/scan_hints/secure_zone_template_secure_drive.yaml`(sc3 directions)
+
+상태: [제품 버그 — 보고 대상] (테스트는 WARN 카드로 증거 기록)
+
+---
+
+## 제품 버그 — 경고용량 i18n 키 노출 + 클라/서버 제한 불일치 (서브모달) — 2026-06-24
+
+- **대상**: 시큐어존 템플릿(SD) 시큐어드라이브 추가/수정 서브모달의 '경고용량'(systemDriveWarningQuota) 필드.
+- **증상**: 경고용량 12자 초과 입력 후 추가/수정 시 경고가 "systemDriveWarningQuota의 입력 가능 글자수는 최대 12자 까지 가능합니다." — **raw i18n 키(systemDriveWarningQuota) 그대로 노출**('경고용량'으로 번역 안 됨).
+- **추가 불일치**: 필드 client `maxlength="100"` 인데 서버 검증은 **12자** 제한(클라/서버 제한 불일치).
+- **직접조작 확정(Chrome MCP, 2026-06-24)**: 경고용량 '1234567890123'(13자) → 위 메시지 + leaks_raw_key=true. gb_maxlength="100", type=text.
+- **분류**: 제품 버그(2h 반출용량 COLUMN.NAME.TAKEOUT_DRIVE_QUOTA 와 같은 i18n 키 누락 부류). 테스트는 sc3p(`test_scenario3p_warn_quota_i18n`)에서 WARN + 경고 모달 highlight 캡처로 기록.
+- **파일**: `tests/secure_zone_template/test_scenario3_add.py`(sc3p) / `pages/secure_zone_template_page.py`(sub_add_warn_quota_message, SEL_SUB_WARN_QUOTA) / `config/scan_hints/secure_zone_template_secure_drive.yaml`
+
+상태: [제품 버그 — 보고 대상] (테스트는 WARN 카드로 증거 기록)

@@ -25,42 +25,67 @@ def _ss(page, label: str, highlight=None) -> str | None:
         path = _SS_DIR / f"BUG_{safe}_{int(time.time()*1000)}.png"
         injected = False
         clip = None
+        hl_targets = []
         if highlight is not None:
             try:
-                highlight.first.scroll_into_view_if_needed(timeout=1000)
-                highlight.first.evaluate(
-                    "el => { el.style.outline='3px solid #ff2d2d';"
-                    " el.style.outlineOffset='2px';"
-                    " el.style.boxShadow='0 0 0 6px rgba(255,45,45,0.25)'; }"
-                )
-                injected = True
-                # 해당 필드 주변만 crop — 전체 viewport 에 작은 요소 하나면 증거가 묻힘.
-                # 필드 bounding box 기준 가로로 넉넉히(라벨/값 포함) 잘라 '근거 사진'이 되게.
-                box = highlight.first.bounding_box()
-                if box:
-                    vp = page.viewport_size or {"width": 1280, "height": 800}
+                cnt = highlight.count()
+            except Exception:
+                cnt = 1
+            try:
+                # cnt>1 이면 매칭된 요소 전부 강조(최대 6개) — 중복 행처럼 '둘 다' 증거화.
+                hl_targets = highlight.all()[:6] if cnt > 1 else [highlight.first]
+            except Exception:
+                hl_targets = [highlight.first]
+            boxes = []
+            for el in hl_targets:
+                try:
+                    el.scroll_into_view_if_needed(timeout=1000)
+                    el.evaluate(
+                        "el => { el.style.outline='3px solid #ff2d2d';"
+                        " el.style.outlineOffset='2px';"
+                        " el.style.boxShadow='0 0 0 6px rgba(255,45,45,0.25)'; }"
+                    )
+                    b = el.bounding_box()
+                    if b:
+                        boxes.append(b)
+                except Exception:
+                    pass
+            injected = bool(boxes)
+            if boxes:
+                vp = page.viewport_size or {"width": 1280, "height": 800}
+                minx = min(b["x"] for b in boxes)
+                miny = min(b["y"] for b in boxes)
+                maxx = max(b["x"] + b["width"] for b in boxes)
+                maxy = max(b["y"] + b["height"] for b in boxes)
+                if len(boxes) == 1:
                     W = min(780, vp["width"])
                     H = min(230, vp["height"])
-                    cx = box["x"] + box["width"] / 2
-                    cy = box["y"] + box["height"] / 2
-                    x = max(0, min(cx - 190, vp["width"] - W))   # 체크박스는 보통 좌측 → 우측 라벨 더 보이게
-                    y = max(0, min(cy - H / 2, vp["height"] - H))
-                    clip = {"x": x, "y": y, "width": W, "height": H}
-            except Exception:
-                injected = False
-                clip = None
+                    bw = maxx - minx
+                    cx = minx + bw / 2
+                    # 넓은 입력 필드(값이 필드 안) → 중앙 정렬 / 좁은 요소(체크박스 등) → 우측 라벨 보이게 좌측 오프셋
+                    off = W / 2 if bw > 200 else 190
+                    x = max(0, min(cx - off, vp["width"] - W))
+                    y = max(0, min((miny + maxy) / 2 - H / 2, vp["height"] - H))
+                else:
+                    # 다중 요소: union 영역을 다 포함하도록 crop(여러 행이 함께 보이게)
+                    W = min(max(780, int(maxx - minx) + 80), vp["width"])
+                    H = min(max(230, int(maxy - miny) + 80), vp["height"])
+                    x = max(0, min(int(minx) - 40, vp["width"] - W))
+                    y = max(0, min(int(miny) - 40, vp["height"] - H))
+                clip = {"x": x, "y": y, "width": W, "height": H}
         if clip:
             page.screenshot(path=str(path), clip=clip)
         else:
             page.screenshot(path=str(path))
         if injected:
-            try:
-                highlight.first.evaluate(
-                    "el => { el.style.outline=''; el.style.outlineOffset='';"
-                    " el.style.boxShadow=''; }"
-                )
-            except Exception:
-                pass
+            for el in hl_targets:
+                try:
+                    el.evaluate(
+                        "el => { el.style.outline=''; el.style.outlineOffset='';"
+                        " el.style.boxShadow=''; }"
+                    )
+                except Exception:
+                    pass
         return str(path)
     except Exception:
         return None
