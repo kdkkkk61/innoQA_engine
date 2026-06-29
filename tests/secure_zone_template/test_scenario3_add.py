@@ -241,6 +241,14 @@ class TestSecureZoneTemplateScenario3Add(SecureZoneTemplateBase):
                   f"입력: WRITE C:\\ 1건 + SYNC D:\\ 1건(다른 루트) / 결과: 1건후 {len(rows1)}행, "
                   f"2건후 {len(rows2)}행={rows2}", sc=3,
                   repro="1. 시큐어드라이브 추가→WRITE(C:)\n2. 다시 추가→SYNC(D:, 다른 루트)\n3. 메인 리스트 2건 반영 확인")
+        # 첫 추가 항목이 '메인 드라이브(*)' 로 지정되는지 (생성쪽 — sc4n '메인 삭제불가'의 짝, 실측 2026-06-29)
+        main_ok = (len(rows2) >= 2) and ("*" in rows2[0]) and ("*" not in rows2[1])
+        self._add("pass" if main_ok else "fail",
+                  "sc3g — 첫 추가 항목이 메인 드라이브(*) 지정",
+                  f"결과: 1행='{rows2[0] if rows2 else ''}'(* 포함={'*' in (rows2[0] if rows2 else '')}), "
+                  f"2행='{rows2[1] if len(rows2)>1 else ''}'(* 포함={'*' in (rows2[1] if len(rows2)>1 else '')}) "
+                  "[첫 항목=메인, 메인은 삭제불가(sc4n)]", sc=3,
+                  repro="1. 시큐어드라이브 2건 추가\n2. 첫 항목에만 '*'(메인) 표시되는지")
         page._close_modal_if_open()
 
     # ══ 3h: 시큐어드라이브 항목 중복 규칙 (생성위치·문자 차단 / 라벨 허용) ══
@@ -484,3 +492,4 @@ class TestSecureZoneTemplateScenario3Add(SecureZoneTemplateBase):
                   repro="1. WRITE 선택→WRITE만\n2. SYNC 선택→SYNC만(상호배타)")
         page.close_sub_modal()
         page._close_modal_if_open()
+

@@ -49,6 +49,9 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
     SEL_MODAL     = "div#addModifySecureZoneSecureDriveTemplate.in"
     SEL_NAME      = "input#templateName"
     SEL_SAVE_BTN  = "div#addModifySecureZoneSecureDriveTemplate.in button:has-text('확인')"
+    # 저장 버튼: 추가 모달='확인'(addbtn) / 수정 모달='수정'(modifybtn) — 같은 모달 id, 모드별 표시 토글(실측 2026-06-29)
+    SEL_SAVE_ADD    = "div#addModifySecureZoneSecureDriveTemplate.in button[addbtn]"
+    SEL_SAVE_MODIFY = "div#addModifySecureZoneSecureDriveTemplate.in button[modifybtn]"
     SEL_CLOSE_BTN = ("div#addModifySecureZoneSecureDriveTemplate.in button:has-text('닫기'), "
                      "div#addModifySecureZoneSecureDriveTemplate.in button[data-dismiss='modal']")
 
@@ -368,11 +371,23 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
             self.wait_for_modal_closed()
         return msg
 
+    def _click_save(self) -> None:
+        """모드별 저장 버튼 클릭 — 추가='확인'(addbtn) / 수정='수정'(modifybtn) 중 visible 한 것.
+        JS 직접 클릭(재렌더/overlay 무관). 수정 모달에서 숨겨진 addbtn 을 눌러 생성-충돌나던 버그 방지(실측 2026-06-29)."""
+        for sel in (self.SEL_SAVE_MODIFY, self.SEL_SAVE_ADD):
+            loc = self.page.locator(sel).first
+            try:
+                if loc.count() > 0 and loc.is_visible():
+                    loc.evaluate("el => el.click()")
+                    return
+            except Exception:
+                pass
+        self.page.locator(self.SEL_SAVE_BTN).first.evaluate("el => el.click()")  # fallback
+
     def submit_no_dismiss(self) -> str:
-        """메인 '확인' 클릭 → 경고 메시지 반환하되 '닫지 않고 둠'(경고 떠 있는 채 스크린샷용).
+        """메인 저장 클릭 → 경고 메시지 반환하되 '닫지 않고 둠'(경고 떠 있는 채 스크린샷용).
         이후 호출자가 dismiss_confirm() 로 닫아야 함."""
-        with overlay_off(self.page):
-            self.page.locator(self.SEL_SAVE_BTN).first.click(force=True)
+        self._click_save()
         self.page.wait_for_timeout(600)
         if self.is_confirm_modal_visible():
             try:
@@ -423,15 +438,19 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
 
     SEL_SUB_WARN_QUOTA = "div#addSecureDrive.in input#systemDriveWarningQuota"
 
-    def iter_validation_messages(self):
+    def iter_validation_messages(self, modify_name=None):
         """검증 메시지 i18n 전수 — 모든 min/max/길이/형식 검증을 하나씩 트리거하며 (라벨, 메시지)를 yield.
         ★경고 모달을 '열어둔 채' yield → 호출자가 그 시점에 캡처(빨간박스) 가능. resume 시 닫고 다음으로.
-        raw i18n 키 누출 판정은 호출측(sc3 sweep). 데이터 저장 없음.
+        raw i18n 키 누출 판정은 호출측(sweep). 데이터 저장 없음.
+        modify_name 지정 시 수정 모달(전 필드 로드됨)에서 동일 전수 — sc4 캐리오버용.
         spot-check 아닌 카테고리 전수 — 실측 2026-06-24: 반출용량(COLUMN.NAME.TAKEOUT_DRIVE_QUOTA)·
         경고용량(systemDriveWarningQuota) raw 키 노출, 나머지 번역 정상."""
         try:
-            self.open_add_modal()
-            self.fill(f"{self.SEL_MODAL} {self.SEL_NAME}", f"{self.AUTO_NAME_PREFIX}_i18n")
+            if modify_name:
+                self.open_modify_modal(modify_name)   # 수정 모달(전 필드 로드, sd 항목 이미 존재)
+            else:
+                self.open_add_modal()
+                self.fill(f"{self.SEL_MODAL} {self.SEL_NAME}", f"{self.AUTO_NAME_PREFIX}_i18n")
             # ── 서브모달 검증 메시지 ──
             self.open_sub_modal()
             self.fill(self.SEL_SUB_LABEL, "lbl")
@@ -463,12 +482,15 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
                 yield label, msg                 # 경고 열린 채 yield(캡처)
                 self.dismiss_confirm()            # resume 후 닫고 정상화
                 self.fill(sel, good)
-            # 유효 상태로 커밋 → 서브 닫힘(메인 반출 검증 도달용)
-            with overlay_off(self.page):
-                self.page.locator(self.SEL_SUB_ADD).first.click(force=True)
-            self.page.wait_for_timeout(450)
-            if self.page.locator(self.SEL_SUB).count() > 0:
+            # 메인 반출 검증 도달: add 는 sd 1건 커밋 필요 / modify 는 이미 sd 있음 → 닫기만(문자 Q 중복 회피)
+            if modify_name:
                 self.close_sub_modal()
+            else:
+                with overlay_off(self.page):
+                    self.page.locator(self.SEL_SUB_ADD).first.click(force=True)
+                self.page.wait_for_timeout(450)
+                if self.page.locator(self.SEL_SUB).count() > 0:
+                    self.close_sub_modal()
             # ── 메인 반출 검증 메시지 ──
             self.fill_takeout("C:\\to", "T", "lbl", "1024")
             main_cases = [
@@ -499,6 +521,21 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         return [r.inner_text().replace("\n", " ").strip()
                 for r in m.locator("table tbody tr").all()]
 
+    def delete_secure_drive_row(self, index: int = 0):
+        """메인 모달 시큐어드라이브 리스트 index 행의 삭제(X) 클릭 → 경고 메시지 반환(없으면 None).
+        실측 2026-06-29: 메인 드라이브(첫 항목 '*')는 '메인 드라이브는 삭제 할 수 없습니다' 차단,
+        비-메인은 확인 없이 즉시 제거(None). JS 직접 클릭(overlay/visibility 무관)."""
+        rows = self.page.locator(f"{self.SEL_MODAL} table tbody tr")
+        rows.nth(index).locator("td").last.locator("button").first.evaluate("el => el.click()")
+        self.page.wait_for_timeout(400)
+        if self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).count() > 0:
+            msg = self.page.locator(
+                f"{self.SEL_CONFIRM_MODAL_OPENED} {self.SEL_MODAL_BODY_TEXT}").first.inner_text().strip()
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.page.wait_for_timeout(200)
+            return msg
+        return None
+
     def create_basic_template(self, name: str, sd_letter: str = "Q", to_letter: str = "T",
                               to_path: str = "C:\\sztpl_to") -> str:
         """최소 정상 생성: 이름 + 시큐어드라이브 항목 1건 + 반출드라이브 4필드 → 확인. 반환: 결과 메시지.
@@ -512,9 +549,9 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
 
     def submit_and_message(self) -> str:
         """메인 '확인'(저장) 클릭 → 확인/경고 모달 메시지 반환 + dismiss. 성공 시 목록 복귀.
-        sc2 필수검증(빈값→경고) / sc3 CRUD 공용."""
-        with overlay_off(self.page):
-            self.page.locator(self.SEL_SAVE_BTN).first.click(force=True)
+        sc2 필수검증(빈값→경고) / sc3 CRUD / sc4 수정 공용."""
+        # 저장 — 모드별 버튼(추가='확인' / 수정='수정') visible 한 것 JS 직접 클릭
+        self._click_save()
         self.page.wait_for_timeout(600)
         msg = ""
         if self.is_confirm_modal_visible():

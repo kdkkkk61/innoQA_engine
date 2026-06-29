@@ -2088,3 +2088,31 @@
 - **파일**: `tests/secure_zone_template/test_scenario3_add.py`(sc3p) / `pages/secure_zone_template_page.py`(sub_add_warn_quota_message, SEL_SUB_WARN_QUOTA) / `config/scan_hints/secure_zone_template_secure_drive.yaml`
 
 상태: [제품 버그 — 보고 대상] (테스트는 WARN 카드로 증거 기록)
+
+---
+
+## sc4b — 수정 저장 클릭 "Element is not visible" (force-click race) — 2026-06-25
+
+- **증상**: sc4b 수정 저장 시 `submit_and_message` 의 `SEL_SAVE_BTN.click(force=True)` 가 "Locator.click: Element is not visible" 로 실패. sc4a(로드, input 읽기)는 통과. sc3 추가 흐름의 동일 호출은 통과.
+- **근본 원인(확정, 직접조작 2026-06-29)**: 같은 모달 id(addModifySecureZoneSecureDriveTemplate)지만 저장 버튼이 모드별로 다름 —
+  **추가 모달='확인'(button[addbtn], visible)** / **수정 모달='수정'(button[modifybtn], visible) + '확인'(addbtn)은 숨김**.
+  `SEL_SAVE_BTN`이 `:has-text('확인')`이라 수정 모달에서 **숨겨진 '확인'(addbtn=생성용)을 클릭** → 생성 시도 → 템플릿 자기 이름과 충돌 → "이미 등록된 이름 입니다." (수정 미반영, 중복도 안 생김). 제품 버그 아님 — 셀렉터가 모드 구분을 안 한 것.
+  (오진 이력: ① force-click race → ② 재렌더 detach 로 추정해 evaluate-click + wait_for → 둘 다 빗나감. 실제는 버튼 자체가 다른 요소)
+- **수정(확정)**: `_click_save()` 추가 — `button[modifybtn]`/`button[addbtn]` 중 **visible 한 것**을 JS 직접 클릭(`submit_and_message`/`submit_no_dismiss` 공용). SEL_SAVE_MODIFY/SEL_SAVE_ADD 셀렉터 신규.
+- **분류**: 테스트 코드 버그(모드별 저장 버튼 미구분), 제품 무관.
+- **파일**: `pages/secure_zone_template_page.py`(SEL_SAVE_ADD/MODIFY, _click_save, submit_and_message, submit_no_dismiss)
+
+상태: [RESOLVED] (재실행 검증은 사용자 pytest 재실행 대기)
+
+---
+
+## 오진 정정 — 경고용량 "숫자 검증 누락"은 거짓 양성(테스트 오류) — 2026-06-29
+
+- **오진 내용**: 경고용량(systemDriveWarningQuota)에 'abc' 입력 시 차단 없이 추가됨 → "숫자 검증 없음(버그)"로 sc3q/4n 카드화했음.
+- **근본 원인(테스트 오류)**: `page.fill()`/`setVal`은 **입력 마스크·게이팅을 우회**하고 값을 직접 주입. 실제로는 ng-model 이 비숫자를 거부 → **'abc' 입력 시 값이 '0' 으로 코어싱**(직접조작 재확인: setVal('abc')→value '0', setVal('12')→'12'). 커밋은 '0'(유효 숫자)으로 성공한 것을 "abc 허용"으로 오판.
+- **추가 사실**: '용량부족 경고' 체크 OFF 면 경고용량은 0 으로 잠겨 사용자가 입력 불가(게이팅). 즉 사용자는 'abc' 를 칠 수조차 없음.
+- **정정**: sc3q(생성)·sc4n(수정) **제거**. `add_secure_drive` 의 warn_quota 파라미터 제거. 경고용량은 숫자 검증 정상.
+- **유효한 경고용량 이슈는 i18n 키 노출(길이 13자)뿐** — 13자리 '숫자'라 ng-model 통과 후 길이-12 검증에서 raw 키(systemDriveWarningQuota) 노출(3o/4l, 유지).
+- **교훈**: 입력 검증/마스크 테스트에 `fill()` 금지 — 마스크·disabled·게이팅을 우회해 거짓 양성. 실타이핑(press_sequentially) 또는 입력 후 재읽기로 실제 수용 여부 확인.
+
+상태: [RESOLVED — 거짓 양성 제거]
