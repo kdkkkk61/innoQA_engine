@@ -57,8 +57,8 @@
 ## 데이터 안전 규칙
 
 - `[AUTO]` 접두사 항목만 생성·삭제 가능. 미충족 시 Page 클래스에서 Exception 발생
-- `[AUTO_KEEP]` 접두사: 시나리오 6 연계용 (sc1~5 일반 cleanup 대상 제외)
-- **Lifecycle / sc3↔sc4 연계 / 사용 규칙 상세**: `docs/scenario_6_suite_setup.md` 참조
+- 날짜본(영속·연계) 접두사: `[AUTO_<MMDD>]`(예 `[AUTO_0629]`) — sc1~5 일반 cleanup 제외(`startswith("[AUTO]")`가 `[AUTO_`는 불일치 → 자동 보존). 'KEEP' 용어 폐기, 날짜 유무로만 구분(날짜 없음=휘발성 / 날짜 있음=영속). 고정 `[AUTO_KEEP]`은 다른 날 이전 본 잔존 시 이름/참조 충돌이라 날짜본으로 대체(nPouch 레거시 코드는 `[AUTO_KEEP]` 유지)
+- **Lifecycle / 날짜본 명명 / sc3↔sc4 연계 / 사용 규칙 상세**: `docs/scenario_6_suite_setup.md` 참조
 - 이 규칙은 어떤 경우에도 우회하지 않는다
 
 ---

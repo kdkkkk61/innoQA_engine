@@ -14,8 +14,8 @@ yaml: config/scan_hints/secure_zone_template_secure_drive.yaml
 - 속성 모달 detailSecureZoneTemplate: 행 td[1] 더블클릭, 읽기전용, 대부분 텍스트 표시
 
 [명명/cleanup — 연계(정책이 템플릿 참조)]
-- [AUTO]_sztpl_sd... = 휘발성(sc5c cleanup 대상). [AUTO_<날짜>]_sztpl_sd... = KEEP(연계, sc5c 보존).
-- delete_all_test_data(): [AUTO] + [AUTO_<날짜>] 둘 다 (sc1 시작). delete_all_auto(): [AUTO] 만 (sc5c).
+- [AUTO]_sztpl_sd... = 휘발성(sc5 cleanup 대상). [AUTO_<날짜>]_sztpl_sd... = 날짜본(영속·연계, sc5 보존).
+- delete_all_test_data(): [AUTO] + [AUTO_<날짜>] 둘 다 (sc1 시작). delete_all_auto(): [AUTO] 만 (sc5).
 """
 import re
 
@@ -165,7 +165,7 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
             self.delete_template(name)
 
     def delete_all_auto(self) -> None:
-        """[AUTO] (날짜 없음) 만 삭제, [AUTO_<날짜>] KEEP 보존 — sc5c."""
+        """[AUTO] (날짜 없음) 만 삭제, [AUTO_<날짜>] 날짜본 보존 — sc5."""
         for name in [n for n in self.get_template_names() if n.startswith("[AUTO]")]:
             self.delete_template(name)
 
@@ -227,6 +227,127 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         self.page.wait_for_timeout(200)
         self.click(self.SEL_MODIFY_BTN)
         self.wait_for(self.SEL_MODAL, state="attached")
+
+    # ── 속성(상세) 모달 — sc5 표시 검증 ──────────────────────────────
+    SEL_DETAIL_MODAL = "div#detailSecureZoneTemplate.in"
+    SEL_DETAIL_CLOSE = "div#detailSecureZoneTemplate.in button:has-text('닫기')"
+
+    def open_detail_modal(self, name: str) -> None:
+        """행 td[1] 더블클릭 → 속성(상세정보 보기) 모달. 읽기전용 표시 검증용(실측 2026-06-29)."""
+        if not self._AUTO_ANY.match(name):
+            raise Exception("테스트 생성 템플릿([AUTO]/[AUTO_날짜] 접두사)만 조작 가능합니다")
+        # 합성 더블클릭으로 행 열기 + 재시도. Bootstrap3 모달은 position 오프셋으로 Playwright visible 체크 실패 →
+        # .in 클래스 + state="attached" 로 감지(메모리/실측). visible 로 바꾸면 모달이 열려도 30s 타임아웃(2026-06-30 회귀 정정)
+        cell = self._row_locator(name).locator("td").nth(1)
+        det = self.page.locator(self.SEL_DETAIL_MODAL)
+        for _ in range(3):
+            cell.evaluate(
+                "el => ['mousedown','mouseup','click','mousedown','mouseup','click','dblclick']"
+                ".forEach(t => el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window})))"
+            )
+            try:
+                det.wait_for(state="attached", timeout=4000)   # 짧게 — 실패해도 빠르게
+                self.page.wait_for_timeout(400)                # 비동기 표시값 렌더 대기(텍스트 대조 전)
+                return
+            except Exception:
+                self.page.wait_for_timeout(300)
+        raise Exception(f"속성 모달이 열리지 않음(3회 재시도 실패): {name}")
+
+    def detail_modal_try_change(self) -> dict:
+        """속성 모달 체크박스에 실제 클릭 시도 → 값이 바뀌는지(능동 읽기전용 검증). 바뀌면 원복."""
+        out: dict = {}
+        for sel in ("#isRegistEcmDrive", "#isTakeoutDrivePathHide"):
+            loc = self.page.locator(f"{self.SEL_DETAIL_MODAL} {sel}").first
+            if loc.count() == 0:
+                continue
+            before = loc.is_checked()
+            try:
+                loc.evaluate("el => el.click()")
+                self.page.wait_for_timeout(120)
+            except Exception:
+                pass
+            after = loc.is_checked()
+            out[sel] = {"before": before, "after": after, "changed": before != after}
+            if before != after:
+                try:
+                    loc.evaluate("el => el.click()")
+                except Exception:
+                    pass
+        return out
+
+    def detail_modal_text(self) -> str:
+        """속성 모달 본문 텍스트(이름·반출·시큐어드라이브 항목 등은 텍스트라 포함 여부로 표시 검증)."""
+        m = self.page.locator(self.SEL_DETAIL_MODAL).first
+        if m.count() == 0:
+            return ""
+        return " ".join(m.inner_text().split())
+
+    def detail_modal_ecm_hide(self) -> dict:
+        """속성 모달의 체크박스 2개 상태(수정 모달값과 대조용)."""
+        out = {}
+        for cid in ("isRegistEcmDrive", "isTakeoutDrivePathHide"):
+            loc = self.page.locator(f"{self.SEL_DETAIL_MODAL} #{cid}").first
+            out[cid] = loc.is_checked() if loc.count() > 0 else None
+        return out
+
+    def close_detail_modal(self) -> None:
+        try:
+            self.page.locator(self.SEL_DETAIL_CLOSE).first.evaluate("el => el.click()")
+            self.page.locator(self.SEL_DETAIL_MODAL).wait_for(state="detached", timeout=self._TIMEOUT_MODAL)
+        except Exception:
+            pass
+
+    def open_sd_detail_warn_quota(self) -> str:
+        """속성 모달의 시큐어드라이브 문자(첫 행) 클릭 → 중첩 'sd 상세'(id=addSecureDrive, 읽기전용) → 경고용량 표시 텍스트 반환.
+        실측 2026-06-29: 경고용량 단위가 입력(GB)과 달리 MB 로 표시(단위 불일치). 중첩 닫기는 close_sd_detail()."""
+        cell = self.page.locator(f"{self.SEL_DETAIL_MODAL} table tbody tr").first.locator("td").first
+        nested = self.page.locator("div#addSecureDrive.in")
+        for _ in range(2):
+            cell.evaluate("el => ['mousedown','mouseup','click']"
+                          ".forEach(t => el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window})))")
+            try:
+                nested.first.wait_for(state="attached", timeout=3000)   # Bootstrap3 중첩 모달 → attached(visible 체크 실패)
+                self.page.wait_for_timeout(400)
+                break
+            except Exception:
+                self.page.wait_for_timeout(300)
+        if nested.count() == 0:
+            return ""
+        t = " ".join(nested.first.inner_text().split())
+        i = t.find("경고용량")
+        return t[i:i + 18] if i >= 0 else ""
+
+    def close_sd_detail(self) -> None:
+        """중첩 sd 상세(addSecureDrive 읽기전용) 닫기."""
+        try:
+            self.page.locator("div#addSecureDrive.in button:has-text('닫기')").first.evaluate("el => el.click()")
+            self.page.wait_for_timeout(300)
+        except Exception:
+            pass
+
+    def set_checkbox(self, selector: str, checked: bool) -> None:
+        """체크박스를 원하는 상태로 설정 — 현재와 다르면 JS 클릭(overlay/visibility 무관)."""
+        loc = self.page.locator(selector).first
+        if loc.count() > 0 and loc.is_checked() != checked:
+            loc.evaluate("el => el.click()")
+            self.page.wait_for_timeout(120)
+
+    def read_modify_modal_state(self) -> dict:
+        """열린 수정 모달의 전 필드 저장값 — sc5 저장 round-trip 검증용(속성 표시와 대조)."""
+        def _v(sel):
+            loc = self.page.locator(sel).first
+            return loc.input_value() if loc.count() > 0 else ""
+        def _c(sel):
+            loc = self.page.locator(sel).first
+            return loc.is_checked() if loc.count() > 0 else None
+        return {
+            "name": _v(f"{self.SEL_MODAL} {self.SEL_NAME}"),
+            "to_path": _v(self.SEL_TAKEOUT_PATH), "to_letter": _v(self.SEL_TAKEOUT_LETTER),
+            "to_label": _v(self.SEL_TAKEOUT_LABEL), "to_quota": _v(self.SEL_TAKEOUT_QUOTA),
+            "old_drive": _v(self.SEL_OLD_DRIVE),
+            "ecm": _c(self.SEL_ECM), "hide": _c(self.SEL_TAKEOUT_HIDE),
+            "sd_rows": self.secure_drive_rows(),
+        }
 
     SEL_SEARCH_INPUT = "input#searchText"
     SEL_SEARCH_BTN   = "span#searchBtn"
@@ -405,10 +526,11 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
     SEL_SUB_ADD   = "div#addSecureDrive.in button:has-text('추가')"
 
     def add_secure_drive(self, label: str, letter: str, path: str,
-                         quota_type: str = "WRITE", quota: str = "100"):
+                         quota_type: str = "WRITE", quota: str = "100", warn_quota=None):
         """addSecureDriveBtn → 서브모달 채우기 → '추가'.
         - 정상: 항목 커밋 + 서브 자동 닫힘 → None 반환.
         - 검증실패(예: 생성위치 중복): 경고 모달 메시지 반환 + dismiss + 서브 닫기.
+        warn_quota 지정 시 '생성위치 용량부족시 경고' 체크 ON(게이팅 해제) 후 경고용량(GB 입력) 설정.
         실측 2026-06-23: 생성위치는 같은 루트(C:\\)면 폴더가 달라도
         '이미 등록된 드라이브의 생성위치와 동일합니다' 차단(정상 검증). 다른 루트(D:\\)는 추가됨.
         SYNC 선택 시 용량(MB) 필드 숨김(sc2j)."""
@@ -422,6 +544,9 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         self.page.wait_for_timeout(150)
         if quota_type == "WRITE":
             self.fill(self.SEL_SUB_QUOTA, quota)
+        if warn_quota is not None:
+            self.set_checkbox(self.SEL_SUB_WARN_TOGGLE, True)   # 용량부족경고 ON → 경고용량 입력 가능
+            self.fill(self.SEL_SUB_WARN_QUOTA, warn_quota)      # 경고용량(GB 단위로 입력)
         with overlay_off(self.page):
             self.page.locator(self.SEL_SUB_ADD).first.click(force=True)
         self.page.wait_for_timeout(400)
@@ -537,13 +662,17 @@ class SecureZoneTemplateSecureDrivePage(BasePage):
         return None
 
     def create_basic_template(self, name: str, sd_letter: str = "Q", to_letter: str = "T",
-                              to_path: str = "C:\\sztpl_to") -> str:
-        """최소 정상 생성: 이름 + 시큐어드라이브 항목 1건 + 반출드라이브 4필드 → 확인. 반환: 결과 메시지.
+                              to_path: str = "C:\\sztpl_to", two_drives: bool = False) -> str:
+        """정상 생성: 이름 + 시큐어드라이브 항목(1건, two_drives=True 면 2건) + 반출드라이브 4필드 → 확인. 반환: 결과 메시지.
+        2번째 드라이브는 다른 루트(D:)·다른 문자(Z, sd_letter 와 충돌 시 Y)·SYNC — 생성위치/문자 중복 회피.
         [AUTO]/[AUTO_날짜] 접두사만 허용(데이터 안전)."""
         if not self._AUTO_ANY.match(name):
             raise Exception("테스트 생성 템플릿([AUTO]/[AUTO_날짜] 접두사)만 허용")
         self.fill(f"{self.SEL_MODAL} {self.SEL_NAME}", name)
         self.add_secure_drive("sd_lbl", sd_letter, "C:\\sztpl_sd", "WRITE", "100")
+        if two_drives:
+            second = "Z" if sd_letter != "Z" else "Y"
+            self.add_secure_drive("sd_lbl2", second, "D:\\sztpl_sd2", "SYNC")
         self.fill_takeout(to_path, to_letter, "to_lbl", "1024")
         return self.submit_and_message()
 

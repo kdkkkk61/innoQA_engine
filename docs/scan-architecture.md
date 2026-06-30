@@ -217,20 +217,20 @@ request.node._npouch_page_id = self.PAGE_ID
 | 케이스 | 형태 | 동작 |
 |--------|------|------|
 | **단일 페이지 테스트** | `sc6X` (sub-num — sc6a/sc6b 등) | 페이지 내 마지막 정리 (zz_cleanup 유사) |
-| **여러 페이지 통합 테스트** | `sc6` (parent) | `[AUTO_KEEP]_` 정책을 다음 페이지로 연계 |
+| **여러 페이지 통합 테스트** | `sc6` (parent) | `[AUTO_<MMDD>]_` 날짜본 정책을 다음 페이지로 연계 |
 
-**cleanup 흐름 (방식 B 공통):**
-- **sc1 시작**: `delete_all_test_data()` — `[AUTO]_` + `[AUTO_KEEP]_` 둘 다 cleanup (clean slate)
+**cleanup 흐름 (방식 B 공통):** ('KEEP' 용어 폐기 → 날짜본 `[AUTO_<MMDD>]_`. nPouch 레거시 코드는 `[AUTO_KEEP]_` 잔존)
+- **sc1 시작**: `delete_all_test_data()` — `[AUTO]_` + `[AUTO_<MMDD>]_` 둘 다 cleanup (clean slate)
 - **sc2/3/4**: cleanup 없음 (이전 시나리오 정책 재사용)
-- **sc5 끝 (5c)**: `delete_all_auto_policies()` — `[AUTO]_` 만 cleanup, `[AUTO_KEEP]_` 보존 (lifecycle 종료 + 다음 연계)
-- **sc6**: `[AUTO_KEEP]_` 활용 또는 단일 페이지 마무리 정리
+- **sc5 끝**: `delete_all_auto*()` — `[AUTO]_` 만 cleanup, `[AUTO_<MMDD>]_` 날짜본 보존 (lifecycle 종료 + 다음 연계)
+- **sc6**: `[AUTO_<MMDD>]_` 날짜본 활용 또는 단일 페이지 마무리 정리
 
 ### AUTO 검색 정책 (CSU/process/tag picker 공통)
 
 picker (다른 페이지의 정책/프로세스 선택) 호출 시 **3단계 fallback chain**:
 
 ```
-1) AUTO 검색 시도 → 결과 있으면 매칭 첫 행 (KEEP 정책 우선 — sc6 연계 의도)
+1) AUTO 검색 시도 → 결과 있으면 매칭 첫 행 (날짜본 정책 우선 — sc6 연계 의도)
 2) AUTO 결과 0건 → 검색 reset → 전체 list 첫 행 (sc6 미실행 / sc1 cleanup 후 정상 fallback)
 3) 전체 list 도 비어있음 (rare) → picker close (막히는 현상 방지)
 ```
@@ -322,10 +322,10 @@ def _csu_select_first(page, prefer_keyword="AUTO"):
 - [ ] picker `.in` 클래스 attached wait 5초 timeout
 
 cleanup 호출 위치 (방식 B 라이프사이클):
-- [ ] **sc1 시작**: `delete_all_test_data()` (AUTO + KEEP 둘 다)
+- [ ] **sc1 시작**: `delete_all_test_data()` (AUTO + 날짜본 둘 다)
 - [ ] **sc2/3/4**: cleanup 호출 X (정책 재사용)
-- [ ] **sc5c (lifecycle 종료)**: `delete_all_auto_policies()` (AUTO 만, KEEP 보존)
-- [ ] **sc6**: 단일 페이지면 sc6X / 통합이면 KEEP 활용
+- [ ] **sc5 (lifecycle 종료)**: `delete_all_auto*()` (AUTO 만, 날짜본 보존)
+- [ ] **sc6**: 단일 페이지면 sc6X / 통합이면 날짜본 활용
 
 ---
 

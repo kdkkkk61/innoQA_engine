@@ -2116,3 +2116,30 @@
 - **교훈**: 입력 검증/마스크 테스트에 `fill()` 금지 — 마스크·disabled·게이팅을 우회해 거짓 양성. 실타이핑(press_sequentially) 또는 입력 후 재읽기로 실제 수용 여부 확인.
 
 상태: [RESOLVED — 거짓 양성 제거]
+
+---
+
+## 제품 버그 — 경고용량 단위 불일치 (입력 GB ↔ 속성 표시 MB) — 2026-06-29
+
+- **대상**: 시큐어드라이브 경고용량(systemDriveWarningQuota). 입력(서브 모달)은 라벨 'GB', 속성(상세) 표시는 'MB'.
+- **증상**: 경고용량을 50으로 입력(편집 서브 라벨=GB) 저장 → **속성 모달 > 시큐어드라이브 '문자' 클릭 → 중첩 '시큐어존 시큐어드라이브 상세정보 보기'(id=addSecureDrive, 읽기전용)** 에 "경고용량 : 50MB" 로 표시. 값(50)은 같으나 단위 라벨이 GB→MB 로 바뀜 → 1000배 의미 차이(오해 유발).
+- **직접조작 확정(Chrome MCP, 2026-06-29)**: [AUTO]_probe_wqunit(경고용량 50 GB) → 중첩 sd상세 has_50MB=true, has_50GB=false.
+- **경로 발견**: 속성 모달은 sd 테이블만 보이고 경고용량 미표시 → sd '문자' 클릭 시 중첩 sd 상세 모달이 열려 경고용량 표시(MB). (행 더블클릭 아님, 문자 셀 클릭)
+- **테스트**: sc5c(`test_scenario5c_warn_quota_unit_mismatch`)에서 WARN(표시 단위 MB 면 불일치). page: `open_sd_detail_warn_quota`/`close_sd_detail`, `add_secure_drive(warn_quota=)`(용량부족경고 ON + 경고용량 설정).
+- **분류**: 제품 버그(단위 라벨 불일치). cf. 경고용량 숫자검증은 정상(비숫자→0 코어싱), i18n 길이 메시지 raw 키 노출(3o/4l)은 별건.
+- **참고**: 사용자가 "없음MB"(빈값) 화면으로 처음 포착 → 단위가 GB여야 하는데 MB.
+
+상태: [제품 버그 — 보고 대상] (테스트 WARN 카드 sc5c)
+
+---
+
+## sc5 — 속성 모달 wait_for state="visible" 회귀 → 30s 타임아웃 × 3 — 2026-06-30
+
+- **증상**: sc5 3 failed(5a/5b/5c), 셋 다 `open_detail_modal` 에서 모달 미오픈으로 실패(4:55~5:42).
+- **근본 원인(정정)**: `open_detail_modal`/`open_sd_detail_warn_quota` 의 모달 대기를 `state="attached"` → **`state="visible"`** 로 바꾼 것(없음-표시 타이밍 고치려던 변경). **Bootstrap3 모달은 position:relative + 큰 offset 으로 Playwright visible 체크에 실패**(메모리 기존 기록) → 모달이 실제로 열려도 visible 대기가 만료. (처음엔 "합성 더블클릭이 불안정"으로 오진했으나, 두 run 모두 visible 변경이 들어간 상태였음 — 클릭 방식 무관.)
+- **수정**: 대기를 **`state="attached"`(.in 클래스) 로 원복** + 짧은 타임아웃(4s/3s) + 재시도. 합성 더블클릭/클릭 유지(줄곧 정상이었음). 없음-표시 타이밍은 attached 직후 `wait_for_timeout(400)` 로 처리.
+- **분류**: 테스트 코드 회귀(대기 상태 오변경), 제품 무관.
+- **파일**: `pages/secure_zone_template_page.py`(open_detail_modal, open_sd_detail_warn_quota)
+- **교훈**: 이 제품의 Bootstrap3 모달 감지는 **항상 `.in` + `state="attached"`**. visible 로 바꾸지 말 것. 렌더 타이밍은 attached 후 짧은 wait_for_timeout 으로.
+
+상태: [RESOLVED] (재실행 검증 대기)
