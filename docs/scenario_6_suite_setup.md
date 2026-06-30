@@ -94,7 +94,7 @@ zz_cleanup (test_zz_cleanup.py — 최종)
 
 #### 현재 적용 상태 (사실)
 - `secure_zone` 접근제어 정책: 독립 페이지(연계 대상 없음) → `[AUTO]` 휘발성만 사용. KEEP 미사용. (`tests/secure_zone/`)
-- **시큐어존 템플릿(시큐어드라이브)**: `[AUTO_<날짜>]` **첫 실제 적용**. sc5d(`test_scenario5_lifecycle.py`)가 `[AUTO_<MMDD>]_sztpl_sd`(시큐어드라이브 2건 + 반출) 생성 → `delete_all_auto()`(= `startswith("[AUTO]")` 만 삭제)로 휘발성 `[AUTO]` 전부 삭제, 날짜본 보존. sc6 연계용(상위 시큐어존 정책이 템플릿 참조 — 속성 모달 '사용처'에 표시).
+- **시큐어존 템플릿(시큐어드라이브)**: `[AUTO_<날짜>]` **첫 실제 적용**. sc6(`test_scenario6_suite_setup.py`)가 `[AUTO_<MMDD>]_sztpl_sd`(시큐어드라이브 2건 + 반출) 생성 → `delete_all_auto()`(= `startswith("[AUTO]")` 만 삭제)로 휘발성 `[AUTO]` 전부 삭제, 날짜본 보존·남김. 상위 시큐어존 정책이 템플릿 참조(속성 모달 '사용처'에 표시) — 정책 테스트는 미구현이라 현재는 날짜본 seed 생성·보존까지.
 - nPouch 계열: 기존 `[AUTO_KEEP]` 형식 그대로 사용 중. `[AUTO_<날짜>]` 미적용.
 - `[AUTO_<날짜>]` 형식은 KEEP 연계가 필요한 페이지에서 도입한다. 도입 시 안전 가드를 `^\[AUTO(_\d{4,8})?\]` 정규식으로 확장(날짜 없는 `[AUTO]` + 날짜본 둘 다 테스트 데이터로 인식)한다. nPouch 마이그레이션 범위는 현재 미확정.
   - 시큐어존 템플릿 page 의 안전 가드 `_AUTO_ANY = ^\[AUTO(_\d{4,8})?\]` 가 이 확장형(날짜 4~8자리)을 이미 반영.

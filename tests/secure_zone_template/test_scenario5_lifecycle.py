@@ -7,13 +7,11 @@
 - 5a 케이스A(전체 채움, 시큐어드라이브 2건): 옵션(ECM·반출숨김·예외드라이브) 포함 → 저장→수정확인→속성확인
 - 5b 케이스B(필수만, 선택 비움): 선택 빈값 유지(예외드라이브 '없음' 등)
 - 5c 경고용량 단위 불일치(버그): 입력 GB ↔ 속성>sd상세 표시 MB
-- 5d lifecycle: [AUTO_<MMDD>] 날짜본 생성 → delete_all_auto ([AUTO] 정리 / 날짜본 보존)
+  (날짜본 생성 + [AUTO] cleanup 연계 준비는 sc6 = test_scenario6_suite_setup.py 로 분리)
 
 직접조작 수집(2026-06-29): 속성 모달=detailSecureZoneTemplate(행 더블클릭, 읽기전용), input은 체크박스 2개,
 나머지(이름·반출·시큐어드라이브 항목·예외드라이브)는 텍스트 표시 + '사용처'(연계 정책명) 표시.
 """
-import time
-
 from pages.secure_zone_template_page import SecureZoneTemplateSecureDrivePage
 from tests.secure_zone_template._base import SecureZoneTemplateBase
 
@@ -161,38 +159,3 @@ class TestSecureZoneTemplateScenario5Lifecycle(SecureZoneTemplateBase):
                         "3. 경고용량 단위가 GB 인지(MB면 단위 불일치 버그)")
         page.close_sd_detail()
         page.close_detail_modal()
-
-    # ══ 5d: lifecycle — [AUTO_날짜] 날짜본 생성 → [AUTO] 전부 정리(날짜본만 남김) ════
-    def test_scenario5d_dated_and_cleanup(self, logged_in_page, settings):
-        """sc6 연계용 [AUTO_<MMDD>] 날짜본 템플릿(시큐어드라이브 2건) 생성 후, 휘발성 [AUTO] 전부 삭제.
-        명명 규칙: '[AUTO]'(날짜없음)=휘발성→삭제 / '[AUTO_MMDD]'(날짜본)=영속·연계→delete_all_auto 가 보존
-        (startswith('[AUTO]') 가 '[AUTO_'는 불일치 → 자동 제외).
-        ★날짜 기반인 이유: 고정명은 다른 날 테스트 시 이전 본이 아직 등록/연계돼 있으면 '이미 등록된 이름' 충돌.
-        날짜로 두면 날마다 이름이 달라(0628 vs 0629) 이전 본 생존해도 안 겹침. 같은 날 재실행은 동명 재사용(없을 때만 생성)."""
-        print("\n━━ [시큐어존 템플릿/SD] 시나리오 5d: 날짜본 생성 + [AUTO] 정리 ━━━")
-        page = self._new_page(logged_in_page, settings)
-        page.navigate_to()
-        date = time.strftime("%m%d")                       # 예: 0629
-        dated = f"[AUTO_{date}]_sztpl_sd"
-        # ① 날짜본 생성(없으면) — 시큐어드라이브 2건 + 반출
-        if dated not in page.get_template_names():
-            page.open_add_modal()
-            page.create_basic_template(dated, sd_letter="K", to_letter="L", to_path="C:\\dated_to", two_drives=True)
-            page.navigate_to()
-        dated_created = dated in page.get_template_names()
-        # ② 휘발성 [AUTO] 전부 삭제(날짜본=[AUTO_날짜]는 보존)
-        before = [n for n in page.get_template_names() if n.startswith("[AUTO]")]
-        page.delete_all_auto()
-        page.navigate_to()
-        after_vol = [n for n in page.get_template_names() if n.startswith("[AUTO]")]
-        dated_present = dated in page.get_template_names()
-        kept_dated = [n for n in page.get_template_names()
-                      if page._AUTO_ANY.match(n) and not n.startswith("[AUTO]")]
-        ok = dated_created and (len(after_vol) == 0) and dated_present
-        self._add("pass" if ok else "fail",
-                  "sc5d — [AUTO_날짜] 날짜본 생성 + [AUTO] 전부 정리",
-                  f"결과: 날짜본 '{dated}' 생성={dated_created}/보존={dated_present}, "
-                  f"휘발성 [AUTO] {len(before)}건 → {len(after_vol)}건, [AUTO_날짜] 보존 {len(kept_dated)}건 "
-                  + ("(날짜본만 남고 [AUTO] 정리)" if ok else "[날짜본 미보존 또는 [AUTO] 잔존]"), sc=5,
-                  repro="1. [AUTO_MMDD] 날짜본 템플릿 생성(시큐어드라이브 2건)\n"
-                        "2. delete_all_auto → [AUTO] 전부 삭제\n3. 날짜본([AUTO_날짜])만 남는지 확인")
