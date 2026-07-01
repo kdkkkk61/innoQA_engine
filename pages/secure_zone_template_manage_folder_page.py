@@ -247,6 +247,14 @@ class SecureZoneTemplateManageFolderPage(BasePage):
         except Exception:
             pass
 
+    def open_modify_modal(self, name: str) -> None:
+        """행 선택(tActive) + '수정' → 1단계 수정 모달(이름/용도/상태 로드, 저장='수정'). 실측 2026-07-01."""
+        if not self._AUTO_ANY.match(name):
+            raise Exception("테스트 생성 템플릿([AUTO]/[AUTO_날짜] 접두사)만 조작 가능합니다")
+        self.select_row(name)
+        self.click(self.SEL_MODIFY_BTN)
+        self.wait_for(self.SEL_MODAL, state="attached")
+
     def select_template_type(self, ttype: str) -> None:
         """1단계 용도 라디오 선택 — 'SHORTCUT'(바로가기) / 'MODIFY_REGIST'(레지스트리)."""
         sel = self.SEL_TYPE_REGIST if ttype == "MODIFY_REGIST" else self.SEL_TYPE_SHORTCUT
@@ -347,6 +355,35 @@ class SecureZoneTemplateManageFolderPage(BasePage):
             self.click_attached(self.SEL_CONFIRM_BTN)
             self.wait_for_modal_closed()
         return msg
+
+    def content_save_message(self) -> str:
+        """내용 모달 저장('수정' 또는 '추가' 중 존재하는 것) 클릭 → 경고 반환 + dismiss. sc4 수정 저장용."""
+        loc = self._content_loc()
+        btn = loc.locator("button", has_text="수정")
+        if btn.count() == 0:
+            btn = loc.locator("button", has_text="추가")
+        with overlay_off(self.page):
+            btn.first.click(force=True)
+        self.page.wait_for_timeout(500)
+        msg = ""
+        if self.is_confirm_modal_visible():
+            try:
+                msg = self.get_modal_message()
+            except Exception:
+                msg = ""
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+        return msg
+
+    def open_folder_item_edit(self, setting_name: str) -> None:
+        """폴더모달에서 '설정명' 링크(a) 클릭 → 용도별 내용 모달(로드값 + 저장='수정'). 셀 더블클릭 아님(실측 2026-07-01)."""
+        modals = self.page.locator(self.SEL_FOLDER_MODAL)
+        if modals.count() == 0:
+            raise Exception("폴더 모달이 열려있지 않음")
+        row = modals.last.locator("tbody tr", has_text=setting_name).first
+        row.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
+        row.locator("a").first.evaluate("el => el.click()")
+        self.wait_for(self.SEL_CONTENT_ANY, state="attached")
 
     # ── 예약어 picker / 폴더 매핑 추가·제거 (sc3 동작) ──────────────────
     def pick_path(self, which: str, index: int = 0) -> None:
