@@ -1,0 +1,126 @@
+# 시큐어존 템플릿 — 특수폴더 탭 (MANAGE_FOLDER) : 방식 B (list_page + sc0 UIScanner)
+#
+# sc0(UIScanner phase=2)의 yaml↔DOM diff 입력 + 참조 메모.
+# 1단계(껍데기) ADD 모달(addModifySecureZoneManageFolderTemplate)을 스캔.
+# ⚠️ 폴더 항목(설정명/원본/대상/설명)은 '2단계 내용 모달'에 있어 1단계 스캔엔 안 잡힘 → 수동 sc2/sc3 검증.
+#    모달 클래스는 '.modal' 아님 → '.modal-wrap.in' + id 셀렉터 사용(시큐어 드라이브와 동일 규칙).
+#
+# 수집: Chrome MCP 직접조작 (2026-06-30, 콘솔 192.168.13.141, version 11.1.0.172)
+# ⚠️ 이전 구조 메모(2026-06-08, 다른 콘솔)와 차이 있음 — 본 파일이 실환경 기준.
+
+page_id: "secure_zone_template_manage_folder"
+modal_id: "addModifySecureZoneManageFolderTemplate"
+scan_mode: "list_page"
+detect_hidden: true
+
+# 모달 진입점 (리스트 툴바)
+modal_trigger:
+  add:    "button#addItemBtn"
+  modify: "button#modifyItemBtn"
+list_toolbar:
+  add:           "템플릿 추가 (button#addItemBtn)"
+  modify:        "수정 (button#modifyItemBtn)"
+  folder_add_del: "폴더 추가/제거 (button#folderAddDeleteBtn) — 특수폴더 탭 전용 2단계 진입"
+  copy:          "복사"
+  remove:        "삭제"
+# 필터/검색 (실측: 타입 select + 상태 select + 검색 input + 페이지크기)
+filters:
+  type:   "전체 / 바로가기(Link) / 레지스트변경 (szTemplateType)"
+  status: "상태 / 활성 / 비활성"
+  search: "input#searchText (템플릿 이름)"
+
+# ── 1단계 모달 (껍데기) addModifySecureZoneManageFolderTemplate ──
+# 실측 2026-06-30. 내용 없음(이름+용도+상태만), '확인'/'닫기'.
+stage1_fields:
+  - {selector: "input#templateName", label: "템플릿 이름", required: true, maxlength: "TBD(미수집)", order: 10}
+  - selector: "input#SHORTCUT | input#MODIFY_REGIST"
+    label:    "템플릿 용도 (szTemplateType radio, 둘 다 value=on)"
+    values:   "SHORTCUT(바로가기 Link, 기본) / MODIFY_REGIST(레지스트리 변경)"
+    required: true
+  - selector: "input#CREATE | input#DELETE"
+    label:    "상태 (status radio)"
+    values:   "CREATE(표시:활성, 기본) / DELETE(표시:비활성)   ※표시텍스트≠값 주의"
+stage1_save: "확인(추가) / 재오픈 시 수정"
+
+# ── 2단계 흐름 (행 선택 → 폴더 추가/제거 → 내용 모달) ──
+# 행 선택은 tActive 필요(mousedown 디스패치 / Playwright click(force)+overlay off).
+stage2_flow:
+  open: "행 선택(tActive) → button#folderAddDeleteBtn"
+  folder_modal:
+    title:   "특수폴더 추가/제거 (헤더에 '템플릿 이름'·'등록된 경로 N' 표시)"
+    columns: ["설정명", "원본위치", "대상위치", "설명", "상태", "수정일"]   # 실측 행 기준
+    buttons: ["+(addItemBtn)", "-(removeItemBtn)", "Example", "Import", "닫기"]
+    note:    "Example/Import = CSV 추정, 동작 미수집(TBD). - 제거(removeItemBtn) 동작 미수집(TBD)"
+  content_modal_add: "+(addItemBtn) → 용도별 내용 모달"
+  add_success_verified: "정상 예약어([/DESKTOP/]→[/MYDOC/]) 폴더 항목 '추가' → 오류 없이 리스트 등장 + '등록된 경로' 카운트 증가 (실측 2026-06-30)"
+
+# ── 내용 모달 (용도별, .modal-wrap.in) ──
+# 저장 버튼 = '추가' / 재오픈 = '수정'.
+content_modal:
+  common_fields:
+    - {selector: "input#manageFolderName", label: "설정명", required: true, maxlength: "TBD"}
+    - {selector: "div#folderSourcePath",  label: "원본위치", required: true, kind: "contenteditable div (직접 타이핑 or 예약어 picker)"}
+    - {selector: "div#folderTargetPath",  label: "대상위치", required: true, kind: "contenteditable div"}
+    - {selector: "textarea#description",  label: "설명", required: false}
+    - {selector: "input#CREATE | input#DELETE", label: "상태", values: "활성/비활성"}
+  picker:
+    button: "특수폴더 (원본/대상 위치 옆, ×2)"
+    modal:  "예약어 (input[name=selectReservedWord] 체크박스 11, 확인/취소)"
+    reserved_words:
+      - "[/DESKTOP/] 바탕화면"
+      - "[/MYDOC/] 내문서"
+      - "[/FAVORITES/] 즐겨찾기"
+      - "[/USER/] %USERPROFILE%"
+      - "[/APPDATA/] User\\AppData\\Roaming"
+      - "[/LOCAL_APPDATA/] %USERPROFILE%\\AppData\\Local"
+      - "[/COMPUTERNAME/] 실행 중인 컴퓨터 이름"
+      - "[/MACADDR/] MAC Address"
+      - "[/USERID/] 로그인한 클라이언트 아이디"
+      - "[/DNAME/] 드라이브 이름으로 선택"
+      - "[/DMODEL/] 드라이브 모델로 선택"
+  by_type:
+    SHORTCUT:
+      title:  "시큐어존 바로가기 추가/제거"
+      extra:  "없음 (공통 필드만)"
+    MODIFY_REGIST:
+      title:  "레지스트리 변경 등록"
+      extra:  "숨김 인증 필드: textarea#descriptionRun / input#runPassword(pw) / input#licensePwd(pw) + 복호화/인증 버튼 (기본 display:none)"
+
+# ── ★관리자 전용 예약어 / 인증 기능 (실측 2026-06-30) ──
+# MODIFY_REGIST 에서 원본/대상위치에 '관리자 전용 예약어' 입력 시 비밀번호 인증 게이팅.
+admin_reserved_word_gating:
+  trigger:    "원본/대상위치에 관리자 전용 예약어(예: [/RUN/], [/DSEC/] — 일반 picker 11개에 없음) 입력 후 '추가'"
+  block_msg:  "관리자 전용 예약어가 감지되었습니다. 비밀번호 인증 후 진행가능합니다."
+  reveal:     "input#licensePwd (관리자 비밀번호 인증) 필드 표시됨"
+  encryption: "(사용자 설명) 인증 후 저장 시 설명 내용 암호화 → 재오픈 시 암호문 표시 + '복호화' 버튼"
+  # 검증 노트: 필드 id 는 licensePwd(라이센스)인데 메시지는 '관리자 비밀번호' — 어느 쪽 인증인지 사용자 확인 필요.
+  test_boundary:
+    testable:  "관리자 기능 '존재' 확인까지 — 관리자예약어 입력→추가→차단메시지+licensePwd 표시 (비밀번호 입력 없이)"
+    excluded:  "실제 비밀번호 인증 / 인증 후 저장 / 암호화 / 복호화 → 비번 입력 금지(안전규칙) = user-driven(사용자 직접 테스트)"
+
+# ── 시나리오별 방향성 ──
+scenario_focus:
+  sc1: "특수폴더 탭 UI(툴바·필터·컬럼·1단계/2단계 모달 열림닫힘)"
+  sc2: "입력구조(1단계 이름·용도·상태 / 내용모달 설정명·원본·대상·설명 필수 + maxlength TBD수집)"
+  sc3: "동작(템플릿 CRUD / 용도별 내용 추가(SHORTCUT·REGIST) / 예약어 picker / ★관리자예약어 게이팅 차단(존재확인) / 복사 / 검색)"
+  sc4: "수정(저장값 로드→수정→재확인, 추가→수정 버튼)"
+  sc5: "lifecycle 케이스(속성-확인 법칙)"
+  sc6: "연계 데이터 준비 — [AUTO_<날짜>] 날짜본 생성 + [AUTO] cleanup"
+
+# ── 명명 / cleanup (날짜본 통일) ──
+naming:
+  volatile: "[AUTO]_sz_mf...      # 휘발성(날짜 없음) — cleanup 대상"
+  dated:    "[AUTO_<MMDD>]_sz_mf  # 날짜본(영속·연계용) — delete_all_auto 보존"
+
+# ── sc3 동작 수집 (Chrome MCP 직접조작 2026-06-30) ─────────────────────
+sc3_behaviors:
+  duplicate_name:    "1단계 기존 이름으로 생성 → '이미 등록된 이름 입니다.'"
+  required_order:    "내용 필수 순서: 설정명 → 원본위치 → 대상위치 (각 '~을 입력해 주세요.')"
+  picker_insert:     "원본/대상 옆 '특수폴더' → 예약어 체크+확인 → contenteditable 에 예약어([/DESKTOP/] 등) 삽입됨"
+  folder_add_commit: "설정명+원본+대상 → '추가' → 경고 없이 폴더 항목 커밋(등록된 경로 +1)"
+  folder_remove:     "폴더 항목 체크 + '-'(removeItemBtn) → 확인 '선택한 항목을 삭제 하시겠습니까?' → 제거(등록된 경로 -1)"
+  copy:              "템플릿 체크 + '복사' → 확인 '선택한 항목을 복사 하시겠습니까?' → '<이름>_copy' 생성"
+  search:            "input#searchText 입력 + Enter → 이름 필터(searchTextOption=templateName)"
+  admin_gating:      "레지변경 원본/대상에 관리자 예약어([/RUN/],[/DSEC/]) → '추가' → '관리자 전용 예약어가 감지되었습니다. 비밀번호 인증 후 진행가능합니다.' + input#licensePwd 노출 (비번 인증/암호화/복호화 = user-driven 제외)"
+  overflow_desc:     "설명(maxlength=null) 3000자 실입력 → '추가' → 경고 없이 서버 저장, 재오픈 시 3000자 그대로(서버 제한/절단 없음). 실측 2026-06-30"
+  clamp_maxlength:   "이름/설정명(maxlength=30) 실타이핑 31자↑ → DOM maxlength 로 30 clamp (fill 금지, press_sequentially 로 검증)"
