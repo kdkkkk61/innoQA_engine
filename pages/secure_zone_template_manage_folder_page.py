@@ -41,6 +41,9 @@ class SecureZoneTemplateManageFolderPage(BasePage):
     SEL_TABLE_ROW_ACTIVE   = "table tbody tr.tActive"
     SEL_CHECKBOX           = "input[type='checkbox']"
     SEL_SEARCH             = "input#searchText"
+    SEL_FILTER_TYPE        = "select#szTemplateType"    # 전체/바로가기(Link)/레지스트변경
+    SEL_FILTER_STATUS      = "select#status"            # 상태/활성/비활성
+    SEL_SEARCH_ICON        = ".fa-search"               # 필터·검색 적용 트리거(select change 만으론 미적용)
 
     # ── 1단계 모달 ──
     SEL_MODAL         = "div#addModifySecureZoneManageFolderTemplate.in"
@@ -434,6 +437,31 @@ class SecureZoneTemplateManageFolderPage(BasePage):
         self.fill(self.SEL_SEARCH, term)
         self.page.locator(self.SEL_SEARCH).first.press("Enter")
         self.page.wait_for_timeout(700)
+
+    def filter_by(self, template_type: str = None, status: str = None) -> None:
+        """리스트 필터 — 용도/상태 select 라벨 설정 후 '검색(돋보기)' 트리거로 적용.
+        ⚠️ select change 만으론 미적용(앱이 검색 시점에 값 읽음) → 반드시 돋보기 클릭. label 예: '전체'/'바로가기(Link)'/'레지스트변경', '상태'/'활성'/'비활성'."""
+        def _set(sel, label):
+            self.page.locator(sel).evaluate(
+                "(el,v)=>{const o=[...el.options].find(x=>x.textContent.trim()===v); "
+                "if(o){el.value=o.value; el.dispatchEvent(new Event('change',{bubbles:true}));}}", label)
+        if template_type is not None:
+            _set(self.SEL_FILTER_TYPE, template_type)
+        if status is not None:
+            _set(self.SEL_FILTER_STATUS, status)
+        self.page.locator(self.SEL_SEARCH_ICON).first.evaluate("el => (el.closest('button,a')||el).click()")
+        self.page.wait_for_timeout(900)
+
+    def list_column_values(self, col_index: int) -> list[str]:
+        """리스트 각 행의 지정 열 텍스트(빈 행 제외). 용도=1, 상태=3."""
+        vals = []
+        for r in self.page.locator(self.SEL_TABLE_ROW).all():
+            tds = r.locator("td")
+            if tds.count() > col_index:
+                t = tds.nth(col_index).inner_text().strip()
+                if t:
+                    vals.append(t)
+        return vals
 
     # ──────────────────────────────────────────────────────────────
     # 헬퍼

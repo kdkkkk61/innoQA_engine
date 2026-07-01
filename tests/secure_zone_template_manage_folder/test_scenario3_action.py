@@ -148,11 +148,17 @@ class TestSecureZoneTemplateManageFolderScenario3Action(SecureZoneTemplateManage
         lic_vis = (page.field_present(page.SEL_C_LICENSE_PW)
                    and page.page.locator(page.SEL_C_LICENSE_PW).first.is_visible())
         self._add("pass" if gated and lic_vis else "fail",
-                  "sc3f — 관리자 예약어([/RUN/]/[/DSEC/]) → 비밀번호 인증 게이팅(관리자 기능 존재)",
-                  f"입력: 관리자 예약어로 추가 / 결과: 차단메시지={msg!r}, 관리자비번 필드 표시={lic_vis} "
-                  "(비번 인증·암호화·복호화는 user-driven 제외)", sc=3,
+                  "sc3f — 관리자 예약어([/RUN/]/[/DSEC/]) → 비밀번호 인증 게이팅(존재 확인)",
+                  f"입력: 관리자 예약어로 추가 / 결과: 차단메시지={msg!r}, 관리자비번 필드 표시={lic_vis}", sc=3,
                   repro="1. 레지변경 폴더 +\n2. 원본/대상에 관리자 예약어([/RUN/])\n3. 추가\n"
                         "4. '관리자 전용 예약어 감지' 차단 + 비밀번호 인증 필드 노출")
+        # ★게이팅 '존재'만 자동 확인됨 — 실제 인증/암호화/복호화는 자동화 불가(비번 입력 금지) → 수동 테스트 필요를 명시적으로 남김
+        self._add("warn",
+                  "sc3f — [수동 확인 필요] 관리자 암호 인증 → 저장 → 설명 암호화 → 재오픈 복호화",
+                  "관리자 암호가 필요한 구간이라 자동화 제외(안전규칙: 비밀번호 입력 금지). "
+                  "게이팅 '존재'까지만 자동 검증됨 — 실제 인증 통과/암호화/복호화는 담당자가 관리자 암호로 수동 테스트해야 함. "
+                  "(자동 pass 아님을 리포트에 남기기 위한 표식)", sc=3, screenshot=False,
+                  repro="1. 관리자 암호로 인증\n2. 저장 후 설명 암호화 확인\n3. 재오픈 → 복호화 버튼 → 암호로 복호화\n(모두 수동)")
         page.close_content_modal()
         page.close_folder_modal()
 
@@ -329,3 +335,72 @@ class TestSecureZoneTemplateManageFolderScenario3Action(SecureZoneTemplateManage
                   "sc3o — 검증 메시지 i18n 키 노출 전수",
                   f"입력: 생성 검증 메시지 수집 / 결과: {msgs} / 키 누출={leaks or '없음'}", sc=3,
                   repro="1. 생성 검증 경고 유발\n2. 메시지에 raw i18n 키(COLUMN.NAME 류) 없는지")
+
+    # ── 감사로 추가 (직접 조작 실측) ───────────────────────────────────
+    def test_scenario3p_list_filters(self, logged_in_page, settings):
+        """리스트 필터(용도/상태) — select + 검색(돋보기) → 결과 반영. select change 만으론 미적용(실측)."""
+        print("\n━━ [특수폴더] sc3p: 리스트 필터(용도/상태) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        # 용도 필터: 바로가기(Link)
+        page.filter_by(template_type="바로가기(Link)")
+        purposes = set(page.list_column_values(1))
+        type_ok = purposes.issubset({"바로가기(Link)"})   # 바로가기만(또는 0건)
+        self._add("pass" if type_ok else "fail",
+                  "sc3p — 용도 필터(바로가기) → 결과 반영",
+                  f"입력: 용도=바로가기 + 검색 / 결과: 용도값={purposes or '없음'} (바로가기만이어야)", sc=3,
+                  repro="1. 용도 드롭다운=바로가기\n2. 검색(돋보기)\n3. 바로가기만 표시")
+        page.filter_by(template_type="전체")   # 리셋
+        # 상태 필터: 활성
+        page.filter_by(status="활성")
+        statuses = set(page.list_column_values(3))
+        status_ok = statuses.issubset({"활성"})
+        self._add("pass" if status_ok else "fail",
+                  "sc3p — 상태 필터(활성) → 결과 반영",
+                  f"입력: 상태=활성 + 검색 / 결과: 상태값={statuses or '없음'} (활성만이어야)", sc=3,
+                  repro="1. 상태 드롭다운=활성\n2. 검색(돋보기)\n3. 활성만 표시")
+        page.filter_by(status="상태")   # 리셋(기본)
+
+    def test_scenario3q_folder_item_duplicate(self, logged_in_page, settings):
+        """폴더 항목 중복(같은 설정명) → '이미 등록된 이름 입니다.' 차단(실측)."""
+        print("\n━━ [특수폴더] sc3q: 폴더 항목 중복 차단 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_mf_dup"
+        page.ensure_template(tpl, "SHORTCUT")
+        page.open_folder_modal(tpl)
+        # 기준 항목(dup1) 없으면 추가
+        if not page.folder_row_values("dup1"):
+            page.open_content_add()
+            page.add_folder_mapping("dup1", use_picker=True, src_index=0, tgt_index=1)
+        # 같은 설정명으로 재추가 → 차단?
+        page.open_content_add()
+        msg = page.add_folder_mapping("dup1", use_picker=True, src_index=0, tgt_index=1)
+        blocked = "이미 등록된 이름" in msg
+        self._add("pass" if blocked else "warn",
+                  "sc3q — 폴더 항목 중복(같은 설정명) → 차단",
+                  f"입력: 같은 설정명 'dup1' 재추가 / 결과: 경고={msg!r} (기대 '이미 등록된 이름 입니다.')", sc=3,
+                  repro="1. 폴더 항목 추가(dup1)\n2. 같은 설정명 dup1 재추가\n3. 중복 차단 경고")
+        page.close_content_modal()
+        page.close_folder_modal()
+
+    def test_scenario3r_example_import(self, logged_in_page, settings):
+        """엑셀 대량 Example(다운로드)/Import(업로드) — 존재 확인 + 실제 동작은 [수동 확인 필요](자동화 경계)."""
+        print("\n━━ [특수폴더] sc3r: Example/Import(엑셀 대량) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.ensure_template(self._LINK, "SHORTCUT")
+        page.open_folder_modal(self._LINK)
+        fm = page.SEL_FOLDER_MODAL
+        ex = page.page.locator(f"{fm} button", has_text="Example").count() > 0
+        im = page.page.locator(f"{fm} button", has_text="Import").count() > 0
+        self._add("pass" if (ex and im) else "skip",
+                  "sc3r — Example/Import 버튼 존재(엑셀 대량 export/import)",
+                  f"결과: Example={ex}, Import={im}", sc=3,
+                  repro="1. 폴더 추가/제거 모달\n2. Example/Import 버튼 존재")
+        self._add("warn",
+                  "sc3r — [수동 확인 필요] Example 다운로드 / Import 업로드 실제 동작",
+                  "엑셀 예제 다운로드·대량 가져오기는 파일 다운로드/업로드라 자동화 제외(안전규칙). "
+                  "존재만 자동 확인 — 실제 다운로드 내용·Import 반영은 담당자 수동 테스트 필요.", sc=3, screenshot=False,
+                  repro="1. Example 클릭 → 예제 파일 다운로드 확인(수동)\n2. Import → 엑셀 업로드 → 폴더 반영 확인(수동)")
+        page.close_folder_modal()

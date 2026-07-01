@@ -45,6 +45,7 @@ _PAGE_LABELS: dict[str, str] = {
     "secure_zone_access_control": "접근제어 정책",
     "secure_zone_agent_policy":   "시큐어존 정책",
     "secure_zone_template_secure_drive": "템플릿(시큐어드라이브)",
+    "secure_zone_template_manage_folder": "템플릿(특수폴더)",
 }
 
 # ── 시나리오 번호 → 표시 라벨 (extra["scenario"] 태깅 기준) ────────

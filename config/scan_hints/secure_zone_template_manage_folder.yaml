@@ -129,3 +129,7 @@ sc3_behaviors:
   saved_value_roundtrip: "폴더 매핑 추가 후 폴더모달 재오픈 → 행에 설정명/원본/대상/설명 그대로 표시(저장값 확인, 생성 검증)"
   multi_folder:      "한 템플릿에 폴더 매핑 여러 개 추가 → 등록된 경로 N 증가"
   i18n_messages:     "생성 검증 메시지(설정명/원본/대상 필수·이름 필수·중복) 전수 — raw i18n 키 노출 없음(깨끗한 한글). 실측 2026-07-01"
+  list_filter_type:  "용도 필터(select#szTemplateType) + 검색(돋보기 .fa-search) → szTemplateType=SHORTCUT 등 필터 반영. select change 만으론 미적용(앱이 검색 시점 값 읽음). 실측 2026-07-01"
+  list_filter_status: "상태 필터(select#status) + 검색 → status=DELETE 등 반영. 동일 트리거. 실측 2026-07-01"
+  folder_item_dup:   "폴더 항목 같은 설정명 재추가 → '이미 등록된 이름 입니다.' 차단. 실측 2026-07-01"
+  example_import:    "폴더모달 Example(excelBtn=엑셀 예제 다운로드)/Import(whiteBtn=엑셀 대량 가져오기). 다운로드/업로드라 자동화 제외 → 존재 확인 + [수동 확인 필요]. 실측 2026-07-01"
