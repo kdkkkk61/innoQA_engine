@@ -124,3 +124,8 @@ sc3_behaviors:
   admin_gating:      "레지변경 원본/대상에 관리자 예약어([/RUN/],[/DSEC/]) → '추가' → '관리자 전용 예약어가 감지되었습니다. 비밀번호 인증 후 진행가능합니다.' + input#licensePwd 노출 (비번 인증/암호화/복호화 = user-driven 제외)"
   overflow_desc:     "설명(maxlength=null) 3000자 실입력 → '추가' → 경고 없이 서버 저장, 재오픈 시 3000자 그대로(서버 제한/절단 없음). 실측 2026-06-30"
   clamp_maxlength:   "이름/설정명(maxlength=30) 실타이핑 31자↑ → DOM maxlength 로 30 clamp (fill 금지, press_sequentially 로 검증)"
+  special_char_name: "이름/설정명에 특수문자(<>!@#$% 등) → 경고 없이 생성(허용, 검사 없음). 실측 2026-07-01"
+  copy_collision:    "복사본(<이름>_copy) 이미 존재 시 재복사 → 같은 '_copy' 이름 중복 생성(복사는 중복 검사 안 함). 수동 생성 '이미 등록된 이름' 차단과 불일치 → WARN. 실측 2026-07-01"
+  saved_value_roundtrip: "폴더 매핑 추가 후 폴더모달 재오픈 → 행에 설정명/원본/대상/설명 그대로 표시(저장값 확인, 생성 검증)"
+  multi_folder:      "한 템플릿에 폴더 매핑 여러 개 추가 → 등록된 경로 N 증가"
+  i18n_messages:     "생성 검증 메시지(설정명/원본/대상 필수·이름 필수·중복) 전수 — raw i18n 키 노출 없음(깨끗한 한글). 실측 2026-07-01"

@@ -275,16 +275,26 @@ class SecureZoneTemplateManageFolderPage(BasePage):
         self.wait_for(self.SEL_FOLDER_MODAL, state="attached")
 
     def close_folder_modal(self) -> None:
-        try:
-            with overlay_off(self.page):
-                self.page.locator(self.SEL_FOLDER_CLOSE).first.click(force=True, timeout=2000)
-            self.page.locator(self.SEL_FOLDER_MODAL).wait_for(state="detached", timeout=self._TIMEOUT_MODAL)
-        except Exception:
-            pass
+        """폴더 모달 전부 닫기(루프) — 스테일 모달 누적 방지.
+        하나만 닫으면 div#addDeleteSecureZoneManageFolder.in 이 남아 재오픈 시 2개 공존 → 읽기가 엉뚱한 모달을 봄(실측 2026-07-01)."""
+        for _ in range(4):
+            modals = self.page.locator(self.SEL_FOLDER_MODAL)
+            if modals.count() == 0:
+                return
+            top = modals.last
+            try:
+                with overlay_off(self.page):
+                    top.locator("button", has_text="닫기").first.click(force=True, timeout=2000)
+            except Exception:
+                try:
+                    top.evaluate("el => el.classList.remove('in')")
+                except Exception:
+                    pass
+            self.page.wait_for_timeout(300)
 
     def open_content_add(self) -> None:
-        """폴더 모달 '+' → 용도별 내용 모달(SHORTCUT/REGIST). JS 직접 클릭."""
-        self.page.locator(self.SEL_FOLDER_ADD_ITEM).first.evaluate("el => el.click()")
+        """폴더 모달 '+' → 용도별 내용 모달(SHORTCUT/REGIST). 최상단(현재) 폴더 모달의 + JS 직접 클릭."""
+        self.page.locator(self.SEL_FOLDER_ADD_ITEM).last.evaluate("el => el.click()")
         self.wait_for(self.SEL_CONTENT_ANY, state="attached")
 
     def content_modal_id(self) -> str:
@@ -375,8 +385,24 @@ class SecureZoneTemplateManageFolderPage(BasePage):
         return len(loc.input_value())
 
     def folder_item_count(self) -> int:
-        """폴더 모달에 커밋된 항목 수(데이터 행 = 체크박스 있는 tr)."""
-        return self.page.locator(f"{self.SEL_FOLDER_MODAL} tbody tr:has(input[type='checkbox'])").count()
+        """폴더 모달에 커밋된 항목 수(데이터 행 = 체크박스 있는 tr). 최상단(현재) 모달 기준."""
+        modals = self.page.locator(self.SEL_FOLDER_MODAL)
+        if modals.count() == 0:
+            return 0
+        return modals.last.locator("tbody tr:has(input[type='checkbox'])").count()
+
+    def folder_row_values(self, setting_name: str) -> list[str]:
+        """폴더 모달에서 설정명으로 행 찾아 셀 텍스트 목록 반환(저장값 대조용). 없으면 [].
+        최상단(현재) 모달로 스코프 + 재오픈 시 행 async 로딩 대기(스테일 모달·타이밍 둘 다 대응)."""
+        modals = self.page.locator(self.SEL_FOLDER_MODAL)
+        if modals.count() == 0:
+            return []
+        row = modals.last.locator("tbody tr", has_text=setting_name).first
+        try:
+            row.wait_for(state="attached", timeout=self._TIMEOUT_MODAL)
+        except Exception:
+            return []
+        return [c.inner_text().strip() for c in row.locator("td").all() if c.inner_text().strip()]
 
     def remove_folder_item(self, index: int = 0) -> str:
         """폴더 항목 선택(체크) + '-' → 확인 모달 메시지 반환 + 확인(제거)."""
