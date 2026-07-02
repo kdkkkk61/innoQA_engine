@@ -544,10 +544,40 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                     return (sn // 100, sn % 100, (0, ""), 0)
                 return (sn, 0, _label_area_priority(r), r.order or 9999)
             bug_items.sort(key=_bug_sort_key)
+        # merge_key 그룹 — 같은 (page, merge_key) 항목은 결함 카드 1장으로 묶음.
+        # 검증 항목 표·요약 카운트는 각각 유지(각 시나리오에서 실제 검증됨) — 카드만 dedup.
+        # 시나리오 배지는 join: "시나리오 3.06 · 4.13" (뒤 항목은 '시나리오 ' prefix 생략).
+        merge_labels: dict[str, list[str]] = {}
+        merge_titles: dict[str, list[str]] = {}
         for r in bug_items:
+            mk = (r.extra or {}).get("merge_key")
+            if mk:
+                lbl_s = _scenario_label(r, is_list, page_id)
+                merge_labels.setdefault(mk, [])
+                if lbl_s not in merge_labels[mk]:
+                    merge_labels[mk].append(lbl_s)
+                # 제목(라벨)도 다르면 join — 요소별 항목(원본위치/대상위치 등) 묶임 시 전부 표기
+                t = _strip_scenario_prefix(r.label or "")
+                merge_titles.setdefault(mk, [])
+                if t not in merge_titles[mk]:
+                    merge_titles[mk].append(t)
+        merged_done: set = set()
+        for r in bug_items:
+            mk = (r.extra or {}).get("merge_key")
+            if mk in merged_done:
+                continue
             issue_num += 1
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
             scenario   = _scenario_label(r, is_list, page_id)
+            merged_title = None
+            if mk:
+                merged_done.add(mk)
+                grp = merge_labels[mk]
+                if len(grp) > 1:
+                    scenario = grp[0] + "".join(
+                        " · " + re.sub(r"^시나리오\s*", "", g) for g in grp[1:])
+                if len(merge_titles[mk]) > 1:
+                    merged_title = " · ".join(merge_titles[mk])
             steps      = _reproduce_steps(r)
             expected, actual = _expected_vs_actual(r)
             # 심각도 + 아이콘 결정 — status + 라벨/시나리오의 🔴/🟡 의도 반영 (사용자 보고 2026-06-01)
@@ -565,20 +595,28 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                 severity = "높음"
             else:
                 severity = "낮음"
-            ss_path    = r.extra.get("screenshot") if r.extra else None
-            ss_html    = ""
-            if ss_path:
+            # 스크린샷 — 기본 1장(extra["screenshot"]) + 필요 시 이전 시점 추가 캡처(extra["screenshots"], 시간순 앞에)
+            ss_paths = []
+            if r.extra:
+                ss_paths = list(r.extra.get("screenshots") or [])
+                if r.extra.get("screenshot"):
+                    ss_paths.append(r.extra["screenshot"])
+            ss_html = ""
+            if ss_paths:
                 from pathlib import Path as _Path
-                ss_abs = _Path(ss_path).resolve()
-                ss_uri = _to_data_uri(ss_abs)
-                if ss_uri:
+                imgs = ""
+                for sp in ss_paths:
+                    ss_uri = _to_data_uri(_Path(sp).resolve())
+                    if ss_uri:
+                        imgs += f'\n                  <img src="{ss_uri}" class="ss-img" alt="{html.escape(r.label)}">'
+                if imgs:
+                    n_note = f" ({len(ss_paths)}장)" if len(ss_paths) > 1 else ""
                     ss_html = f"""
             <tr>
               <th>스크린샷</th>
               <td>
                 <details>
-                  <summary class="ss-toggle">📷 스크린샷 보기</summary>
-                  <img src="{ss_uri}" class="ss-img" alt="{html.escape(r.label)}">
+                  <summary class="ss-toggle">📷 스크린샷 보기{n_note}</summary>{imgs}
                 </details>
               </td>
             </tr>"""
@@ -591,7 +629,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             <span class="defect-scenario">{html.escape(scenario)}</span>
             <span class="defect-severity severity-{severity}">심각도: {severity}</span>
           </div>
-          <div class="defect-title">{html.escape(_strip_scenario_prefix(r.label or ''))}</div>
+          <div class="defect-title">{html.escape(merged_title or _strip_scenario_prefix(r.label or ''))}</div>
           <table class="defect-detail">
             <tr><th>재현 방법</th><td>{steps}</td></tr>
             <tr><th>입력 / 조건</th><td>{html.escape(expected)}</td></tr>

@@ -92,10 +92,23 @@ class SecureZoneTemplateManageFolderBase:
         except Exception:
             pass
 
+    def _shot(self, label: str, highlight=None) -> str | None:
+        """중간 시점 추가 캡처 — 판정이 두 화면의 대조로 확정될 때만 사용(기본은 _add 1장).
+        예: '데이터는 비워짐(편집 모달) + 속성엔 옛값(속성 모달)' — 두 화면이 모두 증거인 경우.
+        반환 경로를 _add(screenshots=[...]) 로 전달. 남용 금지(리포트 크기)."""
+        try:
+            return _ss(self._page, label, highlight=highlight)
+        except Exception:
+            return None
+
     def _add(self, status: str, label: str, detail: str = "", sc: int = 0,
-             highlight=None, repro=None, screenshot=True) -> None:
+             highlight=None, repro=None, screenshot=True, merge_key: str = None,
+             screenshots: list = None) -> None:
         """sub-numbering + ScanResult 누적. repro: 보고서 '재현 방법' 단계(줄바꿈=\\n).
-        screenshot=False 면 fail/warn 이어도 캡처 생략."""
+        screenshot=False 면 fail/warn 이어도 캡처 생략.
+        merge_key: 같은 페이지에서 같은 키의 결함 항목을 리포트 결함 카드 1장으로 묶음
+        (완전 동일 내용의 sc3/sc4 [수동 확인 필요] 등 — 검증 항목 표에는 각각 남음).
+        screenshots: _shot() 으로 찍은 이전 시점 캡처 경로들 — 카드에 시간순으로 함께 표시."""
         try:
             nm = self._request.node.name
             m = re.match(r"test_scenario(\d+)([a-z])_", nm)
@@ -111,6 +124,10 @@ class SecureZoneTemplateManageFolderBase:
                   page=cap,
                   highlight=highlight if (status in ("fail", "warn") and screenshot) else None,
                   repro=repro)
+        if merge_key:
+            s.extra["merge_key"] = merge_key
+        if screenshots:
+            s.extra["screenshots"] = [p for p in screenshots if p]
         print(t)
         self._lines.append(t)
         self._srs.append(s)

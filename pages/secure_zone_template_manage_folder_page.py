@@ -83,6 +83,14 @@ class SecureZoneTemplateManageFolderPage(BasePage):
     SEL_PICKER_CHECKBOX = "div#selectReservedWordControl.in input[name='selectReservedWord']"
     SEL_PICKER_CONFIRM  = "div#selectReservedWordControl.in button:has-text('확인')"
 
+    # ── 속성(템플릿 상세정보 보기) 모달 — sc5 (직접조작 확정 2026-07-02) ──
+    # 행 더블클릭(용도/등록경로 셀에서 실측 확인)으로 열림. SD 탭과 같은 모달 id 재사용.
+    # 구성: 템플릿 이름/용도/등록된 경로 N 건/항목 테이블(설정명·원본·대상·설명·수정일·상태 O/X)/사용처(정책명). 읽기전용 텍스트.
+    SEL_DETAIL_MODAL = "div#detailSecureZoneTemplate.in"
+    # 하위속성(항목) 상세 — 속성 모달 안 항목 '설정명 링크(a)' 클릭으로 진입(직접조작 확정 2026-07-02).
+    # 구성: 설정명/원본/대상/설명 텍스트 + 상태 radio(disabled). 관리자 예약어 항목은 설명 암호화 blob + runPassword 노출.
+    SEL_ITEM_DETAIL_MODAL = "div#viewDetailItemModal.in"
+
     # ── 확인/경고 모달 ──
     SEL_CONFIRM_MODAL_OPENED = "div#__globalMessageModal.in"
     SEL_CONFIRM_BTN          = "div#__globalMessageModal button:has-text('확인')"
@@ -489,6 +497,13 @@ class SecureZoneTemplateManageFolderPage(BasePage):
         self.page.locator(self.SEL_SEARCH_ICON).first.evaluate("el => (el.closest('button,a')||el).click()")
         self.page.wait_for_timeout(900)
 
+    def template_path_count(self, name: str) -> str:
+        """리스트에서 템플릿 행의 '등록된 경로' 값(문자열). col index 2. 없으면 None."""
+        try:
+            return self._row_locator(name).locator("td").nth(2).inner_text().strip()
+        except Exception:
+            return None
+
     def list_column_values(self, col_index: int) -> list[str]:
         """리스트 각 행의 지정 열 텍스트(빈 행 제외). 용도=1, 상태=3."""
         vals = []
@@ -499,6 +514,91 @@ class SecureZoneTemplateManageFolderPage(BasePage):
                 if t:
                     vals.append(t)
         return vals
+
+    # ──────────────────────────────────────────────────────────────
+    # 속성(상세정보 보기) 모달 — sc5
+    # ──────────────────────────────────────────────────────────────
+    def open_detail_modal(self, name: str) -> None:
+        """행 td[1](용도 셀) 더블클릭 → '템플릿 상세정보 보기'(읽기전용). SD 페이지와 동일한 합성 dblclick.
+        더블클릭 위치는 행 가운데(용도/등록경로 셀) — 이름 셀(td[0])은 더블클릭 미반응(직접조작+사용자 확인 2026-07-02).
+        ⚠ 열린 모달이 요청한 템플릿이 아닐 수 있음(직접조작 관찰 2026-07-02 — 잔존 스코프로 다른 행 표시)
+        → 표시 이름 대조 후 불일치면 닫고 재시도."""
+        if not self._AUTO_ANY.match(name):
+            raise Exception("테스트 생성 템플릿([AUTO]/[AUTO_날짜] 접두사)만 조작 가능합니다")
+        cell = self._row_locator(name).locator("td").nth(1)
+        det = self.page.locator(self.SEL_DETAIL_MODAL)
+        for _ in range(3):
+            cell.evaluate(
+                "el => ['mousedown','mouseup','click','mousedown','mouseup','click','dblclick']"
+                ".forEach(t => el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window})))"
+            )
+            try:
+                det.wait_for(state="attached", timeout=4000)
+                self.page.wait_for_timeout(400)   # 비동기 표시값 렌더 대기
+                if name in det.first.inner_text():
+                    return
+                self.close_detail_modal()         # 다른 템플릿 상세가 열림 → 닫고 재시도
+            except Exception:
+                self.page.wait_for_timeout(300)
+        raise Exception(f"속성 모달이 열리지 않음(3회 재시도 실패): {name}")
+
+    def detail_modal_text(self) -> str:
+        """속성 모달 전체 표시 텍스트(이름/용도/등록된 경로 N 건/사용처 포함)."""
+        return self.page.locator(self.SEL_DETAIL_MODAL).first.inner_text()
+
+    def detail_item_rows(self) -> list[str]:
+        """속성 모달 안 '항목 테이블'(설정명 헤더 있는 표)의 행 텍스트.
+        ⚠ 모달 전체 tbody tr 로 잡으면 사용처 테이블 행까지 오카운트(sc5b 오탐, 2026-07-02)
+        → 설정명 헤더 가진 테이블로 스코프. '검색된 내용이 없습니다' placeholder 제외."""
+        table = self.page.locator(f"{self.SEL_DETAIL_MODAL} table", has_text="설정명").first
+        rows = table.locator("tbody tr")
+        out = []
+        for i in range(rows.count()):
+            t = rows.nth(i).inner_text().strip()
+            if t and "검색된 내용이" not in t:
+                out.append(t)
+        return out
+
+    def close_detail_modal(self) -> None:
+        try:
+            self.page.locator(f"{self.SEL_DETAIL_MODAL} button", has_text="닫기").first.evaluate(
+                "el => el.click()")
+            self.page.locator(self.SEL_DETAIL_MODAL).wait_for(
+                state="detached", timeout=self._TIMEOUT_MODAL)
+        except Exception:
+            pass
+
+    def open_item_detail_modal(self, setting_name: str) -> None:
+        """속성 모달 안 항목 행의 설정명 링크(a) 클릭 → 하위속성 상세(읽기전용) 중첩 오픈."""
+        row = self.page.locator(f"{self.SEL_DETAIL_MODAL} tbody tr", has_text=setting_name).first
+        row.locator("a").first.evaluate("el => el.click()")
+        self.page.locator(self.SEL_ITEM_DETAIL_MODAL).wait_for(
+            state="attached", timeout=self._TIMEOUT_MODAL)
+        self.page.wait_for_timeout(300)
+
+    def item_detail_text(self) -> str:
+        return self.page.locator(self.SEL_ITEM_DETAIL_MODAL).first.inner_text()
+
+    def item_detail_status_readonly(self) -> dict:
+        """하위속성 상태 radio 읽기전용 검증 — disabled 속성 + 능동(클릭 시도→불변)."""
+        create = self.page.locator(f"{self.SEL_ITEM_DETAIL_MODAL} input#CREATE").first
+        delete = self.page.locator(f"{self.SEL_ITEM_DETAIL_MODAL} input#DELETE").first
+        out = {"disabled": create.is_disabled() and delete.is_disabled(),
+               "create_before": create.is_checked()}
+        delete.evaluate("el => el.click()")   # 능동 시도 — disabled 면 불변이어야
+        self.page.wait_for_timeout(200)
+        out["create_after"] = create.is_checked()
+        out["unchanged"] = out["create_before"] == out["create_after"]
+        return out
+
+    def close_item_detail_modal(self) -> None:
+        try:
+            self.page.locator(f"{self.SEL_ITEM_DETAIL_MODAL} button", has_text="닫기").first.evaluate(
+                "el => el.click()")
+            self.page.locator(self.SEL_ITEM_DETAIL_MODAL).wait_for(
+                state="detached", timeout=self._TIMEOUT_MODAL)
+        except Exception:
+            pass
 
     # ──────────────────────────────────────────────────────────────
     # 헬퍼

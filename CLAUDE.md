@@ -14,6 +14,8 @@
 | `docs/architecture.md` | [공통 — 새 pages/ 파일 추가 시] [공통 — docs/ 파일 작성·수정 시] |
 | `docs/scan-architecture.md` | [공통 — 새 pages/ 파일 추가 시] [공통 — 새 test_*.py 파일 추가 시] [공통 — UIScanner 통합 결정 시] |
 | `docs/ui-interaction.md` | [공통 — 클릭/인코딩 문제 발생 시] |
+| `docs/issue-screenshot-rules.md` | [공통 — fail/warn 검증 항목 작성 시] |
+| `docs/issue-card-rules.md` | [공통 — fail/warn 검증 항목 작성 시] [공통 — 결함 카드 단위·merge 결정 시] |
 | `docs/test-pipeline.md` | [공통 — 새 test_*.py 파일 추가 시] |
 | `docs/yaml-guide.md` | [확장 경로 — YAML 스캔 적용 시] |
 | `docs/scan-output-format.md` | [확장 경로 — modal_form 전용] |

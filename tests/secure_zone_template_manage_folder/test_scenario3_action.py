@@ -20,6 +20,8 @@ sc3i — 설정명 글자수 clamp(30) / sc3j — 설명 오버플로(3000자 �
 [생성 기반 보강 — 표준 대조로 추가]
 sc3k — 저장값 확인(생성 후 재오픈 대조) / sc3l — 이름 특수문자(허용/검사 없음)
 sc3m — 복사 충돌(_copy 존재 시 재복사 중복) / sc3n — 멀티 폴더 매핑 추가 / sc3o — 검증 메시지 i18n 전수
+sc3s — 경로(원본/대상) 3000자 오버플로(사용자 발견 — raw 서버 오류)
+sc3t — 템플릿 이름 글자수 clamp / sc3u — 설정명 특수문자 (전수 대조 보강 2026-07-02)
 
 ※ 삭제(리스트 단위)=sc1/sc5, 수정·제거=sc4/sc5 (sc3는 생성 기반). 3d(폴더 제거)는 sc4/sc5 이동 후보.
 """
@@ -158,6 +160,7 @@ class TestSecureZoneTemplateManageFolderScenario3Action(SecureZoneTemplateManage
                   "관리자 암호가 필요한 구간이라 자동화 제외(안전규칙: 비밀번호 입력 금지). "
                   "게이팅 '존재'까지만 자동 검증됨 — 실제 인증 통과/암호화/복호화는 담당자가 관리자 암호로 수동 테스트해야 함. "
                   "(자동 pass 아님을 리포트에 남기기 위한 표식)", sc=3, screenshot=False,
+                  merge_key="manual_admin_pw_crypto",   # sc4m(수정 컨텍스트) 동일 항목과 결함 카드 묶음
                   repro="1. 관리자 암호로 인증\n2. 저장 후 설명 암호화 확인\n3. 재오픈 → 복호화 버튼 → 암호로 복호화\n(모두 수동)")
         page.close_content_modal()
         page.close_folder_modal()
@@ -168,6 +171,13 @@ class TestSecureZoneTemplateManageFolderScenario3Action(SecureZoneTemplateManage
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.ensure_template(self._LINK, "SHORTCUT")
+        # 원본에 폴더 매핑 보장(sc3c 산출물 재사용, 없으면 1건 추가) — 복사 완전성 검증용
+        page.open_folder_modal(self._LINK)
+        if page.folder_item_count() == 0:
+            page.open_content_add()
+            page.add_folder_mapping("g_map", use_picker=True, src_index=0, tgt_index=1)
+        page.close_folder_modal()
+        orig_paths = page.template_path_count(self._LINK)
         copy_name = self._LINK + "_copy"
         if copy_name in page.get_template_names():
             page.delete_template(copy_name)
@@ -179,6 +189,14 @@ class TestSecureZoneTemplateManageFolderScenario3Action(SecureZoneTemplateManage
                   "sc3g — 복사 → '<이름>_copy' 생성",
                   f"입력: 템플릿 복사 / 결과: 확인메시지={msg!r}, '{copy_name}' 생성={copied}", sc=3,
                   repro="1. 템플릿 체크\n2. 복사\n3. '선택한 항목을 복사 하시겠습니까?' 확인\n4. _copy 생성")
+        # 복사 완전성 — 복사본이 폴더 매핑(등록된 경로)까지 복제하는가
+        copy_paths = page.template_path_count(copy_name)
+        same = (copy_paths == orig_paths) and (orig_paths not in (None, "0"))
+        self._add("pass" if same else "warn",
+                  "sc3g — 복사 완전성: 복사본 등록된 경로 = 원본(매핑까지 복제)",
+                  f"입력: 매핑 있는 템플릿 복사 / 결과: 원본 등록경로={orig_paths}, 복사본={copy_paths} "
+                  + ("(매핑까지 복제됨)" if same else "[경로 수 불일치 또는 원본 0 — 확인 필요]"), sc=3,
+                  repro="1. 폴더 매핑 있는 템플릿 복사\n2. 복사본 '등록된 경로'가 원본과 같은지")
 
     # ── 직접 입력 검증 (글자수 clamp / 오버플로) ──────────────────────
     def test_scenario3i_content_name_clamp(self, logged_in_page, settings):
@@ -286,11 +304,14 @@ class TestSecureZoneTemplateManageFolderScenario3Action(SecureZoneTemplateManage
         page.navigate_to()
         after = page.get_template_names().count(copy_name)
         dup = after > before
+        if dup:
+            page.search(copy_name)   # 스크린샷에 중복된 _copy 행만 보이게(이슈 위치 명확)
         self._add("warn" if dup else "pass",
                   "sc3m — 복사 충돌(_copy 존재 시 재복사)",
                   f"입력: '{copy_name}' 존재 상태 재복사 / 결과: '{copy_name}' {before}→{after}개 "
                   + ("(중복 생성 — 복사는 중복 검사 안 함, 수동 생성 '이미 등록된 이름' 차단과 불일치)"
                      if dup else "(중복 차단됨)"), sc=3,
+                  highlight=(page.page.locator("table tbody") if dup else None),
                   repro="1. 복사본 존재 상태\n2. 원본 재복사\n3. 같은 _copy 이름 중복 생기는지")
 
     def test_scenario3n_multi_folder(self, logged_in_page, settings):
@@ -403,4 +424,74 @@ class TestSecureZoneTemplateManageFolderScenario3Action(SecureZoneTemplateManage
                   "엑셀 예제 다운로드·대량 가져오기는 파일 다운로드/업로드라 자동화 제외(안전규칙). "
                   "존재만 자동 확인 — 실제 다운로드 내용·Import 반영은 담당자 수동 테스트 필요.", sc=3, screenshot=False,
                   repro="1. Example 클릭 → 예제 파일 다운로드 확인(수동)\n2. Import → 엑셀 업로드 → 폴더 반영 확인(수동)")
+        page.close_folder_modal()
+
+    def test_scenario3s_path_overflow(self, logged_in_page, settings):
+        """경로 3000자 오버플로 — 원본/대상위치 **요소별 개별 판정·카드**(이슈 귀속 정확화, 사용자 지시 2026-07-02).
+        결과가 완전히 같으면 merge_key 로 결함 카드 1장으로 묶임(sc4o 동일 결과와도 묶임).
+        실측(직접조작 2026-07-02): raw '서버에서 오류' 노출 — 설명(sc3j)과 달리 경로는 길이 가드 없음."""
+        print("\n━━ [특수폴더] sc3s: 경로 오버플로 3000자(요소별) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_mf_povf"
+        page.ensure_template(tpl, "SHORTCUT")
+        page.open_folder_modal(tpl)
+        big = "A" * 3000
+        cases = [("원본위치", "povf_src", dict(source=big, target="[/MYDOC/]")),
+                 ("대상위치", "povf_tgt", dict(source="[/DESKTOP/]", target=big))]
+        for elem, setting, kw in cases:
+            page.open_content_add()
+            msg = page.add_folder_mapping(setting, use_picker=False, **kw)
+            committed = bool(page.folder_row_values(setting))
+            if ("입력해" in msg) or ("초과" in msg):
+                st, note = "pass", "명확한 경고로 차단(데이터 안전)"
+            elif "서버" in msg:
+                st, note = "warn", "raw 서버 오류 노출 — 클라 길이 가드 부재"
+            else:
+                st, note = "warn", "차단 없이 저장됨 — 확인 필요" if committed else "경고 없음·미커밋 — 확인 필요"
+            sel = page.SEL_C_SOURCE if elem == "원본위치" else page.SEL_C_TARGET
+            self._add(st, f"sc3s — {elem} 3000자 오버플로 → 처리",
+                      f"입력: {elem}에 3000자 + 추가 / 결과: 경고={msg!r}, 커밋={committed} / {note}", sc=3,
+                      highlight=page.page.locator(sel),
+                      merge_key=f"path_ovf::{elem}::{st}::{note}",   # 같은 요소 + 같은 결과만 묶임(생성/수정 간)
+                      repro=f"1. 폴더 내용 추가\n2. {elem}에 3000자\n3. 추가\n4. 경고 종류 확인(서버 오류면 검증 부재)")
+            page.close_content_modal()
+        page.close_folder_modal()
+
+    def test_scenario3t_template_name_clamp(self, logged_in_page, settings):
+        """템플릿 이름(1단계) 글자수 clamp — 설정명(sc3i)만 있고 이름은 빠져 있던 것 보강(전수 대조 2026-07-02).
+        스캔힌트 실측 기대 maxlength=30. 저장 안 함(타이핑 수용량만 확인)."""
+        print("\n━━ [특수폴더] sc3t: 템플릿 이름 글자수 clamp(생성 모달) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.open_add_modal()
+        accepted = page.type_real(f"{page.SEL_MODAL} {page.SEL_NAME}", "A" * 35)
+        self._add("pass" if accepted == 30 else "warn",
+                  "sc3t — 템플릿 이름 글자수 clamp(생성 모달)",
+                  f"입력: 이름에 35자 실타이핑 / 결과: 실제 수용 {accepted}자 (기대 30 clamp — 설정명 sc3i 와 동일)", sc=3,
+                  highlight=page.page.locator(f"{page.SEL_MODAL} {page.SEL_NAME}"),
+                  repro="1. 템플릿 추가 모달 이름에 35자 실타이핑\n2. 30자에서 잘리는지")
+        page._close_modal_if_open()
+
+    def test_scenario3u_content_name_special_char(self, logged_in_page, settings):
+        """설정명(내용 모달) 특수문자 — 템플릿 이름(sc3l)만 있고 설정명은 빠져 있던 것 보강."""
+        print("\n━━ [특수폴더] sc3u: 설정명 특수문자(생성) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_mf_spn"
+        page.ensure_template(tpl, "SHORTCUT")
+        page.open_folder_modal(tpl)
+        sp = "sp_item<>!@#"
+        if not page.folder_row_values(sp):
+            page.open_content_add()
+            msg = page.add_folder_mapping(sp, use_picker=True, src_index=0, tgt_index=1)
+        else:
+            msg = "(기존 존재)"
+        created = bool(page.folder_row_values(sp))
+        self._add("pass" if created else "warn",
+                  "sc3u — 설정명 특수문자 입력(생성)",
+                  f"입력: 설정명 '{sp}' / 결과: 경고={msg!r}, 생성={created} "
+                  "(템플릿 이름 sc3l 과 동일하게 특수문자 허용 기대)", sc=3,
+                  highlight=page.page.locator(f"{page.SEL_FOLDER_MODAL} tbody tr", has_text="sp_item"),
+                  repro="1. 폴더 내용 추가 설정명에 특수문자(<>!@#)\n2. 추가\n3. 허용/차단 여부")
         page.close_folder_modal()
