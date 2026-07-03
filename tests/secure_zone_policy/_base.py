@@ -58,9 +58,12 @@ def _ss(page, label: str, highlight=None) -> str | None:
                 maxx = max(b["x"] + b["width"] for b in boxes)
                 maxy = max(b["y"] + b["height"] for b in boxes)
                 if len(boxes) == 1:
-                    W = min(780, vp["width"])
-                    H = min(230, vp["height"])
                     bw = maxx - minx
+                    bh = maxy - miny
+                    # 큰 요소(모달 전체 등)는 요소가 다 보이게 crop 확장 — 230px 고정이면 헤더만 잘림
+                    # (사용자 지적 2026-07-03: 부재 증거는 모달 전체가 보여야 함). 작은 필드는 기존 크기 유지.
+                    W = min(max(780, int(bw) + 60), vp["width"])
+                    H = min(max(230, int(bh) + 60), vp["height"])
                     cx = minx + bw / 2
                     # 넓은 입력 필드(값이 필드 안) → 중앙 정렬 / 좁은 요소(체크박스 등) → 우측 라벨 보이게 좌측 오프셋
                     off = W / 2 if bw > 200 else 190

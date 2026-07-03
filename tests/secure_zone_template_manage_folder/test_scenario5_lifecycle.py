@@ -116,14 +116,34 @@ class TestSecureZoneTemplateManageFolderScenario5Lifecycle(SecureZoneTemplateMan
                       f"sc5a — 속성 모달 {lbl} 표시",
                       f"기대 표시값: {v!r} / 결과: 표시={shown}", sc=5,
                       repro=f"1. 행 가운데(용도 셀) 더블클릭 → 속성\n2. {lbl} 표시 확인")
-        # 관찰(제품 표시 공백, 낮음): 속성 모달 헤더에 템플릿 '상태' 항목이 없음 — 속성만으로 활성/비활성 알 수 없음
-        status_shown = ("활성" in dtext) or ("비활성" in dtext)   # 항목 테이블 상태는 O/X 라 미포함(실측)
-        self._add("pass" if status_shown else "warn",
-                  "sc5a — 속성 모달 템플릿 '상태' 표시(관찰)",
-                  f"결과: 속성 모달 내 활성/비활성 표기={status_shown} "
-                  + ("" if status_shown else "[표시 공백(낮음): 속성 모달만으로 템플릿 상태를 알 수 없음 — 우측 상세정보 패널에는 표시됨]"),
-                  sc=5, screenshot=False,
-                  repro="1. 행 가운데 더블클릭 → 속성\n2. 템플릿 상태(활성/비활성) 항목이 있는지")
+        # 관찰(제품 표시 공백, 낮음): 속성 모달에는 '템플릿 상태(활성/비활성)' 항목 자체가 없음.
+        # (항목 테이블의 O/X 는 '폴더 항목'의 상태 — 템플릿 상태와 별개, 혼동 주의)
+        status_shown = ("활성" in dtext) or ("비활성" in dtext)
+        if status_shown:
+            self._add("pass", "sc5a — 속성 모달 템플릿 '상태' 항목 표시(관찰)",
+                      "결과: 속성 모달에 템플릿 상태(활성/비활성) 표기 있음", sc=5)
+        else:
+            # 부재 증거 = '대비 2장'(사용자 지시 2026-07-03): ①수정 모달(상태 라디오 있음, 빨간 표시)
+            # ②속성 모달 전체(상태 항목 없음). 단독 샷으론 '공백이 어디인지' 안 보임.
+            # ⚠ 모달 wrapper(div#…in) highlight 는 bbox 불일치로 crop 오작동(실측) → ②는 전체 페이지.
+            page.close_detail_modal()
+            page.open_modify_modal(name)
+            shot_has = self._shot("상태항목_수정모달에는_있음",
+                                  highlight=page.page.locator(page.SEL_STATUS_CREATE),
+                                  caption="1. 수정 모달 — 상태(활성/비활성) 항목 있음")
+            page._close_modal_if_open()
+            page.open_detail_modal(name)
+            shot_none = self._shot("상태항목_속성모달엔_없음",
+                                   caption="2. 속성 모달 — 상태 항목 없음(전체 화면)")
+            self._add("warn", "sc5a — 속성 모달에 템플릿 '상태' 항목 없음(표시 공백 관찰)",
+                      "결과: 수정 모달에는 상태(활성/비활성) 항목이 있는데(스크린샷1 빨간 표시) "
+                      "속성 모달에는 이름/용도/등록된 경로/항목 테이블/사용처뿐 — 상태 항목이 없음(스크린샷2 전체 화면). "
+                      "속성 모달만 봐서는 이 템플릿이 활성인지 비활성인지 알 수 없음 "
+                      "(항목 테이블의 O/X 는 '폴더 항목' 상태로 별개) — 표시 공백(낮음).",
+                      sc=5, screenshot=False, screenshots=[shot_has, shot_none],
+                      repro="1. 수정 모달 → 상태(활성/비활성) 항목 존재 확인\n"
+                            "2. 행 가운데 더블클릭 → 속성 모달 → 상태 항목이 없는 것 확인\n"
+                            "3. 속성만으로는 활성/비활성 확인 불가")
         page.close_detail_modal()
 
     # ══ 5b: 케이스B(필수만) — 연결 항목 0 유지 → 속성 ════════════════
@@ -182,12 +202,28 @@ class TestSecureZoneTemplateManageFolderScenario5Lifecycle(SecureZoneTemplateMan
         page.open_folder_item_edit("sc5a_map")
         desc_after = page.page.locator(page.SEL_C_DESC).first.input_value()
         if desc_after != "":
-            # 저장 계층 fail — 편집 모달 열린 상태에서 잔존 설명 필드에 빨간 테두리(1장으로 확정)
+            # 저장 계층 fail — '1회 리턴 재생'(사용자 설계 2026-07-03): 이슈 확정 후 같은 흐름을
+            # 한 번 더 실행하며 스텝별 캡처 → repro 각 줄과 1:1 대응하는 이미지 스토리로 보고.
+            # 스토리 3컷(사용자 지시 2026-07-03): 지운 화면(저장 전) → 저장 → 재편집 잔존(=이슈 화면, 빨간 표시).
+            # '잔존 확인' 선행 컷은 마지막 컷과 같은 화면 상태라 제외(중복).
+            shots = self._replay_shots([
+                ("설명을 지움 — 입력이 빈 상태(저장 전)",
+                 lambda: page.fill(page.SEL_C_DESC, ""),
+                 page.page.locator(page.SEL_C_DESC)),                         # 지운 화면 자체(핵심 컷)
+                ("수정 저장(경고 없음)",
+                 lambda: page.content_save_message(),
+                 None),                                                       # 저장 직후 화면
+                ("재편집 — 여전히 잔존(비움 미적용) = 이슈 화면",
+                 lambda: page.open_folder_item_edit("sc5a_map"),
+                 page.page.locator(page.SEL_C_DESC)),                         # 결말 = 증거(빨간 표시)
+            ])
             self._add("fail", "sc5c — 설명(선택) 비움 → 편집·행·속성 재검증",
                       f"입력: 설명 비우고 수정(경고={msg!r}) / 편집 재로드={desc_after!r}(기대 '') "
-                      "— 설명 비움 미저장(silent): 실제로 열어보면 값이 그대로 남아있음(스크린샷=편집 모달 설명 필드)",
-                      sc=5, highlight=page.page.locator(page.SEL_C_DESC),
-                      repro="1. 항목 편집 설명 비움\n2. 수정 저장\n3. 재편집 → 설명에 옛 값 잔존(비움 미적용)")
+                      "— 설명 비움 미저장(silent). 스크린샷=리턴 재생 스토리(이슈 확정 후 같은 흐름 재실행 캡처: "
+                      "①지움 ②저장 ③재편집 잔존=이슈)",
+                      sc=5, screenshot=False, screenshots=shots,
+                      repro="1. 항목 편집 → 설명 지움(빈 입력)\n2. 수정 저장(경고 없음)\n"
+                            "3. 재편집 → 설명에 옛 값 그대로(비움 미적용)")
             page.close_content_modal()
             page.close_folder_modal()
         else:
@@ -196,13 +232,16 @@ class TestSecureZoneTemplateManageFolderScenario5Lifecycle(SecureZoneTemplateMan
             row_stale = "sc5a_desc" in " ".join(page.folder_row_values("sc5a_map"))
             if row_stale:
                 page.open_folder_item_edit("sc5a_map")
-                shot = self._shot("sc5c_설명빈값_편집로드", highlight=page.page.locator(page.SEL_C_DESC))
+                shot1 = self._shot("sc5c_설명빈값_편집로드", highlight=page.page.locator(page.SEL_C_DESC),
+                                   caption="1. 편집 모달 — 설명 빈값(데이터는 비워짐)")
                 page.close_content_modal()
+                shot2 = self._shot("sc5c_행_설명_잔존",
+                                   highlight=page.page.locator(f"{page.SEL_FOLDER_MODAL} tbody tr", has_text="sc5a_map"),
+                                   caption="2. 폴더모달 행 — '설명' 컬럼에 옛값 잔존(행 표시 stale)")
                 self._add("warn", "sc5c — 설명(선택) 비움 → 편집·행·속성 재검증",
-                          "입력: 설명 비우고 수정 / 편집 재로드=''(비워짐, 스크린샷①) "
-                          "— 폴더모달 행 '설명' 컬럼에 옛값 잔존(스크린샷② — 행 표시 stale, 데이터는 안전)",
-                          sc=5, screenshots=[shot],
-                          highlight=page.page.locator(f"{page.SEL_FOLDER_MODAL} tbody tr", has_text="sc5a_map"),
+                          "입력: 설명 비우고 수정 / 편집 재로드=''(비워짐, 스크린샷1) "
+                          "— 폴더모달 행 '설명' 컬럼에 옛값 잔존(스크린샷2 — 행 표시 stale, 데이터는 안전)",
+                          sc=5, screenshot=False, screenshots=[shot1, shot2],
                           repro="1. 설명 비우고 수정\n2. 재편집 로드는 빈값\n3. 행 '설명' 컬럼에 옛값 남는지")
                 page.close_folder_modal()
             else:
@@ -216,18 +255,21 @@ class TestSecureZoneTemplateManageFolderScenario5Lifecycle(SecureZoneTemplateMan
                     page.close_detail_modal()
                     page.open_folder_modal(name)
                     page.open_folder_item_edit("sc5a_map")
-                    shots = [self._shot("sc5c_설명_편집로드_빈값", highlight=page.page.locator(page.SEL_C_DESC))]
+                    shot1 = self._shot("sc5c_설명_편집로드_빈값", highlight=page.page.locator(page.SEL_C_DESC),
+                                       caption="1. 편집 모달 — 설명 빈값(데이터는 비워짐)")
                     page.close_content_modal()
                     page.close_folder_modal()
                     page.open_detail_modal(name)
+                    shot2 = self._shot("sc5c_속성_설명_잔존",
+                                       highlight=page.page.locator(f"{page.SEL_DETAIL_MODAL} tbody tr", has_text="sc5a_map"),
+                                       caption="2. 속성 모달 항목 — 옛 설명 잔존(표시 버그)")
+                    shots = [shot1, shot2]
                 self._add("pass" if desc_gone else "warn",
                           "sc5c — 설명(선택) 비움 → 편집·행·속성 재검증",
                           f"입력: 설명 비우고 수정 / 편집 재로드=''·행 컬럼 비움(확인) / 속성 옛값 제거={desc_gone} "
                           + ("(편집·행·속성 모두 반영)" if desc_gone
-                             else "[데이터·행은 비워짐(스크린샷① 편집 모달) — 속성 항목에만 옛 설명 잔존(스크린샷② 표시 버그)]"),
-                          sc=5, screenshots=shots,
-                          highlight=(None if desc_gone
-                                     else page.page.locator(f"{page.SEL_DETAIL_MODAL} tbody tr", has_text="sc5a_map")),
+                             else "[데이터·행은 비워짐(스크린샷1 편집 모달) — 속성 항목에만 옛 설명 잔존(스크린샷2 표시 버그)]"),
+                          sc=5, screenshot=desc_gone, screenshots=shots,
                           repro="1. 항목 편집 설명 비움\n2. 수정 저장\n3. 재편집 로드·행 컬럼·속성 항목 전부 빈값인지")
                 page.close_detail_modal()
 
@@ -255,19 +297,22 @@ class TestSecureZoneTemplateManageFolderScenario5Lifecycle(SecureZoneTemplateMan
                 # 두 화면 대조 판정(warn) — 폴더모달 '빈 테이블' 증거를 추가 캡처(필요할 때만 한 장 더)
                 page.close_detail_modal()
                 page.open_folder_modal(name)
-                shots = [self._shot("sc5c_매핑제거_폴더모달_빈상태",
-                                    highlight=page.page.locator(f"{page.SEL_FOLDER_MODAL} tbody"))]
+                shot1 = self._shot("sc5c_매핑제거_폴더모달_빈상태",
+                                   highlight=page.page.locator(f"{page.SEL_FOLDER_MODAL} tbody"),
+                                   caption="1. 폴더모달 — 항목 0건(제거 반영됨)")
                 page.close_folder_modal()
                 page.open_detail_modal(name)
+                shot2 = self._shot("sc5c_속성_잔존표시",
+                                   highlight=page.page.locator(f"{page.SEL_DETAIL_MODAL} tbody tr"),
+                                   caption="2. 속성 모달 — 제거된 항목이 여전히 표시(표시 버그)")
+                shots = [shot1, shot2]
             self._add("pass" if shown_empty else "warn",
                       "sc5c — 매핑 제거(연결 0) → 폴더모달·리스트·속성 재검증",
                       f"결과: 폴더모달=0(제거 확인), 리스트={cnt!r}, 속성 '0 건'={'0 건' in dtext}, "
                       f"속성 항목={len(items2)} "
                       + ("(3계층 전부 반영)" if shown_empty
-                         else "[데이터는 제거됨(스크린샷① 폴더모달) — 리스트/속성 표시 불일치(스크린샷② 표시 버그)]"),
-                      sc=5, screenshots=shots,
-                      highlight=(None if shown_empty
-                                 else page.page.locator(f"{page.SEL_DETAIL_MODAL} tbody tr")),
+                         else "[데이터는 제거됨(스크린샷1 폴더모달) — 리스트/속성 표시 불일치(스크린샷2 표시 버그)]"),
+                      sc=5, screenshot=shown_empty, screenshots=shots,
                       repro="1. 항목 체크+제거\n2. 폴더모달 0 + 리스트 0\n3. 속성 '0 건' + 항목 없음")
             page.close_detail_modal()
 

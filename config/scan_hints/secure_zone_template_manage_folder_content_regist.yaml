@@ -1,0 +1,24 @@
+# 시큐어존 템플릿 — 특수폴더 '내용 모달(레지스트리 MODIFY_REGIST)' sc0 전용 스키마.
+# SHORTCUT 내용 모달과 별개 모달(addModifySecureZoneModifyRegist) — REGIST 전용 필드 3종 포함.
+#
+# ⚠ 원본/대상위치(contenteditable div)는 UIScanner DOM 추출 미지원 → 스키마 제외(오탐 방지).
+# ⚠ detect_hidden 미사용 — descriptionRun/runPassword/licensePwd 는 '기본 숨김이 정상'
+#   (관리자 예약어 입력 시에만 노출, 실측 2026-07-02) → hidden 카드가 매 실행 노이즈가 됨.
+#
+# 수집: Chrome MCP 직접조작 (2026-06-30~07-02, 콘솔 192.168.13.141)
+
+page_id: "secure_zone_template_manage_folder_content_regist"
+modal_id: "addModifySecureZoneModifyRegist"
+scan_mode: "list_page"
+
+text_inputs:
+  - {selector: "input#manageFolderName",  label: "설정명"}
+  - {selector: "textarea#description",    label: "설명"}
+  - {selector: "textarea#descriptionRun", label: "실행 설명(기본 숨김 — 관리자 예약어 시 노출)"}
+  - {selector: "input#runPassword",       label: "실행 비밀번호(기본 숨김)"}
+  - {selector: "input#licensePwd",        label: "관리자 비밀번호 인증(기본 숨김)"}
+radio_groups:
+  - name: "항목 상태"
+    options:
+      - {selector: "input#CREATE", label: "활성"}
+      - {selector: "input#DELETE", label: "비활성"}

@@ -560,6 +560,19 @@ class NpouchControlSuitePage(BasePage):
         rows = self.page.locator(self.SEL_ITEM_TAG_LIST_ROW)
         return [rows.nth(i).inner_text().strip() for i in range(rows.count())]
 
+    # 셀 단위 getter (2026-07-02) — 행 전체 텍스트로는 어느 컬럼 값인지 구분 불가 →
+    # td id 기반 개별 셀 값. 행 표시 stale 검증용 (직접조작 확정: 클립보드·네트워크 O→X 재렌더 실패).
+    # td id: strProcessName / isClipboardRestrict / isNetwork / isControlExtension / accessDriveLetter
+    def get_item_list_cell(self, row_idx: int, td_id: str) -> str:
+        """개별 프로세스 itemList 의 row_idx 행 td#<td_id> 셀 텍스트('O'/'X'/값)."""
+        row = self.page.locator(self.SEL_ITEM_LIST_ROW).nth(row_idx)
+        return row.locator(f"td#{td_id}").first.inner_text().strip()
+
+    def get_item_tag_list_cell(self, row_idx: int, td_id: str) -> str:
+        """태그 itemTagList 의 row_idx 행 td#<td_id> 셀 텍스트('O'/'X'/값)."""
+        row = self.page.locator(self.SEL_ITEM_TAG_LIST_ROW).nth(row_idx)
+        return row.locator(f"td#{td_id}").first.inner_text().strip()
+
     def click_item_list_row(self, index: int = 0) -> None:
         """개별 프로세스 itemList 의 index 번 행 클릭 → process_modal EDIT 진입.
         legacy yaml: td#strProcessName.cursorPointer 또는 행 전체 클릭으로 EDIT.

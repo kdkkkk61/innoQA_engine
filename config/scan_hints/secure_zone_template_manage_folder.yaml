@@ -42,6 +42,21 @@ stage1_fields:
     values:   "CREATE(표시:활성, 기본) / DELETE(표시:비활성)   ※표시텍스트≠값 주의"
 stage1_save: "확인(추가) / 재오픈 시 수정"
 
+# ── UIScanner sc0 스키마 (yaml↔DOM diff 입력 — core/scan_diff.extract_yaml_selectors 가 읽는 섹션) ──
+# 위 stage1_fields(문서형)와 병기. DOM 추출 대상 = input/textarea/select(id 있는 것)만.
+# 삭제(discovered_missing) 감지: 여기 명세된 요소가 DOM 에서 사라지면 sc0 이 warn 카드로 보고.
+text_inputs:
+  - {selector: "input#templateName", label: "템플릿 이름"}
+radio_groups:
+  - name: "szTemplateType(용도)"
+    options:
+      - {selector: "input#SHORTCUT",      label: "바로가기(Link)"}
+      - {selector: "input#MODIFY_REGIST", label: "레지스트리 변경"}
+  - name: "status(상태)"
+    options:
+      - {selector: "input#CREATE", label: "활성"}
+      - {selector: "input#DELETE", label: "비활성"}
+
 # ── 2단계 흐름 (행 선택 → 폴더 추가/제거 → 내용 모달) ──
 # 행 선택은 tActive 필요(mousedown 디스패치 / Playwright click(force)+overlay off).
 stage2_flow:

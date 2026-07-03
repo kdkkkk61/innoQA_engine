@@ -1,0 +1,22 @@
+# 시큐어존 템플릿 — 특수폴더 '내용 모달(바로가기 SHORTCUT)' sc0 전용 스키마.
+# 본체(secure_zone_template_manage_folder.yaml)의 content_modal 문서형 섹션과 병행 —
+# 이 파일은 UIScanner yaml↔DOM diff 입력만 담당 (모달이 달라 page_id 분리).
+#
+# ⚠ 원본/대상위치(div#folderSourcePath/TargetPath 는 contenteditable div)는
+#   UIScanner DOM 추출(input/textarea/select 만) 미지원 → 스키마에서 제외.
+#   (넣으면 매 실행 discovered_missing 오탐) 경로 필드 회귀는 sc1~5 수동 검증이 담당.
+#
+# 수집: Chrome MCP 직접조작 (2026-06-30~07-02, 콘솔 192.168.13.141)
+
+page_id: "secure_zone_template_manage_folder_content"
+modal_id: "addModifySecureZoneShortcut"
+scan_mode: "list_page"
+
+text_inputs:
+  - {selector: "input#manageFolderName", label: "설정명"}
+  - {selector: "textarea#description",   label: "설명"}
+radio_groups:
+  - name: "항목 상태"
+    options:
+      - {selector: "input#CREATE", label: "활성"}
+      - {selector: "input#DELETE", label: "비활성"}

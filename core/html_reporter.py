@@ -606,8 +606,16 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                 from pathlib import Path as _Path
                 imgs = ""
                 for sp in ss_paths:
+                    # dict 형식 {"path","caption"} = 스텝 캡처(리턴 재생 등 — 순서·맥락 표기), str = 기존 단일 캡처
+                    cap = None
+                    if isinstance(sp, dict):
+                        cap, sp = sp.get("caption"), sp.get("path")
+                    if not sp:
+                        continue
                     ss_uri = _to_data_uri(_Path(sp).resolve())
                     if ss_uri:
+                        if cap:
+                            imgs += f'\n                  <div class="ss-cap">{html.escape(cap)}</div>'
                         imgs += f'\n                  <img src="{ss_uri}" class="ss-img" alt="{html.escape(r.label)}">'
                 if imgs:
                     n_note = f" ({len(ss_paths)}장)" if len(ss_paths) > 1 else ""
@@ -754,6 +762,8 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .ss-toggle:hover { text-decoration: underline; }
 .ss-img { max-width: 100%; margin-top: 10px; border: 1px solid #ddd;
   border-radius: 4px; display: block; }
+.ss-cap { margin-top: 14px; font-size: 13px; font-weight: 600; color: #1e3a5f;
+  border-left: 3px solid #1e3a5f; padding-left: 8px; }
 """
 
 

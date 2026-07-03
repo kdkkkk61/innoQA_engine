@@ -198,15 +198,31 @@ class SecureZoneTemplateManageFolderPage(BasePage):
     # ──────────────────────────────────────────────────────────────
     # 삭제 / cleanup (방식 B 라이프사이클)
     # ──────────────────────────────────────────────────────────────
-    def delete_all_test_data(self) -> None:
-        """[AUTO] + [AUTO_<날짜>] 둘 다 삭제 — sc1 시작 clean slate."""
-        for name in [n for n in self.get_template_names() if self._AUTO_ANY.match(n)]:
+    def _delete_matching(self, pred) -> None:
+        """현재 리스트에서 pred 매칭 이름 전부 삭제 (내부 공용)."""
+        for name in [n for n in self.get_template_names() if pred(n)]:
             self.delete_template(name)
 
+    def delete_all_test_data(self) -> None:
+        """[AUTO] + [AUTO_<날짜>] 둘 다 삭제 — sc1 시작 clean slate.
+        '[AUTO' 검색으로 필터링 후 삭제(행 스캔 축소 + 페이지네이션 누락 방지, 사용자 지시 2026-07-03).
+        검색이 부분 일치가 아닐 가능성 대비 — 해제 후 잔여가 보이면 기존 방식으로 마저 삭제(fallback)."""
+        try:
+            self.search("[AUTO")
+            self._delete_matching(lambda n: self._AUTO_ANY.match(n))
+        finally:
+            self.search("")   # 필터 해제
+        self._delete_matching(lambda n: self._AUTO_ANY.match(n))   # 잔여 fallback
+
     def delete_all_auto(self) -> None:
-        """[AUTO] (날짜 없음) 만 삭제, [AUTO_<날짜>] 날짜본 보존 — sc5/sc6."""
-        for name in [n for n in self.get_template_names() if n.startswith("[AUTO]")]:
-            self.delete_template(name)
+        """[AUTO] (날짜 없음) 만 삭제, [AUTO_<날짜>] 날짜본 보존 — sc5/sc6.
+        '[AUTO]' 검색 필터(날짜본 '[AUTO_' 는 미매칭) 후 삭제 + 잔여 fallback."""
+        try:
+            self.search("[AUTO]")
+            self._delete_matching(lambda n: n.startswith("[AUTO]"))
+        finally:
+            self.search("")
+        self._delete_matching(lambda n: n.startswith("[AUTO]"))   # 잔여 fallback
 
     def delete_template(self, name: str) -> None:
         if not self._AUTO_ANY.match(name):

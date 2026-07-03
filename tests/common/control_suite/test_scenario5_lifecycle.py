@@ -193,6 +193,17 @@ class TestScenario5Lifecycle(ControlSuiteBase):
         self._add("pass" if proc_rows == 1 else "fail",
                   "시나리오 5a — 개별 프로세스 itemList 1행 유지",
                   f"입력: 수정 모달 재오픈 / 결과: 행={proc_rows}", sc=5)
+        # 행 '표시 컬럼 값' 대조 (2026-07-02 신설) — 행 수만으론 표시 계층 버그를 못 잡음.
+        # 전부 ON 저장 → 재오픈 행 셀은 O 여야 함 (재오픈 렌더 검증 — 모달 세션 내 stale 검증은 sc4d/4e).
+        if proc_rows >= 1:
+            for _elem, _td in (("클립보드 제어", "isClipboardRestrict"),
+                               ("네트워크 허용", "isNetwork"),
+                               ("제어할 확장자", "isControlExtension")):
+                _cell = page.get_item_list_cell(0, _td)
+                self._add("pass" if _cell == "O" else "warn",
+                          f"시나리오 5a — itemList 행 표시: {_elem}=O(재오픈)",
+                          f"입력: 전부 ON 저장 후 재오픈 / 결과: 행 셀={_cell!r}(기대 'O')", sc=5,
+                          highlight=(None if _cell == "O" else page.page.locator(page.SEL_ITEM_LIST_ROW).first))
 
         if proc_rows >= 1:
             page.click_item_list_row(0)
@@ -227,6 +238,16 @@ class TestScenario5Lifecycle(ControlSuiteBase):
         self._add("pass" if tag_rows == 1 else "fail",
                   "시나리오 5a — 태그 itemTagList 1행 유지",
                   f"입력: 수정 모달 재오픈 / 결과: 행={tag_rows}", sc=5)
+        # 행 '표시 컬럼 값' 대조 (2026-07-02 신설 — 프로세스 itemList 와 동일 원칙)
+        if tag_rows >= 1:
+            for _elem, _td in (("클립보드 제어", "isClipboardRestrict"),
+                               ("네트워크 허용", "isNetwork"),
+                               ("제어할 확장자", "isControlExtension")):
+                _cell = page.get_item_tag_list_cell(0, _td)
+                self._add("pass" if _cell == "O" else "warn",
+                          f"시나리오 5a — itemTagList 행 표시: {_elem}=O(재오픈)",
+                          f"입력: 전부 ON 저장 후 재오픈 / 결과: 행 셀={_cell!r}(기대 'O')", sc=5,
+                          highlight=(None if _cell == "O" else page.page.locator(page.SEL_ITEM_TAG_LIST_ROW).first))
         if tag_rows >= 1:
             page.click_item_tag_list_row(0)
             # 태그 모드 process_modal 재진입 — selected_display 가 미선택 아님

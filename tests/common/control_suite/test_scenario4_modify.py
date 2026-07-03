@@ -267,6 +267,25 @@ class TestScenario4Modify(ControlSuiteBase):
         page.process.set_access_drive(False)
         page.process.confirm()
 
+        # ── itemList 행 표시 대조 (모달 세션 내, 2026-07-02 신설) ──────────
+        # 직접조작 확정 제품 버그: 토글 OFF 확인 후 행의 클립보드·네트워크 컬럼이 O 유지
+        # (O→X 재렌더 실패, 확장자는 정상). 저장·재오픈 렌더는 정상 → 이 시점에서만 검출 가능.
+        for _elem, _td in (("클립보드 제어", "isClipboardRestrict"),
+                           ("네트워크 허용", "isNetwork"),
+                           ("제어할 확장자", "isControlExtension")):
+            _cell = page.get_item_list_cell(0, _td)
+            _st = "pass" if _cell == "X" else "warn"
+            self._add(_st, f"itemList 행 표시 — {_elem} O→X 갱신(모달 세션 내)",
+                      f"입력: 토글 OFF 후 확인 / 결과: 행 셀={_cell!r}(기대 'X') "
+                      + ("(갱신 정상)" if _st == "pass"
+                         else "[행 표시 stale — 저장·재오픈은 정상, 모달 내 재렌더만 실패(제품 버그, TROUBLESHOOTING 2026-07-02)]"),
+                      sc=4,
+                      highlight=(None if _st == "pass" else page.page.locator(page.SEL_ITEM_LIST_ROW).first),
+                      merge_key=f"csu_row_stale::{_elem}::{_st}",   # 태그 탭 동일 요소·동일 결과와 카드 묶음
+                      repro=f"1. 스위트 수정 모달 → 프로세스 행 편집 → {_elem} 토글 OFF → 확인\n"
+                            f"2. 모달 안 목록 행의 {_elem} 컬럼이 여전히 O 인지(X 여야 정상)\n"
+                            "3. 저장 후 재오픈하면 X 로 정상 표시(모달 세션 내 한정)")
+
         msg2 = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
         self._add("pass" if msg2 in _MODIFY_OK_MESSAGES else "fail",
@@ -455,6 +474,23 @@ class TestScenario4Modify(ControlSuiteBase):
         page.process.set_access_drive(False)
         page.process.confirm()
 
+        # ── itemTagList 행 표시 대조 (모달 세션 내, 2026-07-02 신설 — 프로세스 탭과 동일 버그 클래스) ──
+        for _elem, _td in (("클립보드 제어", "isClipboardRestrict"),
+                           ("네트워크 허용", "isNetwork"),
+                           ("제어할 확장자", "isControlExtension")):
+            _cell = page.get_item_tag_list_cell(0, _td)
+            _st = "pass" if _cell == "X" else "warn"
+            self._add(_st, f"itemTagList 행 표시 — {_elem} O→X 갱신(모달 세션 내)",
+                      f"입력: 태그 토글 OFF 후 확인 / 결과: 행 셀={_cell!r}(기대 'X') "
+                      + ("(갱신 정상)" if _st == "pass"
+                         else "[행 표시 stale — 저장·재오픈은 정상, 모달 내 재렌더만 실패(제품 버그, TROUBLESHOOTING 2026-07-02)]"),
+                      sc=4,
+                      highlight=(None if _st == "pass" else page.page.locator(page.SEL_ITEM_TAG_LIST_ROW).first),
+                      merge_key=f"csu_row_stale::{_elem}::{_st}",   # 프로세스 탭 동일 요소·동일 결과와 카드 묶음
+                      repro=f"1. 스위트 수정 모달 → 태그 탭 → 태그 행 편집 → {_elem} 토글 OFF → 확인\n"
+                            f"2. 모달 안 목록 행의 {_elem} 컬럼이 여전히 O 인지(X 여야 정상)\n"
+                            "3. 저장 후 재오픈하면 X 로 정상 표시(모달 세션 내 한정)")
+
         msg2 = page.save_policy(mode="modify")
         page.dismiss_confirm_modal()
         self._add("pass" if msg2 in _MODIFY_OK_MESSAGES else "fail",
@@ -607,11 +643,13 @@ class TestScenario4Modify(ControlSuiteBase):
         page.web_restrict.click_add_process_btn()
         page.picker.wait_open()
         rows2 = page.picker.page.locator(page.picker.SEL_ROW)
+        partb_added = False   # 재오픈 저장 반영 검증(아래)에서 skip 케이스 구분용
         if rows2.count() >= 2:
             page._click_hidden(page.picker.page.locator(page.picker.SEL_CHECKBOX_PROCESS).nth(1))
             page.picker.confirm()
             page.picker.wait_closed()
             proc_rows_final = len(page.web_restrict.get_process_rows())
+            partb_added = proc_rows_final >= 1
             self._add("pass" if proc_rows_final >= 1 else "fail",
                       "웹제한 모달 — 미사용 프로세스 (2번째 행) 정상 등록",
                       f"입력: picker 2번째 행 / 결과: process_rows={proc_rows_final}", sc=4)
@@ -632,10 +670,19 @@ class TestScenario4Modify(ControlSuiteBase):
         # 재오픈 + verify
         # sc3 데이터 위에 sc4 신규 Part B 추가 → 행 수 +1 검증 (strict 2 가정 X)
         page.open_modify_modal(TARGET_NAME)
-        final_rows = len(page.get_item_web_restrict_rows())
+        web_rows = page.get_item_web_restrict_rows()
+        final_rows = len(web_rows)
         self._add("pass" if final_rows >= 1 else "fail",
                   "스위트 수정 모달 — 재오픈 후 웹제한 행 잔존 (Part A 유지 + Part B 신규 등)",
                   f"입력: 재오픈 / 결과: itemWebRestrictList 행={final_rows}", sc=4)
+        # Part B 신규 웹제한의 '저장 반영' 정밀 확인 (감사 보강 2026-07-02 — 행 수 ≥1 만으론 미저장을 못 잡음)
+        if partb_added:
+            partb_saved = any("[AUTO]_web_4f_second" in r for r in web_rows)
+            self._add("pass" if partb_saved else "warn",
+                      "스위트 수정 모달 — 재오픈 후 Part B 신규 웹제한 저장 반영",
+                      f"입력: 재오픈 / 결과: '[AUTO]_web_4f_second' 행 존재={partb_saved} (전체 {final_rows}행) "
+                      + ("" if partb_saved else "[모달에선 등록 표시됐으나 저장 미반영 — 확인 필요]"), sc=4,
+                      highlight=(None if partb_saved else page.page.locator(page.SEL_ITEM_WEB_LIST_ROW).first))
 
         # Part A 변경값 재오픈 일치
         page.click_item_web_restrict_row(0)

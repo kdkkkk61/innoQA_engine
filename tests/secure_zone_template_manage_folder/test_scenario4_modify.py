@@ -429,10 +429,28 @@ class TestSecureZoneTemplateManageFolderScenario4Modify(SecureZoneTemplateManage
                 st, note = "warn", "raw 서버 오류 노출 — 클라 길이 가드 부재"
             else:
                 st, note = "warn", "차단 없이 저장됨 — 확인 필요" if saved else "경고 없음·미커밋 — 확인 필요"
+            shots = None
+            if "서버" in msg and not saved:
+                # 리턴 재생 2컷(sc3s 와 동일): ①오류 위치(3000자 필드) ②'수정' 재클릭으로 경고 모달 재발생 캡처
+                shot_field = self._shot(f"povf4_{elem}_입력상태", highlight=page.page.locator(sel),
+                                        caption=f"1. {elem} — 3000자 입력 상태(오류 위치)")
+                shot_modal = None
+                try:
+                    page._content_btn("수정").evaluate("el => el.click()")
+                    page.page.locator(page.SEL_CONFIRM_MODAL_OPENED).wait_for(state="attached", timeout=6000)
+                    page.page.wait_for_timeout(300)
+                    shot_modal = self._shot(f"povf4_{elem}_서버오류모달",
+                                            caption="2. 저장 시도 → 경고 모달 '서버에서 오류가 발생 하였습니다.'")
+                    page.click_attached(page.SEL_CONFIRM_BTN)
+                    page.wait_for_modal_closed()
+                except Exception:
+                    pass
+                shots = [s for s in (shot_field, shot_modal) if s] or None
             # 라벨은 sc3s 와 동일 문구(prefix 만 다름) — 묶인 카드 제목 dedup 용(컨텍스트는 시나리오 배지가 구분)
             self._add(st, f"sc4o — {elem} 3000자 오버플로 → 처리",
                       f"입력: 편집에서 {elem} 3000자 + 수정 / 결과: 경고={msg!r}, 커밋={saved} / {note}", sc=4,
-                      highlight=page.page.locator(sel),
+                      screenshot=not shots, screenshots=shots,
+                      highlight=(None if shots else page.page.locator(sel)),
                       merge_key=f"path_ovf::{elem}::{st}::{note}",   # sc3s(생성)의 같은 요소·같은 결과와만 묶임
                       repro=f"1. 폴더 항목 편집\n2. {elem}에 3000자\n3. 수정\n4. 경고 종류 확인(서버 오류면 검증 부재)")
             if saved:   # 3000자가 저장돼 버린 경우 재진입해 복구

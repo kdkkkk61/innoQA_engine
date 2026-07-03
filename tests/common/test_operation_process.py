@@ -81,13 +81,18 @@ _SAVE_SUCCESS_KEYWORDS = ("하시겠습니까", "저장 하였습니다", "저�
 
 
 def _r(status: str, label: str, detail: str = "", sc: int = 0,
-       page=None, highlight=None) -> tuple[str, ScanResult]:
+       page=None, highlight=None, repro=None, merge_key: str = None) -> tuple[str, ScanResult]:
     """print용 문자열 + ScanResult 동시 생성.
     page 전달 시 warn/fail 이면 스크린샷 자동 저장 → extra["screenshot"] 첨부.
-    highlight (Locator) 전달 시 캡처에 빨간 outline 표시 (origin_protect 와 동일)."""
+    highlight (Locator) 전달 시 캡처에 빨간 outline 표시 (origin_protect 와 동일).
+    repro: 결함 카드 '재현 방법' / merge_key: 동일 내용 결함 카드 묶음(docs/issue-card-rules.md)."""
     icon = _STATUS_ICON.get(status, "?")
     text = f"  {icon} {label}" + (f": {detail}" if detail else "")
     extra: dict = {"scenario": sc}
+    if repro:
+        extra["repro"] = repro
+    if merge_key:
+        extra["merge_key"] = merge_key
     if page and status in ("fail", "warn"):
         ss_path = _ss(page, label, highlight=highlight)
         if ss_path:
@@ -730,8 +735,11 @@ class TestNpouchOperationProcess:
                 (p.SEL_DESCRIPTION,  "설명 — 저장값 확인",             _DESC_VAL),
             ]:
                 loaded = p.get_field_value(sel)
-                t, s = _r("pass" if loaded == expected else "fail", label,
-                          f"입력: {expected!r} 저장 / 결과: {loaded!r}", sc=3)
+                ok_ld = loaded == expected
+                t, s = _r("pass" if ok_ld else "fail", label,
+                          f"입력: {expected!r} 저장 / 결과: {loaded!r}", sc=3,
+                          page=(None if ok_ld else p.page),
+                          highlight=(None if ok_ld else p.page.locator(sel)))
                 lines.append(t); srs.append(s)
             # SHA2: 값 존재 여부 + 앞 20자 표시
             loaded_sha2 = p.get_field_value(p.SEL_SHA2)
@@ -828,9 +836,12 @@ class TestNpouchOperationProcess:
                 (p.SEL_DESCRIPTION,  "설명",             _DESC_VAL4),
             ]:
                 loaded = p.get_field_value(sel)
-                t, s = _r("pass" if loaded == expected else "fail",
+                ok_ld = loaded == expected
+                t, s = _r("pass" if ok_ld else "fail",
                           f"{label} — 수정 모달 로드",
-                          f"입력: {expected!r} 저장 / 결과: {loaded!r}", sc=4)
+                          f"입력: {expected!r} 저장 / 결과: {loaded!r}", sc=4,
+                          page=(None if ok_ld else p.page),
+                          highlight=(None if ok_ld else p.page.locator(sel)))
                 lines.append(t); srs.append(s)
 
             # SHA2: 값 존재 여부 + 앞 20자 (전체 비교 대신 존재 확인)
@@ -841,7 +852,8 @@ class TestNpouchOperationProcess:
                       f"입력: {_SHA2_VALID[:20]}... 저장 / 결과: {sha2_short!r}", sc=4)
             lines.append(t); srs.append(s)
 
-            # 4-2. 수정 후 재확인 — 설명 필드 변경 후 저장, 재오픈하여 값 확인
+            # 4-2. 수정 후 재확인 — 3점 대조(입력 ↔ 리스트 행 표시 ↔ 재오픈 로드)
+            #      행 표시 계층 추가(2026-07-02): 제어스위트 클립보드·네트워크 '행 표시 stale' 버그 클래스 검출용.
             _DESC_MOD4 = "sc4_modified_desc"
             p.page.locator(p.SEL_DESCRIPTION).first.fill(_DESC_MOD4)
             p.page.wait_for_timeout(150)
@@ -849,14 +861,45 @@ class TestNpouchOperationProcess:
             p._handle_confirm_modal()
             p.wait_for(p.SEL_ADD_BTN)
 
+            # ② 리스트 행 '설명' 컬럼 표시
+            p.search_item(_AUTO_PROCESS)
+            row_cells, row_loc = [], None
+            for _row in p.page.locator(p.SEL_TABLE_ROW).all():
+                _tds = _row.locator("td").all()
+                if _tds and _AUTO_PROCESS in _tds[0].inner_text():
+                    row_loc = _row
+                    row_cells = [td.inner_text().strip() for td in _tds]
+                    break
+            row_shows = _DESC_MOD4 in row_cells
+            # ③ 재오픈 로드
             p.open_modify_modal(_AUTO_PROCESS)
             loaded_new = p.get_field_value(p.SEL_DESCRIPTION)
-            t, s = _r("pass" if loaded_new == _DESC_MOD4 else "fail",
-                      "설명 — 수정 후 재확인",
-                      f"입력: {_DESC_MOD4!r} 수정 / 결과: {loaded_new!r}",
-                      sc=4, page=p.page)
-            lines.append(t); srs.append(s)
-            p.close_modal()
+            if loaded_new != _DESC_MOD4:
+                # 저장 계층 fail — 모달 열린 채 설명 필드 하이라이트(캡처 지점=판정 지점)
+                t, s = _r("fail", "설명 — 수정 후 행 표시+재오픈 재확인(3점)",
+                          f"입력: {_DESC_MOD4!r} 수정 / 행 표시={row_shows}, 재오픈={loaded_new!r} "
+                          "— 재오픈에 미반영(수정 저장 실패)",
+                          sc=4, page=p.page, highlight=p.page.locator(p.SEL_DESCRIPTION))
+                lines.append(t); srs.append(s)
+                p.close_modal()
+            else:
+                p.close_modal()
+                if row_shows:
+                    t, s = _r("pass", "설명 — 수정 후 행 표시+재오픈 재확인(3점)",
+                              f"입력: {_DESC_MOD4!r} 수정 / 행 표시·재오픈 모두 반영", sc=4)
+                else:
+                    # 두 화면 대비 2장(사용자 지시 2026-07-03): ①재오픈 모달=새 값(데이터 정상) ②행=옛값(stale)
+                    p.open_modify_modal(_AUTO_PROCESS)
+                    shot1 = _ss(p.page, "설명수정_모달에는_반영됨",
+                                highlight=p.page.locator(p.SEL_DESCRIPTION))
+                    p.close_modal()
+                    t, s = _r("warn", "설명 — 수정 후 행 표시+재오픈 재확인(3점)",
+                              f"입력: {_DESC_MOD4!r} 수정 / 재오픈 일치(스크린샷① 모달=새 값) "
+                              "— 리스트 행 '설명' 컬럼만 옛값(스크린샷② 행 표시 stale)",
+                              sc=4, page=p.page, highlight=row_loc)
+                    if shot1:
+                        s.extra["screenshots"] = [shot1]
+                lines.append(t); srs.append(s)
 
         except Exception as e:
             t, s = _r("fail", "수정 모달 — 필드 로드/재확인", str(e), sc=4)
@@ -877,7 +920,8 @@ class TestNpouchOperationProcess:
             t, s = _r("pass" if cleared_exec == "" else "fail",
                       "실행경로 — 지우기 후 재오픈 빈값 유지 확인",
                       f"입력: 실행경로 삭제 후 저장 / 결과: {cleared_exec!r}",
-                      sc=4, page=p.page)
+                      sc=4, page=(None if cleared_exec == "" else p.page),
+                      highlight=(None if cleared_exec == "" else p.page.locator(p.SEL_EXEC_PATH)))
             lines.append(t); srs.append(s)
             p.close_modal()
         except Exception as e:
@@ -939,8 +983,11 @@ class TestNpouchOperationProcess:
                 (p.SEL_DESCRIPTION,  "케이스A — 설명 로드",         _DESC_FULL),
             ]:
                 loaded = p.get_field_value(sel)
-                t, s = _r("pass" if loaded == expected else "warn", label,
-                          f"입력: {expected!r} 저장 / 결과: {loaded!r}", sc=5)
+                ok_ld = loaded == expected
+                t, s = _r("pass" if ok_ld else "warn", label,
+                          f"입력: {expected!r} 저장 / 결과: {loaded!r}", sc=5,
+                          page=(None if ok_ld else p.page),
+                          highlight=(None if ok_ld else p.page.locator(sel)))
                 lines.append(t); srs.append(s)
             # SHA2: 값 존재 여부 + 앞 20자 표시
             loaded_sha2 = p.get_field_value(p.SEL_SHA2)
@@ -983,8 +1030,11 @@ class TestNpouchOperationProcess:
                 (p.SEL_DESCRIPTION, "케이스B — 설명(선택 필드) 빈 값 유지"),
             ]:
                 loaded = p.get_field_value(sel)
-                t, s = _r("pass" if loaded.strip() == "" else "warn", label,
-                          f"입력: 선택 필드 미입력 / 결과: {loaded!r}", sc=5)
+                ok_empty = loaded.strip() == ""
+                t, s = _r("pass" if ok_empty else "warn", label,
+                          f"입력: 선택 필드 미입력 / 결과: {loaded!r}", sc=5,
+                          page=(None if ok_empty else p.page),
+                          highlight=(None if ok_empty else p.page.locator(sel)))
                 lines.append(t); srs.append(s)
             p.close_modal()
         except Exception as e:
@@ -1020,6 +1070,7 @@ class TestNpouchOperationProcess:
         lines, srs = [], []
 
         # AUTO_KEEP_ prefix — sc1 cleanup 시 보존, 세션 간 잔존
+        # ※ 날짜본([AUTO_<MMDD>]) 미적용 레거시 — 마이그레이션 별도 결정(2026-06-30, 미정). 그대로 유지.
         _SUITE = "[AUTO_KEEP]_sc6_cm_proc_suite"
 
         # AUTO_KEEP 잔존 — 정리 안 함 (세션 간 보존이 의도).

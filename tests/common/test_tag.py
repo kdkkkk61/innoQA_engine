@@ -71,10 +71,15 @@ _SAVE_SUCCESS_KEYWORDS = ("하시겠습니까", "저장 하였습니다", "저�
 
 
 def _r(status: str, label: str, detail: str = "", sc: int = 0,
-       page=None, highlight=None) -> tuple[str, ScanResult]:
+       page=None, highlight=None, repro=None, merge_key: str = None) -> tuple[str, ScanResult]:
+    """repro: 결함 카드 '재현 방법' / merge_key: 동일 내용 결함 카드 묶음(docs/issue-card-rules.md)."""
     icon = _STATUS_ICON.get(status, "?")
     text = f"  {icon} {label}" + (f": {detail}" if detail else "")
     extra: dict = {"scenario": sc}
+    if repro:
+        extra["repro"] = repro
+    if merge_key:
+        extra["merge_key"] = merge_key
     if page and status in ("fail", "warn"):
         ss_path = _ss(page, label, highlight=highlight)
         if ss_path:
@@ -127,14 +132,16 @@ class TestNpouchTag:
         """
         _page = self.p.page
         def r(status: str, label: str, detail: str = "",
-              capture: bool = None, highlight=None) -> tuple[str, ScanResult]:
+              capture: bool = None, highlight=None,
+              repro=None, merge_key: str = None) -> tuple[str, ScanResult]:
             if capture is True:
                 page_to_use = _page
             elif capture is False:
                 page_to_use = None
             else:  # None → fail만 자동 캡처
                 page_to_use = _page if status == "fail" else None
-            return _r(status, label, detail, sc=sc, page=page_to_use, highlight=highlight)
+            return _r(status, label, detail, sc=sc, page=page_to_use, highlight=highlight,
+                      repro=repro, merge_key=merge_key)
         return r
 
     # ── 시나리오 1: UI 구조 ────────────────────────────────────────
@@ -814,7 +821,8 @@ class TestNpouchTag:
             loaded_name = p.get_field_value(p.SEL_TAG_NAME)
             t, s = r("pass" if loaded_name == _AUTO else "fail",
                      "태그 이름(*) — 수정 모달 저장값 로드",
-                     f"입력: {_AUTO!r} 저장 / 결과: {loaded_name!r}")
+                     f"입력: {_AUTO!r} 저장 / 결과: {loaded_name!r}",
+                     highlight=(None if loaded_name == _AUTO else p.page.locator(p.SEL_TAG_NAME)))
         except Exception as e:
             t, s = r("fail", "태그 이름(*) — 수정 모달 저장값 로드", str(e))
         lines.append(t); srs.append(s)
@@ -824,7 +832,8 @@ class TestNpouchTag:
             loaded_desc = p.get_field_value(p.SEL_DESCRIPTION)
             t, s = r("pass" if loaded_desc == _DESC_ORIG else "fail",
                      "설명 — 수정 모달 저장값 로드",
-                     f"입력: {_DESC_ORIG!r} 저장 / 결과: {loaded_desc!r}")
+                     f"입력: {_DESC_ORIG!r} 저장 / 결과: {loaded_desc!r}",
+                     highlight=(None if loaded_desc == _DESC_ORIG else p.page.locator(p.SEL_DESCRIPTION)))
         except Exception as e:
             t, s = r("fail", "설명 — 수정 모달 저장값 로드", str(e))
         lines.append(t); srs.append(s)
@@ -855,15 +864,42 @@ class TestNpouchTag:
             t, s = r("fail", "설명 — 수정 후 저장", str(e))
         lines.append(t); srs.append(s)
 
-        # ── 수정 후 재오픈 → 설명 재확인 ────────────────────────
+        # ── 수정 후 재확인 — 3점 대조(입력 ↔ 리스트 행 '설명' 컬럼 ↔ 재오픈 로드) ──
+        #    행 표시 계층 추가(2026-07-02): 제어스위트 '행 표시 stale' 버그 클래스 검출용.
         try:
+            row_cells, row_loc = [], None
+            for _row in p.page.locator(p.SEL_TABLE_ROW).all():
+                _tds = _row.locator("td").all()
+                if _tds and _AUTO in _tds[0].inner_text():
+                    row_loc = _row
+                    row_cells = [td.inner_text().strip() for td in _tds]
+                    break
+            row_shows = _DESC_MOD in row_cells
             p.open_modify_modal(_AUTO)
             reloaded_desc = p.get_field_value(p.SEL_DESCRIPTION)
-            t, s = r("pass" if reloaded_desc == _DESC_MOD else "fail",
-                     "설명 — 수정 후 재확인",
-                     f"입력: {_DESC_MOD!r} 수정 / 결과: {reloaded_desc!r}")
+            if reloaded_desc != _DESC_MOD:
+                # 저장 계층 fail — 모달 열린 채 설명 필드 하이라이트(캡처 지점=판정 지점)
+                t, s = r("fail", "설명 — 수정 후 행 표시+재오픈 재확인(3점)",
+                         f"입력: {_DESC_MOD!r} 수정 / 행 표시={row_shows}, 재오픈={reloaded_desc!r} "
+                         "— 재오픈에 미반영(수정 저장 실패)",
+                         highlight=p.page.locator(p.SEL_DESCRIPTION))
+            elif not row_shows:
+                # 두 화면 대비 2장(사용자 지시 2026-07-03): ①모달=새 값(데이터 정상) ②행=옛값(stale)
+                shot1 = _ss(p.page, "태그설명수정_모달에는_반영됨",
+                            highlight=p.page.locator(p.SEL_DESCRIPTION))
+                p.close_modal()   # 행이 보이는 상태에서 캡처
+                t, s = r("warn", "설명 — 수정 후 행 표시+재오픈 재확인(3점)",
+                         f"입력: {_DESC_MOD!r} 수정 / 재오픈 일치(스크린샷① 모달=새 값) "
+                         f"— 리스트 행 '설명' 컬럼만 옛값(스크린샷② 행 표시 stale, 행={row_cells})",
+                         capture=True, highlight=row_loc)
+                if shot1:
+                    s.extra["screenshots"] = [shot1]
+                p.open_modify_modal(_AUTO)   # 다음 블록(설명 지우기)이 열린 모달을 기대
+            else:
+                t, s = r("pass", "설명 — 수정 후 행 표시+재오픈 재확인(3점)",
+                         f"입력: {_DESC_MOD!r} 수정 / 행 표시·재오픈 모두 반영")
         except Exception as e:
-            t, s = r("fail", "설명 — 수정 후 재확인", str(e))
+            t, s = r("fail", "설명 — 수정 후 행 표시+재오픈 재확인(3점)", str(e))
             p.close_modal()
         lines.append(t); srs.append(s)
 
@@ -883,16 +919,40 @@ class TestNpouchTag:
             t, s = r("fail", "설명 — 지우기 후 저장", str(e))
         lines.append(t); srs.append(s)
 
-        # ── 재오픈 → 설명 빈값 유지 확인 ────────────────────────
+        # ── 지우기 후 재확인 — 3점 대조(행 '설명' 컬럼 + 재오픈 빈값) ──
         try:
+            row_cells2, row_loc2 = [], None
+            for _row in p.page.locator(p.SEL_TABLE_ROW).all():
+                _tds = _row.locator("td").all()
+                if _tds and _AUTO in _tds[0].inner_text():
+                    row_loc2 = _row
+                    row_cells2 = [td.inner_text().strip() for td in _tds]
+                    break
+            row_cleared = _DESC_MOD not in row_cells2
             p.open_modify_modal(_AUTO)
             empty_desc = p.get_field_value(p.SEL_DESCRIPTION)
-            t, s = r("pass" if empty_desc == "" else "fail",
-                     "설명 — 지우기 후 재오픈 빈값 유지 확인",
-                     f"입력: 설명 삭제 후 저장 / 결과: {empty_desc!r}")
-            p.close_modal()
+            if empty_desc != "":
+                t, s = r("fail", "설명 — 지우기 후 행 표시+재오픈 빈값 유지(3점)",
+                         f"입력: 설명 삭제 후 저장 / 재오픈={empty_desc!r} — 비움 미반영",
+                         highlight=p.page.locator(p.SEL_DESCRIPTION))
+                p.close_modal()
+            elif not row_cleared:
+                # 두 화면 대비 2장: ①모달=빈값(비움 반영) ②행=옛값 잔존(stale)
+                shot2 = _ss(p.page, "태그설명지움_모달은_빈값",
+                            highlight=p.page.locator(p.SEL_DESCRIPTION))
+                p.close_modal()   # 행이 보이는 상태에서 캡처
+                t, s = r("warn", "설명 — 지우기 후 행 표시+재오픈 빈값 유지(3점)",
+                         f"입력: 설명 삭제 후 저장 / 재오픈 빈값(스크린샷① 모달=빈값) "
+                         f"— 행 '설명' 컬럼에 옛값 잔존(스크린샷② 행 표시 stale, 행={row_cells2})",
+                         capture=True, highlight=row_loc2)
+                if shot2:
+                    s.extra["screenshots"] = [shot2]
+            else:
+                p.close_modal()
+                t, s = r("pass", "설명 — 지우기 후 행 표시+재오픈 빈값 유지(3점)",
+                         "입력: 설명 삭제 후 저장 / 행·재오픈 모두 빈값 유지")
         except Exception as e:
-            t, s = r("fail", "설명 — 지우기 후 재오픈 빈값 유지 확인", str(e))
+            t, s = r("fail", "설명 — 지우기 후 행 표시+재오픈 빈값 유지(3점)", str(e))
         lines.append(t); srs.append(s)
 
         # ── 사후 정리 ─────────────────────────────────────────────

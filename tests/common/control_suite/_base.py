@@ -59,12 +59,17 @@ _STATUS_TO_SR = {"pass": "pass", "fail": "fail", "warn": "warn", "skip": "skip"}
 
 
 def _r(status: str, label: str, detail: str = "", sc: int = 0,
-       page=None, highlight=None) -> tuple[str, ScanResult]:
+       page=None, highlight=None, repro=None, merge_key: str = None) -> tuple[str, ScanResult]:
     """print 라인 + ScanResult 동시 생성. warn/fail 이면 스크린샷 자동 첨부.
-    sc = 시나리오 번호 (1~5). highlight=Locator 면 캡처에 빨간 outline 표시."""
+    sc = 시나리오 번호 (1~5). highlight=Locator 면 캡처에 빨간 outline 표시.
+    repro: 결함 카드 '재현 방법' / merge_key: 동일 내용 결함 카드 묶음(docs/issue-card-rules.md)."""
     icon = _STATUS_ICON.get(status, "?")
     text = f"  {icon} {label}" + (f": {detail}" if detail else "")
     extra: dict = {"scenario": sc}
+    if repro:
+        extra["repro"] = repro
+    if merge_key:
+        extra["merge_key"] = merge_key
     if page and status in ("fail", "warn"):
         ss_path = _ss(page, label, highlight=highlight)
         if ss_path:
@@ -211,7 +216,7 @@ class ControlSuiteBase:
             pass
 
     def _add(self, status: str, label: str, detail: str = "", sc: int = 0,
-             highlight=None) -> None:
+             highlight=None, repro=None, merge_key: str = None) -> None:
         """한 줄로 print + ScanResult 누적. 각 검증 블록 단위 호출.
 
         highlight (optional, Playwright Locator): fail/warn 시 캡처에 빨간 outline
@@ -235,7 +240,8 @@ class ControlSuiteBase:
             pass
         t, s = _r(status, label, detail, sc=sc,
                   page=self._page if status in ("fail", "warn") else None,
-                  highlight=highlight if status in ("fail", "warn") else None)
+                  highlight=highlight if status in ("fail", "warn") else None,
+                  repro=repro, merge_key=merge_key)
         print(t)
         self._lines.append(t)
         self._srs.append(s)
