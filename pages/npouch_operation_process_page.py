@@ -5,10 +5,15 @@ pages/npouch_operation_process_page.py — nPouch 운용 프로세스 페이지
 scan_mode: list_page
 모달: div#addCommonProcess.modal-wrap.in  (Bootstrap 3 방식 아님 — 동적 생성/제거)
 """
+import re
+
 from pages.base_page import BasePage
 
 
 class NpouchOperationProcessPage(BasePage):
+
+    # 날짜본([AUTO_<MMDD>]) 매칭 — cleanup 판별용 (2026-07-03 날짜본 전환)
+    _AUTO_DATED = re.compile(r"^\[AUTO_(\d{4,8})\]")
 
     # ── 네비게이션 ────────────────────────────────────────────────
     SEL_SYS_MGMT_ICON   = "a[data-menuid='managerSystemManagement']"
@@ -125,9 +130,10 @@ class NpouchOperationProcessPage(BasePage):
 
     def add_item(self, name: str, sha2: str = "", sign: str = "",
                  exec_path: str = "", description: str = "") -> None:
-        """운용 프로세스 추가. [AUTO]_ 또는 [AUTO_KEEP]_ 접두사 필수."""
-        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")):
-            raise Exception("테스트 항목([AUTO]_ 또는 [AUTO_KEEP]_ 접두사)만 생성 가능합니다")
+        """운용 프로세스 추가. [AUTO]_ / [AUTO_KEEP]_ / [AUTO_<날짜>]_ 접두사 필수."""
+        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")
+                or self._AUTO_DATED.match(name)):
+            raise Exception("테스트 항목([AUTO]_/[AUTO_KEEP]_/[AUTO_<날짜>]_ 접두사)만 생성 가능합니다")
 
         self.open_add_modal()
 
@@ -151,8 +157,11 @@ class NpouchOperationProcessPage(BasePage):
         self.click_attached(self.SEL_SUBMIT_BTN)
         self._handle_confirm_modal()
         self.wait_for(self.SEL_ADD_BTN)
-        # 추가 후 검색으로 항목 찾기 (알파벳순 정렬 시 목록 밖에 있을 수 있음)
-        self.search_item(name)
+        # 추가 후 '[AUTO' 필터로 항목 노출 (알파벳순 정렬 시 목록 밖 방지 + 개별 이름 재검색 왕복 제거)
+        if name.startswith("[AUTO"):
+            self.ensure_auto_filter()
+        else:
+            self.search_item(name)
 
     def delete_all_auto_items(self) -> None:
         """[AUTO]_ 접두사만 일괄 삭제 — [AUTO_KEEP]_* 는 보존.
@@ -174,15 +183,17 @@ class NpouchOperationProcessPage(BasePage):
         self._restore_page_size()
 
     def cleanup_with_keep(self) -> None:
-        """[AUTO]_ + [AUTO_KEEP]_ 일괄 삭제 — clean slate.
-        용도: 시나리오 1 시작 전 — 이전 세션 잔존 정리.
-        참조 잠금 차단 시 [AUTO]_DELME_ rename (테스터 수동 정리, 무한루프 방지 제외).
+        """clean slate — [AUTO]_ 휘발성 + [AUTO_KEEP]_ 레거시 + 날짜본([AUTO_<MMDD>], 오늘 포함) 전부 삭제.
+        용도: 시나리오 시작(세션 1회) — 이전 세션 잔존 정리 (특수폴더 delete_all_test_data 와 동일 범위).
+        오늘 날짜본도 삭제(사용자 결정 2026-07-03) — 태그에 등록돼 있으면 참조 잠금 차단이 뜨는데,
+        그 차단 동작 자체도 테스트 범위. 차단 시 [AUTO]_DELME_ rename (무한루프 방지 제외) 후 sc6 이 재생성.
         """
         self.search_item("[AUTO")
         while True:
             names = [
                 n for n in self.get_item_names()
-                if (n.startswith("[AUTO]_") or n.startswith("[AUTO_KEEP]_"))
+                if (n.startswith("[AUTO]_") or n.startswith("[AUTO_KEEP]_")
+                    or self._AUTO_DATED.match(n))
                 and not n.startswith("[AUTO]_DELME_")
             ]
             if not names:
@@ -197,12 +208,16 @@ class NpouchOperationProcessPage(BasePage):
         """항목 삭제. [AUTO]_ 또는 [AUTO_KEEP]_ 접두사 필수.
         _skip_search=True: 검색 단계 생략 (bulk cleanup 에서 사용).
         """
-        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")):
-            raise Exception("테스트 항목([AUTO]_ 또는 [AUTO_KEEP]_ 접두사)만 삭제 가능합니다")
+        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")
+                or self._AUTO_DATED.match(name)):
+            raise Exception("테스트 항목([AUTO]_/[AUTO_KEEP]_/[AUTO_<날짜>]_ 접두사)만 삭제 가능합니다")
 
         if not _skip_search:
-            # 검색으로 행 노출
-            self.search_item(name)
+            # 행 노출 — [AUTO 계열은 공용 필터 유지(개별 이름 재검색 왕복 제거)
+            if name.startswith("[AUTO"):
+                self.ensure_auto_filter()
+            else:
+                self.search_item(name)
             self.page.wait_for_timeout(300)
 
         row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
@@ -241,14 +256,32 @@ class NpouchOperationProcessPage(BasePage):
         self._handle_confirm_modal()
         self.wait_for(self.SEL_ADD_BTN)
 
-    def _delete_or_rename(self, name: str) -> str:
-        """삭제 시도 → 참조 잠금 차단 시 [AUTO]_DELME_ 로 rename (테스터 수동 정리용).
-        반환: 'deleted' | 'renamed'. _skip_search 전제 (cleanup 루프에서 검색 1회 후 호출).
+    def remove_all_usages(self, name: str) -> int:
+        """속성 모달 '※사용처 확인'의 참조 chip(×) 전부 제거 — 참조 잠금 해제.
+        직접조작 실측 2026-07-03: chip=button.usage-policy-process, ×=내부 i.extentionDeleteBtn,
+        × 클릭 → '선택한 항목을 삭제 하시겠습니까?' confirm → chip 제거 → 이후 정식 삭제 가능.
+        태그 쪽에 남은 테스트 데이터 참조를 걷어내는 동작(실데이터 태그 자체는 안 건드림). 반환: 제거 수."""
+        self.open_detail_modal(name)
+        removed = 0
+        try:
+            for _ in range(20):   # 참조 수 상한 방어
+                chips = self.page.locator("div#detailGlobalProcess i.extentionDeleteBtn")
+                if chips.count() == 0:
+                    break
+                chips.first.evaluate("el => el.click()")
+                self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+                    state="attached", timeout=self._TIMEOUT_MODAL)
+                self.click_attached(self.SEL_CONFIRM_BTN)
+                self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+                    state="detached", timeout=self._TIMEOUT_MODAL)
+                self.page.wait_for_timeout(400)
+                removed += 1
+        finally:
+            self.close_detail_modal()
+        return removed
 
-        제품 2단계 동작 (Chrome 검증 2026-06-04):
-          1) 삭제 → "삭제 하시겠습니까?" confirm → 확인
-          2) 서버 검증 → 참조 시 "할당 되어 있습니다" 차단 (확인만) / 미참조 시 삭제 완료
-        """
+    def _delete_checked_row(self, name: str) -> str:
+        """행 체크 → 삭제 → 1단계 confirm → 2단계 서버 응답 메시지 반환('' = 차단 없음)."""
         row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
         checkbox = row.locator(self.SEL_CHECKBOX).first
         if not checkbox.is_checked():
@@ -257,28 +290,53 @@ class NpouchOperationProcessPage(BasePage):
                 checkbox.click()
             finally:
                 self._toggle_overlay(True)
-
         self.click(self.SEL_DELETE_BTN)
-        # 1단계: "삭제 하시겠습니까?" → 확인 클릭
         self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
             state="attached", timeout=self._TIMEOUT_MODAL
         )
         self.click_attached(self.SEL_CONFIRM_BTN)
         self.page.wait_for_timeout(700)
-        # 2단계: 서버 응답 — 차단 모달 있으면 참조 잠금 → rename
+        msg2 = ""
         if self.page.locator(self.SEL_CONFIRM_MODAL).count() > 0:
             msg2 = self.page.locator(self.SEL_MODAL_MSG).first.inner_text().strip()
-            if ("할당" in msg2) or ("사용" in msg2) or ("참조" in msg2):
+        return msg2
+
+    def _delete_or_rename(self, name: str) -> str:
+        """삭제 시도 → 참조 잠금 차단 시 사용처 참조 제거 후 재삭제(강제 삭제, 실측 2026-07-03).
+        그래도 실패하면 [AUTO]_DELME_ rename (최후 fallback, 테스터 수동 정리용).
+        반환: 'deleted' | 'force_deleted' | 'renamed'. _skip_search 전제 (cleanup 루프에서 검색 1회 후 호출).
+
+        제품 동작 (Chrome 검증 2026-06-04 / 강제 삭제 경로 2026-07-03):
+          1) 삭제 → "삭제 하시겠습니까?" confirm → 확인
+          2) 서버 검증 → 참조 시 "할당 되어 있습니다" 차단 / 미참조 시 삭제 완료
+          3) 차단 시: 속성 모달 사용처 chip × 로 참조 제거 → 재삭제 → 성공
+        """
+        msg2 = self._delete_checked_row(name)
+        if ("할당" in msg2) or ("사용" in msg2) or ("참조" in msg2):
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            try:
+                self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+                    state="detached", timeout=self._TIMEOUT_TABLE
+                )
+            except Exception:
+                pass
+            # 강제 삭제: 사용처 참조 전부 제거 후 재시도
+            try:
+                self.remove_all_usages(name)
+                msg_retry = self._delete_checked_row(name)
+                if not (("할당" in msg_retry) or ("사용" in msg_retry) or ("참조" in msg_retry)):
+                    if msg_retry:
+                        self.click_attached(self.SEL_CONFIRM_BTN)
+                    self.wait_for(self.SEL_ADD_BTN)
+                    return "force_deleted"
                 self.click_attached(self.SEL_CONFIRM_BTN)
-                try:
-                    self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
-                        state="detached", timeout=self._TIMEOUT_TABLE
-                    )
-                except Exception:
-                    pass
-                base = name.replace("[AUTO_KEEP]_", "").replace("[AUTO]_", "")
-                self.rename_item(name, f"[AUTO]_DELME_{base}")
-                return "renamed"
+            except Exception:
+                pass
+            # 최후 fallback — DELME rename (사용처 제거 실패/신규 참조 유형)
+            base = re.sub(r"^\[AUTO(_\d{4,8}|_KEEP)?\]_", "", name)
+            self.rename_item(name, f"[AUTO]_DELME_{base}")
+            return "renamed"
+        if msg2:
             # 그 외 응답 모달 (성공 등) → dismiss
             self.click_attached(self.SEL_CONFIRM_BTN)
         try:
@@ -289,8 +347,11 @@ class NpouchOperationProcessPage(BasePage):
 
     def open_modify_modal(self, name: str) -> None:
         """행 선택 → 수정 버튼 클릭 → 모달 열림 대기."""
-        # 검색으로 행 노출
-        self.search_item(name)
+        # 행 노출 — [AUTO 계열은 공용 필터 유지(개별 이름 재검색 왕복 제거)
+        if name.startswith("[AUTO"):
+            self.ensure_auto_filter()
+        else:
+            self.search_item(name)
         self.page.wait_for_timeout(300)
 
         row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
@@ -397,6 +458,62 @@ class NpouchOperationProcessPage(BasePage):
         물려지지 않도록 매번 processName 명시 선택 (URL 해시 의존 제거)."""
         self._select_search_option("processName")
         self._do_search(keyword)
+
+    # ── 속성(운용 프로세스 속성) 모달 — sc5/사용처 (직접조작 확정 2026-07-03) ──
+    # 행 가운데(서명 셀 등) 더블클릭으로 열림. 구성: 프로세스명/서명/SHA2/실행경로/설명(텍스트 표시,
+    # input 없음=구조적 읽기전용) + '※ 사용처 확인'(참조하는 정책/템플릿을 분류별 버튼으로 나열).
+    SEL_DETAIL_MODAL = "div#detailGlobalProcess.in"
+
+    def open_detail_modal(self, name: str) -> None:
+        """행 td[1](서명 셀) 합성 더블클릭 → '운용 프로세스 속성'(읽기전용).
+        열린 모달의 표시 이름이 요청과 다르면 닫고 재시도(특수폴더와 동일 방어)."""
+        row = None
+        for r in self.page.locator(self.SEL_TABLE_ROW).all():
+            tds = r.locator("td").all()
+            if tds and tds[0].inner_text().strip() == name:
+                row = r
+                break
+        if row is None:
+            raise Exception(f"행 없음: {name}")
+        cell = row.locator("td").nth(1)
+        det = self.page.locator(self.SEL_DETAIL_MODAL)
+        for _ in range(3):
+            cell.evaluate(
+                "el => ['mousedown','mouseup','click','mousedown','mouseup','click','dblclick']"
+                ".forEach(t => el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window})))"
+            )
+            try:
+                det.wait_for(state="attached", timeout=4000)
+                self.page.wait_for_timeout(400)
+                if name in det.first.inner_text():
+                    return
+                self.close_detail_modal()
+            except Exception:
+                self.page.wait_for_timeout(300)
+        raise Exception(f"속성 모달이 열리지 않음(3회 재시도 실패): {name}")
+
+    def detail_modal_text(self) -> str:
+        """속성 모달 전체 표시 텍스트(필드값 + 사용처 섹션 포함)."""
+        return self.page.locator(self.SEL_DETAIL_MODAL).first.inner_text()
+
+    def close_detail_modal(self) -> None:
+        try:
+            self.page.locator(f"{self.SEL_DETAIL_MODAL} button", has_text="닫기").first.evaluate(
+                "el => el.click()")
+            self.page.locator(self.SEL_DETAIL_MODAL).wait_for(state="detached", timeout=3000)
+        except Exception:
+            pass
+
+    def ensure_auto_filter(self) -> None:
+        """리스트를 '[AUTO' 프리픽스 검색 상태로 유지 — 이미 걸려 있으면 재검색 생략.
+        목록이 이름순 고정이라 개별 이름을 매번 재검색하는 왕복 제거(사용자 지시 2026-07-03).
+        prefix 부분 일치는 delete_all_auto_items 가 기존부터 사용 중(작동 확인된 패턴)."""
+        try:
+            cur = self.page.locator("input#searchText").first.input_value().strip()
+        except Exception:
+            cur = ""
+        if cur != "[AUTO":
+            self.search_item("[AUTO")
 
     def search_item_with_option(self, keyword: str, option_label: str) -> None:
         """검색 옵션 변경 후 검색. option_label: '프로세스 이름'/'프로세스명' | '서명' | '설명'.

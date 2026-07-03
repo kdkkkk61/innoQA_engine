@@ -1136,19 +1136,34 @@ class TestNpouchTag:
         lines.append(t); srs.append(s)
 
         # ── 프로세스 등록 (이미 등록돼 있으면 skip) ─────────────────
-        # [AUTO_KEEP]_sc6_cm_proc_suite 우선 선택 (프로세스 sc6 에서 KEEP 잔존)
-        _SUITE_PROC = "[AUTO_KEEP]_sc6_cm_proc_suite"
+        # 프로세스 sc6 날짜본([AUTO_<MMDD>]_cm_proc, 2026-07-03 전환) 우선 —
+        # 태그 재구성 전까지 레거시 [AUTO_KEEP] fallback 이중 지원.
+        import time as _time
+        _PROC_CANDIDATES = [f"[AUTO_{_time.strftime('%m%d')}]_cm_proc",
+                            "[AUTO_KEEP]_sc6_cm_proc_suite"]
+        _SUITE_PROC = _PROC_CANDIDATES[0]
         registered_proc = ""
         try:
             existing_procs = p.get_process_names_in_list(_SUITE_TAG) if hasattr(p, "get_process_names_in_list") else []
-            if _SUITE_PROC in existing_procs:
+            _hit = next((c for c in _PROC_CANDIDATES if c in existing_procs), None)
+            if _hit:
+                _SUITE_PROC = _hit
                 t, s = r("pass", f"{_SUITE_TAG} — 프로세스 이미 등록 — 재사용",
                          f"결과: {_SUITE_PROC!r} 잔존 등록")
                 registered_proc = _SUITE_PROC
             else:
                 p.open_modify_modal(_SUITE_TAG)
                 p.open_process_list_modal()
-                registered_proc = p.select_process_by_name(_SUITE_PROC)
+                registered_proc = ""
+                for _cand in _PROC_CANDIDATES:
+                    try:
+                        registered_proc = p.select_process_by_name(_cand)
+                        _SUITE_PROC = _cand
+                        break
+                    except Exception:
+                        continue
+                if not registered_proc:
+                    raise Exception(f"연계 프로세스 후보 미발견: {_PROC_CANDIDATES}")
                 p.confirm_process_selection()
                 proc_names = p.get_registered_process_names()
                 t, s = r("pass" if registered_proc in proc_names else "fail",

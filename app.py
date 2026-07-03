@@ -195,7 +195,7 @@ _LIST_SCENARIOS = [
 
 # nPouch 전용: page_id ↔ 테스트 클래스명 매핑
 _NPOUCH_PAGE_TO_CLASS: dict[str, str] = {
-    "common_operation_process": "TestNpouchOperationProcess",
+    # common_operation_process 는 디렉토리 매핑(TestOperationProcessScenario* 다중 클래스) — -k 필터 미사용
     "common_tag":               "TestNpouchTag",
     "common_control_suite":     "TestNpouchControlSuite",
     "npouch_origin_protect":    "TestNpouchOriginProtect",
@@ -204,7 +204,7 @@ _NPOUCH_PAGE_TO_CLASS: dict[str, str] = {
 _NPOUCH_CLASS_TO_PAGE: dict[str, str] = {v: k for k, v in _NPOUCH_PAGE_TO_CLASS.items()}
 _NPOUCH_PAGE_TO_FILE: dict[str, str] = {
     # 공통 페이지(운용/태그/제어스위트)는 tests/common/ 에 있고 page_id 도 common_ 으로 통일
-    "common_operation_process": "common/test_operation_process.py",
+    "common_operation_process": "common/operation_process",   # 디렉토리 매핑 (sc1~6 재구성 2026-07-03)
     "common_tag":               "common/test_tag.py",
     # 디렉토리 매핑 — tests/<디렉토리>/ 안의 모든 test_scenario*.py 실행
     "common_control_suite":     "common/control_suite",
@@ -396,7 +396,7 @@ def start():
     if product_id == "npouch":
         # nPouch: page_id별 test 파일 수집 (중복 제거) — -k 필터로 클래스 선택
         test_files = list(dict.fromkeys(
-            str(BASE_DIR / "tests" / _NPOUCH_PAGE_TO_FILE.get(pid, "common/test_operation_process.py"))
+            str(BASE_DIR / "tests" / _NPOUCH_PAGE_TO_FILE.get(pid, "common/operation_process"))
             for pid in page_ids
         ))
         # 디렉토리 매핑된 page (control_suite/origin_protect/npouch_policy) 가 하나라도 있으면
@@ -404,7 +404,8 @@ def start():
         # 매핑값 (TestNpouchControlSuite, TestNpouchOriginProtect) 과 불일치 → match 0건 → deselect
         # 사용자 보고 2026-06-03: 5 페이지 체크해도 control_suite/origin_protect 누락.
         # 해결: 디렉토리 페이지 포함 시 -k 필터 자체 skip → test_files path 가 page 분리.
-        _dir_pages = {"common_control_suite", "npouch_origin_protect", "npouch_policy"}
+        _dir_pages = {"common_operation_process", "common_control_suite",
+                      "npouch_origin_protect", "npouch_policy"}
         has_dir = any(pid in _dir_pages for pid in page_ids)
         if has_dir:
             k_filter = ""

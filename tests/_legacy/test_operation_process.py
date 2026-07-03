@@ -640,7 +640,7 @@ class TestNpouchOperationProcess:
         try:
             p.add_item(_AUTO_PROCESS, sha2=_SHA2_VALID, sign=_SIGN_VAL,
                        exec_path=_EXEC_TEST, description=_DESC_VAL)
-            p.search_item(_AUTO_PROCESS)
+            p.ensure_auto_filter()
             exists = _AUTO_PROCESS in p.get_item_names()
             t, s = _r("pass" if exists else "fail",
                       "항목 추가 — 목록 확인",
@@ -655,7 +655,7 @@ class TestNpouchOperationProcess:
 
         # ① 테이블 컬럼 표시 확인 (이름/서명/설명이 행에 올바르게 표시되는지)
         try:
-            p.search_item(_AUTO_PROCESS)
+            p.ensure_auto_filter()
             tbl_row = None
             for row in page.locator(p.SEL_TABLE_ROW).all():
                 tds = row.locator("td").all()
@@ -761,7 +761,7 @@ class TestNpouchOperationProcess:
             p.click_attached(p.SEL_SUBMIT_BTN)
             p._handle_confirm_modal()
             p.wait_for(p.SEL_ADD_BTN)
-            p.search_item(_AUTO_PROCESS)
+            p.ensure_auto_filter()
             names = p.get_item_names()
             t, s = _r("pass" if _AUTO_PROCESS in names else "fail",
                       "항목 수정 — 수정 후 목록 잔존",
@@ -782,7 +782,7 @@ class TestNpouchOperationProcess:
         # ④ 삭제 → 목록에서 사라짐 확인
         try:
             p.delete_item(_AUTO_PROCESS)
-            p.search_item(_AUTO_PROCESS)
+            p.ensure_auto_filter()
             gone = _AUTO_PROCESS not in p.get_item_names()
             t, s = _r("pass" if gone else "fail",
                       "항목 삭제 — 목록에서 사라짐",
@@ -862,7 +862,7 @@ class TestNpouchOperationProcess:
             p.wait_for(p.SEL_ADD_BTN)
 
             # ② 리스트 행 '설명' 컬럼 표시
-            p.search_item(_AUTO_PROCESS)
+            p.ensure_auto_filter()
             row_cells, row_loc = [], None
             for _row in p.page.locator(p.SEL_TABLE_ROW).all():
                 _tds = _row.locator("td").all()
@@ -945,14 +945,15 @@ class TestNpouchOperationProcess:
         page = p.page
         lines, srs = [], []
 
-        # 사전 정리
-        for name in [_AUTO_PROC_FULL, _AUTO_PROC_REQ]:
-            try:
-                p.search_item(name)
-                if name in p.get_item_names():
+        # 사전 정리 — '[AUTO' 필터 1회로 두 이름 확인(개별 재검색 제거)
+        try:
+            p.ensure_auto_filter()
+            names_now = p.get_item_names()
+            for name in [_AUTO_PROC_FULL, _AUTO_PROC_REQ]:
+                if name in names_now:
                     p.delete_item(name)
-            except Exception:
-                pass
+        except Exception:
+            pass
         p._restore_page_size()
 
         # ── 케이스 A: 전체 필드 채우기 ─────────────────────────────────────
@@ -963,7 +964,7 @@ class TestNpouchOperationProcess:
         try:
             p.add_item(_AUTO_PROC_FULL, sha2=_SHA2_VALID, sign=_SIGN_FULL,
                        exec_path=_EXEC_FULL, description=_DESC_FULL)
-            p.search_item(_AUTO_PROC_FULL)
+            p.ensure_auto_filter()
             exists = _AUTO_PROC_FULL in p.get_item_names()
             t, s = _r("pass" if exists else "fail",
                       "케이스A — 전체 채우기 저장 확인",
@@ -1005,7 +1006,7 @@ class TestNpouchOperationProcess:
         print("\n  --- 케이스B: 필수 필드만 채우기 ---")
         try:
             p.add_item(_AUTO_PROC_REQ)   # 이름만, 선택 필드 모두 비움
-            p.search_item(_AUTO_PROC_REQ)
+            p.ensure_auto_filter()
             exists_b = _AUTO_PROC_REQ in p.get_item_names()
             t, s = _r("pass" if exists_b else "fail",
                       "케이스B — 필수만 저장 확인",
@@ -1074,8 +1075,8 @@ class TestNpouchOperationProcess:
         _SUITE = "[AUTO_KEEP]_sc6_cm_proc_suite"
 
         # AUTO_KEEP 잔존 — 정리 안 함 (세션 간 보존이 의도).
-        # 이미 잔존 여부만 미리 검색해 둠 (이후 add 분기에 활용).
-        p.search_item(_SUITE)
+        # '[AUTO' 필터로 잔존 확인('[AUTO_KEEP]' 도 prefix 매칭 — 개별 재검색 제거).
+        p.ensure_auto_filter()
         _already_exists = _SUITE in p.get_item_names()
         p._restore_page_size()
 
@@ -1089,7 +1090,7 @@ class TestNpouchOperationProcess:
                           f"입력: {_SUITE!r} 이미 존재 / 결과: AUTO_KEEP 잔존 활용", sc=6)
             else:
                 p.add_item(_SUITE)
-                p.search_item(_SUITE)
+                p.ensure_auto_filter()
                 exists = _SUITE in p.get_item_names()
                 t, s = _r("pass" if exists else "fail",
                           "연계 프로세스 생성 — 목록 확인",

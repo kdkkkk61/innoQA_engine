@@ -1,5 +1,7 @@
 scan_mode: list_page
 page_id: common_operation_process
+modal_id: "addCommonProcess"
+detect_hidden: true
 
 # ── 필드 정의 ──────────────────────────────────────────────────────
 fields:
@@ -36,6 +38,16 @@ fields:
     required: false
     order: 50
     overflow_scan: true
+
+# ── UIScanner sc0 스키마 (yaml↔DOM diff 입력 — core/scan_diff.extract_yaml_selectors 가 읽는 섹션) ──
+# 위 fields(수동 검증용)와 병기 — 셀렉터 동일(실측 기준). ADD 모달(addCommonProcess) 스캔 대상.
+# 삭제(discovered_missing) 감지: 여기 명세된 요소가 DOM 에서 사라지면 sc0 이 warn 카드로 보고.
+text_inputs:
+  - {selector: "input#processName",          label: "프로세스 이름"}
+  - {selector: "input#sign",                 label: "서명"}
+  - {selector: "textarea#sha2",              label: "SHA2"}
+  - {selector: "textarea#processExecutePath", label: "실행경로"}
+  - {selector: "textarea#description",       label: "설명"}
 
 # ── 검색 옵션 ──────────────────────────────────────────────────────
 search_options:

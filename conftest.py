@@ -22,6 +22,30 @@ if hasattr(sys.stderr, "buffer") and sys.stderr.encoding.lower() != "utf-8":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 
+def pytest_collection_modifyitems(config, items):
+    """tests/common 연계 실행 순서 보장 — 운용 프로세스 → 태그 → 제어스위트 (2026-07-03).
+
+    scenario_6 연계 체인: 프로세스 sc6 가 [AUTO_KEEP] suite 생성 → 태그 sc6 가 등록 → 제어스위트가 사용.
+    기본 수집은 경로 알파벳순이라 control_suite/ 디렉토리가 먼저 옴 → 공통 3종 항목만
+    '자기 슬롯 안에서' 재정렬(다른 페이지들의 수집 순서는 그대로 유지)."""
+    def _rank(item) -> int:
+        p = str(item.fspath).replace("\\", "/")
+        if "tests/common/operation_process/" in p:
+            return 0
+        if "tests/common/test_tag.py" in p:
+            return 1
+        if "tests/common/control_suite/" in p:
+            return 2
+        return -1   # 공통 외 — 재정렬 대상 아님
+
+    idxs = [i for i, it in enumerate(items) if _rank(it) >= 0]
+    if len(idxs) < 2:
+        return
+    reordered = sorted((items[i] for i in idxs), key=_rank)   # stable — 같은 rank 내 기존 순서 유지
+    for i, it in zip(idxs, reordered):
+        items[i] = it
+
+
 class _TeeOutput:
     """stdout/stderr 를 터미널 + 파일에 동시 출력."""
     def __init__(self, original, file_obj):
