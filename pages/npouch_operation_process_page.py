@@ -114,6 +114,16 @@ class NpouchOperationProcessPage(BasePage):
 
     # ── 목록 조회 ─────────────────────────────────────────────────
 
+    def _row_by_name(self, name: str):
+        """이름 셀(td[0]) 정확 일치 행 반환(없으면 None) — 접두사 이름 충돌 방지.
+        filter(has_text=) 부분 일치가 접두사 관계 이름의 다른 행을 잡는 오탐
+        (태그 리포트 2026-07-03) → 전 행 조회를 정확 일치로 통일."""
+        for r in self.page.locator(self.SEL_TABLE_ROW).all():
+            tds = r.locator("td").all()
+            if tds and tds[0].inner_text().strip() == name:
+                return r
+        return None
+
     def get_item_names(self) -> list[str]:
         """현재 목록의 프로세스 이름 리스트 반환.
         td가 2개 미만인 행(빈 목록 안내 메시지 등)은 제외."""
@@ -220,7 +230,9 @@ class NpouchOperationProcessPage(BasePage):
                 self.search_item(name)
             self.page.wait_for_timeout(300)
 
-        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
+        row = self._row_by_name(name)   # 정확 일치 — 접두사 이름 충돌 방지(2026-07-03)
+        if row is None:
+            raise Exception(f"행 없음(정확 일치): {name}")
         checkbox = row.locator(self.SEL_CHECKBOX).first
         if not checkbox.is_checked():
             self._toggle_overlay(False)
@@ -282,7 +294,9 @@ class NpouchOperationProcessPage(BasePage):
 
     def _delete_checked_row(self, name: str) -> str:
         """행 체크 → 삭제 → 1단계 confirm → 2단계 서버 응답 메시지 반환('' = 차단 없음)."""
-        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
+        row = self._row_by_name(name)   # 정확 일치 — 접두사 이름 충돌 방지(2026-07-03)
+        if row is None:
+            raise Exception(f"행 없음(정확 일치): {name}")
         checkbox = row.locator(self.SEL_CHECKBOX).first
         if not checkbox.is_checked():
             self._toggle_overlay(False)
@@ -354,7 +368,9 @@ class NpouchOperationProcessPage(BasePage):
             self.search_item(name)
         self.page.wait_for_timeout(300)
 
-        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
+        row = self._row_by_name(name)   # 정확 일치 — 접두사 이름 충돌 방지(2026-07-03)
+        if row is None:
+            raise Exception(f"행 없음(정확 일치): {name}")
         self._toggle_overlay(False)
         self.page.wait_for_timeout(80)
         try:

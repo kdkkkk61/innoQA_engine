@@ -19,8 +19,11 @@ class OperationProcessBase:
     """운용 프로세스 공통 base."""
 
     PAGE_ID = "common_operation_process"
+    # 오버플로 헬퍼의 이름 필드(필수 필드) — 서브클래스(태그 등)가 재정의해 재사용
+    NAME_FIELD_SEL_ATTR = "SEL_PROCESS_NAME"
+    NAME_FIELD_ID = "processName"
 
-    _SESSION_CLEANUP_DONE = False
+    _CLEANUP_DONE_PAGES: set = set()   # 페이지별 세션 cleanup 1회 플래그 (서브클래스 공유 dict)
     _SC_DEFAULT_TIMEOUT = 8000
 
     # 전역 리턴 재생: fail 카드 발생 시 같은 테스트를 '_R' 모드로 1회 재실행 —
@@ -29,19 +32,19 @@ class OperationProcessBase:
     _REPLAY_MAX_FRAMES = 10
 
     def _ensure_session_cleanup(self, page) -> None:
-        """sc1 시작 clean slate — [AUTO] + [AUTO_KEEP] 일괄 삭제 (1회). 실데이터 보존."""
-        if OperationProcessBase._SESSION_CLEANUP_DONE:
+        """시작 clean slate — [AUTO]+[AUTO_KEEP]+날짜본 일괄 삭제 (페이지당 세션 1회). 실데이터 보존."""
+        if self.PAGE_ID in OperationProcessBase._CLEANUP_DONE_PAGES:
             return
         try:
             page.page.wait_for_timeout(200)
             page.cleanup_with_keep()
             if hasattr(self, "_add"):
-                self._add("pass", "sc1 — session 시작 cleanup ([AUTO]+[AUTO_KEEP] 일괄 삭제, clean slate)",
+                self._add("pass", "session 시작 cleanup ([AUTO]+[AUTO_KEEP]+날짜본 일괄 삭제, clean slate)",
                           "잔여 테스트 데이터 정리 완료", sc=1)
         except Exception as e:
             if hasattr(self, "_add"):
-                self._add("warn", "sc1 — session cleanup 예외", f"예외: {e!r}", sc=1)
-        OperationProcessBase._SESSION_CLEANUP_DONE = True
+                self._add("warn", "session cleanup 예외", f"예외: {e!r}", sc=1)
+        OperationProcessBase._CLEANUP_DONE_PAGES.add(self.PAGE_ID)
 
     def _attach(self, scan_results: list[ScanResult]) -> None:
         try:
@@ -150,6 +153,115 @@ class OperationProcessBase:
                 break
         return shots
 
+    # ── sc0 UIScanner 결과 보고 (공용 — 카드 규칙 준수판, 2026-07-03 재설계) ──
+    def _report_scan(self, report, tag: str, page=None,
+                     modal_open_fn=None, modal_close_fn=None) -> None:
+        """yaml↔DOM diff 결과 → 카드.
+
+        레거시(건수 나열 + 기계 텍스트) 대체:
+        - 요약 카드: 변경 요소를 이름으로 명시(건수만 X), 자동 캡처 없음(모달 닫힌 뒤라 판정 지점 아님).
+        - 변경 카드(요소별): 사람이 읽는 설명 + 모달을 다시 열어 해당 요소를 빨간 표시로 캡처(판정 지점).
+          삭제(=요소 없음)는 '있어야 할 모달 현재 상태' 전체 컷으로 부재 증거.
+        """
+        _DISCOVERY = ("discovered_new", "discovered_missing", "discovered_hidden")
+        added   = [r for r in report.results if r.pattern == "discovered_new"]
+        deleted = [r for r in report.results if r.pattern == "discovered_missing"]
+        hidden  = [r for r in report.results if r.pattern == "discovered_hidden"]
+        scan_fails = [r for r in report.results
+                      if r.status == "fail" and r.pattern not in _DISCOVERY]
+        scan_warns = [r for r in report.results
+                      if r.status == "warn" and r.pattern not in _DISCOVERY]
+        scan_pass  = [r for r in report.results if r.status == "pass"]
+
+        def _sel_of(r):
+            if getattr(r, "selector", None):
+                return r.selector
+            m = re.search(r"\(((?:input|textarea|select|button|div)#[\w-]+)\)", r.label or "")
+            return m.group(1) if m else ""
+
+        # 요약 — 변경 요소를 이름으로 명시
+        changed_names = ([f"추가 {_sel_of(r)}" for r in added]
+                         + [f"삭제 {_sel_of(r)}" for r in deleted]
+                         + [f"숨김 {_sel_of(r)}" for r in hidden])
+        changed = len(changed_names)
+        self._add("warn" if changed else "pass",
+                  f"{tag} — [UIScanner] 변경사항 감지 (yaml ↔ DOM 명세 대조)",
+                  (f"명세와 다른 요소 {changed}건: " + " / ".join(changed_names) + " — 아래 요소별 카드 참조. "
+                   if changed else "변경 없음 — yaml 명세와 DOM 일치. ")
+                  + f"(요소 검증 pass={len(scan_pass)}건, fail={len(scan_fails)}건, warn={len(scan_warns)}건)",
+                  sc=0, screenshot=False)
+        # 변경 카드 — 요소별, 판정 지점(모달 안 해당 요소) 재캡처
+        for kind, items, why in (
+                ("추가", added,   "yaml 명세에 없는 요소가 모달 DOM에 존재 — 신규 기능 등장 또는 명세 누락"),
+                ("삭제", deleted, "yaml 명세 요소가 모달 DOM에서 사라짐 — 기능 삭제 또는 셀렉터 변경 의심"),
+                ("숨김", hidden,  "요소가 DOM에 있으나 display:none — 기능 숨김/조건부 노출 의심")):
+            for r in items:
+                sel = _sel_of(r)
+                shot = None
+                if page is not None and modal_open_fn is not None:
+                    try:
+                        modal_open_fn()
+                        page.page.wait_for_timeout(500)
+                        if kind == "삭제" or not sel:
+                            shot = self._shot(f"sc0_{kind}_{sel or 'unknown'}",
+                                              caption=f"1. 모달 현재 상태 — {sel!r} 요소가 있어야 하나 미존재")
+                        else:
+                            shot = self._shot(f"sc0_{kind}_{sel}",
+                                              highlight=page.page.locator(sel),
+                                              caption=f"1. 모달 — 명세와 다른 요소(빨간 표시): {sel}")
+                    except Exception:
+                        shot = None
+                    finally:
+                        try:
+                            if modal_close_fn is not None:
+                                modal_close_fn()
+                        except Exception:
+                            pass
+                self._add("warn", f"{tag} — 변경사항({kind}) — {sel or (r.label or '')}",
+                          f"{why}. 요소: {sel or '(셀렉터 미상)'} / "
+                          "조치: 의도된 변경이면 yaml 명세 갱신 후 정식 검증, 아니면 제품 확인 필요.",
+                          sc=0, screenshot=False, screenshots=[shot] if shot else None,
+                          repro=f"1. 모달 열기\n2. {sel or '해당 요소'} {'부재' if kind == '삭제' else '존재/상태'} 확인\n"
+                                "3. yaml 명세와 대조")
+        for r in scan_fails + scan_warns:
+            self._add(r.status, f"{tag} — [UI 패턴] {r.label}",
+                      r.detail or f"selector: {getattr(r, 'selector', '')!r}", sc=0)
+
+    # ── 다운로드 버튼 동작 검증 (존재 확인 ≠ 동작 검증 — 실감지) ──
+    def _verify_download_button(self, p, btn_sel: str, label: str, tag: str, sc: int) -> None:
+        """버튼 클릭 → Playwright download 이벤트 실감지. 파일은 저장하지 않음(감지 후 cancel).
+        내용 검증은 수동 범위 — 카드에 명시."""
+        if p.page.locator(btn_sel).count() == 0:
+            self._add("fail", f"{tag} — {label} 버튼 다운로드 동작",
+                      f"버튼 없음: {btn_sel}", sc=sc)
+            return
+        try:
+            with p.page.expect_download(timeout=10_000) as dl_info:
+                p.page.locator(btn_sel).first.evaluate("el => el.click()")
+            dl = dl_info.value
+            fname = dl.suggested_filename
+            try:
+                dl.cancel()
+            except Exception:
+                pass
+            self._add("pass", f"{tag} — {label} 버튼 다운로드 동작",
+                      f"입력: {label} 클릭 / 결과: 다운로드 발생 — 파일명 {fname!r} (파일 내용 검증은 수동)",
+                      sc=sc, repro=f"1. {label} 버튼 클릭\n2. 파일 다운로드 발생 확인")
+        except Exception as e:
+            # 다운로드 대신 경고 모달이 뜨는 경우 포함 — 현재 화면 상태로 판정 지점 캡처
+            msg = ""
+            try:
+                if p.is_confirm_modal_visible():
+                    msg = p.get_modal_message()
+                    p.dismiss_confirm_modal()
+                    p.wait_for_confirm_modal_closed()
+            except Exception:
+                pass
+            self._add("warn", f"{tag} — {label} 버튼 다운로드 동작",
+                      f"입력: {label} 클릭 / 결과: 다운로드 이벤트 미감지({type(e).__name__})"
+                      + (f", 경고={msg!r}" if msg else "") + " — 동작/환경 확인 필요", sc=sc,
+                      repro=f"1. {label} 버튼 클릭\n2. 다운로드/경고 여부 확인")
+
     # ── 글자수 제한 스캔 (생성/수정 공용 — sc3/sc4 미러가 같은 헬퍼 사용) ──
     _OV_LENS = (101, 501, 1001)
 
@@ -162,7 +274,8 @@ class OperationProcessBase:
         merge_key='cm_ovf::필드::판정::결과분류' — 생성/수정 간 같은 요소·같은 결과만 결함 카드 1장으로 묶임.
         """
         label, sel, fid = field_def["label"], field_def["selector"], field_def.get("id", "fld")
-        is_name = (fid == "processName")
+        name_sel = getattr(p, self.NAME_FIELD_SEL_ATTR)
+        is_name = (fid == self.NAME_FIELD_ID)
         error_at, err_msg, shots = None, "", None
         for ln in self._OV_LENS:
             big = "A" * ln
@@ -174,7 +287,7 @@ class OperationProcessBase:
                         big = "[AUTO]_ov_" + "A" * max(1, ln - 10)
                     else:
                         # 길이별 유니크 이름 — 이전 길이 저장 성공 시 중복 에러가 오류로 오탐되는 것 방지
-                        p.page.locator(p.SEL_PROCESS_NAME).first.evaluate(
+                        p.page.locator(name_sel).first.evaluate(
                             "(el, v) => { el.value = v; el.dispatchEvent(new Event('input', {bubbles:true})); }",
                             f"[AUTO]_ov_{fid}_{ln}")
                 else:

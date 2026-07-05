@@ -9,6 +9,7 @@
 3g — YAML 포맷 검증(format_validation_tests — 저장 시 재오픈 잔존 2컷 증거)
 3h — 글자수 제한 스캔(요소별 + 오류 시 2컷 — sc4h 수정판과 같은 결과면 merge)
 3i — 생성 검증 메시지 i18n 키 노출 전수(sweep 1카드 — sc4i 수정판과 merge)
+3j — 다운로드 버튼 동작(EXCEL/Example 실감지 + Import 수동 확인) — 존재 확인(sc1a)과 별개
 ※ 수정 동작은 sc4 소관, 삭제 동작은 sc5 소관(시나리오 책임 분리: 삭제=sc1 세션 cleanup/sc5).
 ※ sc3 생성분은 중간 삭제하지 않고 sc5d cleanup 이 일괄 정리 — '[AUTO' 필터 유지 흐름.
 """
@@ -91,7 +92,7 @@ class TestOperationProcessScenario3Action(OperationProcessBase):
         row_loc, cells = None, []
         for row in p.page.locator(p.SEL_TABLE_ROW).all():
             tds = row.locator("td").all()
-            if tds and _AUTO_PROCESS in tds[0].inner_text():
+            if tds and tds[0].inner_text().strip() == _AUTO_PROCESS:   # 정확 일치 — 접두사 충돌 방지
                 row_loc = row
                 cells = [td.inner_text().strip() for td in tds]
                 break
@@ -309,6 +310,22 @@ class TestOperationProcessScenario3Action(OperationProcessBase):
                   sc=3, screenshot=False, screenshots=leak_shots or None,
                   merge_key=f"cm_i18n::{','.join(leaks) or 'clean'}",
                   repro="1. 검증 경고 유발(빈값/중복)\n2. 메시지에 COLUMN.* 류 키 노출 여부")
+
+    def test_scenario3j_download_buttons(self, logged_in_page, settings):
+        """다운로드 버튼 동작 검증(실측 매핑 2026-07-03: EXCEL=excelDownload, Example=downloadFileBtn).
+        존재 확인(sc1a)과 별개 — 실제 다운로드 이벤트 감지. Import 는 업로드 자동화 제외(수동 확인)."""
+        print("\n━━ [운용 프로세스] sc3j: 다운로드 버튼 동작 ━━━")
+        p = self._new_page(logged_in_page, settings)
+        p.navigate_to()
+        p.ensure_auto_filter()
+        self._verify_download_button(p, "button#excelDownload", "EXCEL(목록 다운로드)", "sc3j", sc=3)
+        self._verify_download_button(p, "button#downloadFileBtn", "Example(양식 다운로드)", "sc3j", sc=3)
+        self._add("warn", "sc3j — Import 버튼 [수동 확인 필요]",
+                  "Import 는 Example 양식에 데이터를 작성해 업로드하는 구조 — 양식 파일 형식 미확정이라 "
+                  "[AUTO] 행 자동 작성 불가(태그 sc3j 왕복과 달리 export 파일 재활용 경로 없음). "
+                  "양식 형식 확정 시 태그와 동일한 자동 왕복으로 업그레이드.",
+                  sc=3, screenshot=False,
+                  repro="1. Example 양식 다운로드\n2. 데이터 작성\n3. Import 업로드 → 목록 반영 확인")
 
     def test_scenario3h_overflow_scan(self, logged_in_page, settings):
         """글자수 제한 스캔(생성) — yaml overflow_scan 필드 요소별 + 오류 시 2컷.

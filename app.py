@@ -195,8 +195,7 @@ _LIST_SCENARIOS = [
 
 # nPouch 전용: page_id ↔ 테스트 클래스명 매핑
 _NPOUCH_PAGE_TO_CLASS: dict[str, str] = {
-    # common_operation_process 는 디렉토리 매핑(TestOperationProcessScenario* 다중 클래스) — -k 필터 미사용
-    "common_tag":               "TestNpouchTag",
+    # common_operation_process / common_tag 는 디렉토리 매핑(다중 클래스) — -k 필터 미사용
     "common_control_suite":     "TestNpouchControlSuite",
     "npouch_origin_protect":    "TestNpouchOriginProtect",
     "npouch_policy":            "TestNpouchPolicy",
@@ -204,8 +203,8 @@ _NPOUCH_PAGE_TO_CLASS: dict[str, str] = {
 _NPOUCH_CLASS_TO_PAGE: dict[str, str] = {v: k for k, v in _NPOUCH_PAGE_TO_CLASS.items()}
 _NPOUCH_PAGE_TO_FILE: dict[str, str] = {
     # 공통 페이지(운용/태그/제어스위트)는 tests/common/ 에 있고 page_id 도 common_ 으로 통일
-    "common_operation_process": "common/operation_process",   # 디렉토리 매핑 (sc1~6 재구성 2026-07-03)
-    "common_tag":               "common/test_tag.py",
+    "common_operation_process": "common/operation_process",   # 디렉토리 매핑 (sc0~6 재구성 2026-07-03)
+    "common_tag":               "common/tag",                  # 디렉토리 매핑 (sc0~6 재구성 2026-07-03)
     # 디렉토리 매핑 — tests/<디렉토리>/ 안의 모든 test_scenario*.py 실행
     "common_control_suite":     "common/control_suite",
     "npouch_origin_protect":    "origin_protect",
@@ -404,7 +403,7 @@ def start():
         # 매핑값 (TestNpouchControlSuite, TestNpouchOriginProtect) 과 불일치 → match 0건 → deselect
         # 사용자 보고 2026-06-03: 5 페이지 체크해도 control_suite/origin_protect 누락.
         # 해결: 디렉토리 페이지 포함 시 -k 필터 자체 skip → test_files path 가 page 분리.
-        _dir_pages = {"common_operation_process", "common_control_suite",
+        _dir_pages = {"common_operation_process", "common_tag", "common_control_suite",
                       "npouch_origin_protect", "npouch_policy"}
         has_dir = any(pid in _dir_pages for pid in page_ids)
         if has_dir:
@@ -484,8 +483,7 @@ def start():
 
                 # ── 현재 스캔 중인 페이지 감지 ──────────────────────────────
                 # test_scan_pages.py: "test_page_scan[page_id]"
-                # 공통 단일 파일:    "test_operation_process.py::" / "test_tag.py::" (basename)
-                # 디렉토리 패턴:     "tests/control_suite/" / "tests\control_suite\"
+                # 디렉토리 패턴:     "tests/common/operation_process/" 등
                 #                    (단일 클래스명 매핑 불가 — 디렉토리 안 다중 클래스)
                 for pid in page_ids:
                     detected = False
@@ -554,12 +552,13 @@ def start():
 
                 # ── pytest 결과 줄 감지 ─────────────────────────────────────
                 # test_scan_pages.py: 페이지 1개 = 테스트 함수 1개 → PASSED면 페이지 완료
-                # 공통 운용/태그:    페이지 1개 = 시나리오 5개 → 모든 시나리오 done 시 페이지 완료
+                # 공통 운용/태그:    디렉토리(sc0~6 다중 파일) → 모든 시나리오 done 시 페이지 완료
                 if current_page:
                     bare        = line.strip()
                     in_summary  = (
                         ("test_page_scan" in line)
-                        or ("test_operation_process" in line) or ("test_tag" in line) or
+                        or ("/operation_process/" in line) or ("\\operation_process\\" in line) or
+                        ("/common/tag/" in line) or ("\\common\\tag\\" in line) or
                         ("/control_suite/" in line) or ("\\control_suite\\" in line) or
                         ("/origin_protect/" in line) or ("\\origin_protect\\" in line) or
                         ("/npouch_policy/" in line) or ("\\npouch_policy\\" in line)

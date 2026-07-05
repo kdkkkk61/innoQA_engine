@@ -5,10 +5,15 @@ pages/npouch_tag_page.py — nPouch 태그 관리 페이지
 scan_mode: list_page
 모달: div#addItemModal.modal-wrap.in  (동적 생성/제거 방식)
 """
+import re
+
 from pages.base_page import BasePage
 
 
 class NpouchTagPage(BasePage):
+
+    # 날짜본([AUTO_<MMDD>]) 매칭 — cleanup/가드 판별용 (2026-07-03 날짜본 전환)
+    _AUTO_DATED = re.compile(r"^\[AUTO_(\d{4,8})\]")
 
     # ── 네비게이션 ────────────────────────────────────────────────
     SEL_SYS_MGMT_ICON   = "a[data-menuid='managerSystemManagement']"
@@ -121,6 +126,16 @@ class NpouchTagPage(BasePage):
 
     # ── 목록 조회 ─────────────────────────────────────────────────
 
+    def _row_by_name(self, name: str):
+        """이름 셀(td[0]) 정확 일치 행 반환(없으면 None) — 접두사 이름 충돌 방지.
+        filter(has_text=) 부분 일치가 '[AUTO]_cm_tag' 로 '[AUTO]_cm_tag_sc1_detail' 행을
+        잡는 오탐 발생(리포트 2026-07-03) → 전 행 조회를 정확 일치로 통일."""
+        for r in self.page.locator(self.SEL_TABLE_ROW).all():
+            tds = r.locator("td").all()
+            if tds and tds[0].inner_text().strip() == name:
+                return r
+        return None
+
     def get_item_names(self) -> list[str]:
         """현재 목록의 태그 이름 리스트 반환."""
         names = []
@@ -136,17 +151,21 @@ class NpouchTagPage(BasePage):
     # ── CRUD ──────────────────────────────────────────────────────
 
     def add_item(self, name: str) -> None:
-        """태그 추가. [AUTO] 접두사 필수."""
-        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")):
-            raise Exception("테스트 항목([AUTO]_ 또는 [AUTO_KEEP]_ 접두사)만 생성 가능합니다")
+        """태그 추가. [AUTO]_ / [AUTO_KEEP]_ / [AUTO_<날짜>]_ 접두사 필수."""
+        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")
+                or self._AUTO_DATED.match(name)):
+            raise Exception("테스트 항목([AUTO]_/[AUTO_KEEP]_/[AUTO_<날짜>]_ 접두사)만 생성 가능합니다")
 
         self.open_add_modal()
         self.fill(self.SEL_TAG_NAME, name)
         self.click_attached(self.SEL_SUBMIT_BTN)
         self._handle_confirm_modal()
         self.wait_for(self.SEL_ADD_BTN)
-        # 추가 후 검색으로 항목 확인
-        self.search_item(name)
+        # 추가 후 행 노출 — [AUTO 계열은 공용 필터 유지(개별 이름 재검색 왕복 제거)
+        if name.startswith("[AUTO"):
+            self.ensure_auto_filter()
+        else:
+            self.search_item(name)
 
     def register_first_process(self, name: str) -> str:
         """이름으로 태그를 찾아 첫 번째 프로세스를 등록하고 저장. 등록된 프로세스 이름 반환."""
@@ -165,9 +184,10 @@ class NpouchTagPage(BasePage):
         return self.register_first_process(name)
 
     def add_item_with_desc(self, name: str, desc: str) -> None:
-        """태그 추가 (이름 + 설명). [AUTO] 접두사 필수."""
-        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")):
-            raise Exception("테스트 항목([AUTO]_ 또는 [AUTO_KEEP]_ 접두사)만 생성 가능합니다")
+        """태그 추가 (이름 + 설명). [AUTO]_ / [AUTO_KEEP]_ / [AUTO_<날짜>]_ 접두사 필수."""
+        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")
+                or self._AUTO_DATED.match(name)):
+            raise Exception("테스트 항목([AUTO]_/[AUTO_KEEP]_/[AUTO_<날짜>]_ 접두사)만 생성 가능합니다")
 
         self.open_add_modal()
         self.fill(self.SEL_TAG_NAME, name)
@@ -179,7 +199,10 @@ class NpouchTagPage(BasePage):
         self.click_attached(self.SEL_SUBMIT_BTN)
         self._handle_confirm_modal()
         self.wait_for(self.SEL_ADD_BTN)
-        self.search_item(name)
+        if name.startswith("[AUTO"):
+            self.ensure_auto_filter()
+        else:
+            self.search_item(name)
 
     def delete_all_auto_items(self) -> None:
         """[AUTO]_ 접두사 태그 일괄 삭제 — [AUTO_KEEP]_* 는 보존.
@@ -201,15 +224,16 @@ class NpouchTagPage(BasePage):
         self._restore_page_size()
 
     def cleanup_with_keep(self) -> None:
-        """[AUTO]_ + [AUTO_KEEP]_ 일괄 삭제 — clean slate.
-        용도: 시나리오 1 시작 전 — 이전 세션 잔존 정리.
-        참조 잠금 차단 시 [AUTO]_DELME_ rename (테스터 수동 정리, 무한루프 방지 제외).
+        """clean slate — [AUTO]_ 휘발성 + [AUTO_KEEP]_ 레거시 + 날짜본([AUTO_<MMDD>], 오늘 포함) 전부 삭제.
+        용도: 시나리오 시작(세션 1회) — 이전 세션 잔존 정리 (운용 프로세스와 동일 범위, 2026-07-03).
+        참조 잠금 차단 시 사용처 제거 → 재삭제(강제 삭제), 실패 시에만 [AUTO]_DELME_ rename.
         """
         self.search_item("[AUTO")
         while True:
             names = [
                 n for n in self.get_item_names()
-                if (n.startswith("[AUTO]_") or n.startswith("[AUTO_KEEP]_"))
+                if (n.startswith("[AUTO]_") or n.startswith("[AUTO_KEEP]_")
+                    or self._AUTO_DATED.match(n))
                 and not n.startswith("[AUTO]_DELME_")
             ]
             if not names:
@@ -224,15 +248,21 @@ class NpouchTagPage(BasePage):
         """태그 삭제. [AUTO] 접두사 필수.
         _skip_search=True: 검색 단계 생략 (bulk cleanup 에서 사용).
         """
-        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")):
-            raise Exception("테스트 항목([AUTO]_ 또는 [AUTO_KEEP]_ 접두사)만 삭제 가능합니다")
+        if not (name.startswith("[AUTO]_") or name.startswith("[AUTO_KEEP]_")
+                or self._AUTO_DATED.match(name)):
+            raise Exception("테스트 항목([AUTO]_/[AUTO_KEEP]_/[AUTO_<날짜>]_ 접두사)만 삭제 가능합니다")
 
         if not _skip_search:
-            # 검색으로 행 노출
-            self.search_item(name)
+            # 행 노출 — [AUTO 계열은 공용 필터 유지(개별 이름 재검색 왕복 제거)
+            if name.startswith("[AUTO"):
+                self.ensure_auto_filter()
+            else:
+                self.search_item(name)
             self.page.wait_for_timeout(300)
 
-        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
+        row = self._row_by_name(name)   # 정확 일치 — 접두사 이름 충돌 방지(2026-07-03)
+        if row is None:
+            raise Exception(f"행 없음(정확 일치): {name}")
         checkbox = row.locator(self.SEL_CHECKBOX).first
         if not checkbox.is_checked():
             self._toggle_overlay(False)
@@ -268,15 +298,138 @@ class NpouchTagPage(BasePage):
         self._handle_confirm_modal()
         self.wait_for(self.SEL_ADD_BTN)
 
-    def _delete_or_rename(self, name: str) -> str:
-        """삭제 시도 → 참조 잠금 차단 시 [AUTO]_DELME_ 로 rename.
-        반환: 'deleted' | 'renamed'. cleanup 루프에서 검색 1회 후 호출 (_skip_search 전제).
+    # ── 속성(태그 속성) 모달 — sc1/sc5/사용처 (직접조작 실측 2026-07-03) ──
+    # 행 가운데(프로세스 카운트 셀) 더블클릭으로 열림. 구성: 태그 이름/설명 텍스트 +
+    # 등록 프로세스 테이블(tbody#globalProcessTbBd: 프로세스명/서명/SHA2/설명) + '※ 사용처 확인'.
+    SEL_DETAIL_MODAL = "div#detailGlobalTag.in"
 
-        제품 2단계 동작 (Chrome 검증 2026-06-04):
-          1) 삭제 → "삭제 하시겠습니까?" confirm → 확인
-          2) 서버 검증 → 참조 시 "할당 되어 있습니다" 차단 (확인만) / 미참조 시 삭제 완료
-        """
-        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
+    def open_detail_modal(self, name: str) -> None:
+        """행 td[1] 합성 더블클릭 → '태그 속성'(읽기전용). 이름 대조 방어(운용 프로세스와 동일)."""
+        row = None
+        for r in self.page.locator(self.SEL_TABLE_ROW).all():
+            tds = r.locator("td").all()
+            if tds and tds[0].inner_text().strip() == name:
+                row = r
+                break
+        if row is None:
+            raise Exception(f"행 없음: {name}")
+        cell = row.locator("td").nth(1)
+        det = self.page.locator(self.SEL_DETAIL_MODAL)
+        for _ in range(3):
+            cell.evaluate(
+                "el => ['mousedown','mouseup','click','mousedown','mouseup','click','dblclick']"
+                ".forEach(t => el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window})))"
+            )
+            try:
+                det.wait_for(state="attached", timeout=3000)
+            except Exception:
+                continue
+            self.page.wait_for_timeout(300)
+            if name in self.detail_modal_text():
+                return
+            self.close_detail_modal()
+        raise Exception(f"속성 모달 열기 실패: {name}")
+
+    def detail_modal_text(self) -> str:
+        try:
+            return self.page.locator("div#detailGlobalTag").first.inner_text().strip()
+        except Exception:
+            return ""
+
+    def close_detail_modal(self) -> None:
+        try:
+            btn = self.page.locator("div#detailGlobalTag button", has_text="닫기").first
+            btn.evaluate("el => el.click()")
+            self.page.locator(self.SEL_DETAIL_MODAL).wait_for(
+                state="detached", timeout=self._TIMEOUT_MODAL)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(200)
+
+    def detail_registered_process_names(self) -> list[str]:
+        """속성 모달 등록 프로세스 테이블(tbody#globalProcessTbBd)의 프로세스명 목록."""
+        names = []
+        for r in self.page.locator("div#detailGlobalTag tbody#globalProcessTbBd tr").all():
+            tds = r.locator("td").all()
+            if len(tds) >= 2:
+                t = tds[1].inner_text().strip()
+                if t:
+                    names.append(t)
+        return names
+
+    def remove_all_usages(self, name: str) -> int:
+        """속성 모달 '※사용처 확인'의 참조 chip(×) 전부 제거 — 참조 잠금 해제.
+        운용 프로세스와 동일 chip 구조(usage-list-body / i.extentionDeleteBtn). 반환: 제거 수."""
+        self.open_detail_modal(name)
+        removed = 0
+        try:
+            for _ in range(20):
+                chips = self.page.locator("div#detailGlobalTag i.extentionDeleteBtn")
+                if chips.count() == 0:
+                    break
+                chips.first.evaluate("el => el.click()")
+                self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+                    state="attached", timeout=self._TIMEOUT_MODAL)
+                self.click_attached(self.SEL_CONFIRM_BTN)
+                self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+                    state="detached", timeout=self._TIMEOUT_MODAL)
+                self.page.wait_for_timeout(400)
+                removed += 1
+        finally:
+            self.close_detail_modal()
+        return removed
+
+    # ── Import 업로드 모달 (직접조작 실측 2026-07-03: 네이티브 대화상자 아님) ──
+    # importFileBtn 클릭 → div#addTagUpload 모달(input#addFile[type=file] + 파일추가/등록/취소)
+    SEL_UPLOAD_MODAL = "div#addTagUpload.in"
+    SEL_UPLOAD_FILE  = "div#addTagUpload input#addFile"
+
+    def open_import_modal(self) -> None:
+        self.page.locator("button#importFileBtn").first.evaluate("el => el.click()")
+        self.page.locator(self.SEL_UPLOAD_MODAL).wait_for(
+            state="attached", timeout=self._TIMEOUT_MODAL)
+        self.page.wait_for_timeout(200)
+
+    def upload_import_file(self, file_path: str) -> str:
+        """열린 업로드 모달에 파일 지정 → '등록' 클릭 → 응답 모달 메시지 반환."""
+        self.page.locator(self.SEL_UPLOAD_FILE).first.set_input_files(file_path)
+        self.page.wait_for_timeout(300)
+        btn = self.page.locator("div#addTagUpload button.btn-primary").first
+        btn.evaluate("el => el.click()")
+        self.page.wait_for_timeout(1000)
+        msg = ""
+        if self.is_confirm_modal_visible():
+            msg = self.get_modal_message()
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_confirm_modal_closed()
+        self.close_import_modal()
+        return msg
+
+    def close_import_modal(self) -> None:
+        try:
+            if self.page.locator(self.SEL_UPLOAD_MODAL).count() > 0:
+                cancel = self.page.locator("div#addTagUpload button", has_text="취소").first
+                cancel.evaluate("el => el.click()")
+                self.page.locator(self.SEL_UPLOAD_MODAL).wait_for(
+                    state="detached", timeout=self._TIMEOUT_MODAL)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(200)
+
+    def ensure_auto_filter(self) -> None:
+        """리스트를 '[AUTO' 프리픽스 검색 상태로 유지 — 이미 걸려 있으면 재검색 생략(운용 프로세스와 동일)."""
+        try:
+            cur = self.page.locator("input#searchText").first.input_value().strip()
+        except Exception:
+            cur = ""
+        if cur != "[AUTO":
+            self.search_item("[AUTO")
+
+    def _delete_checked_row(self, name: str) -> str:
+        """행 체크 → 삭제 → 1단계 confirm → 2단계 서버 응답 메시지 반환('' = 차단 없음)."""
+        row = self._row_by_name(name)   # 정확 일치 — 접두사 이름 충돌 방지(2026-07-03)
+        if row is None:
+            raise Exception(f"행 없음(정확 일치): {name}")
         checkbox = row.locator(self.SEL_CHECKBOX).first
         if not checkbox.is_checked():
             self._toggle_overlay(False)
@@ -284,28 +437,47 @@ class NpouchTagPage(BasePage):
                 checkbox.click()
             finally:
                 self._toggle_overlay(True)
-
         self.click(self.SEL_DELETE_BTN)
-        # 1단계: "삭제 하시겠습니까?" → 확인 클릭
         self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
             state="attached", timeout=self._TIMEOUT_MODAL
         )
         self.click_attached(self.SEL_CONFIRM_BTN)
         self.page.wait_for_timeout(700)
-        # 2단계: 서버 응답 — 차단 모달 있으면 참조 잠금 → rename
+        msg2 = ""
         if self.page.locator(self.SEL_CONFIRM_MODAL).count() > 0:
             msg2 = self.page.locator(self.SEL_MODAL_MSG).first.inner_text().strip()
-            if ("할당" in msg2) or ("사용" in msg2) or ("참조" in msg2):
+        return msg2
+
+    def _delete_or_rename(self, name: str) -> str:
+        """삭제 시도 → 참조 잠금 차단 시 사용처 참조 제거 후 재삭제(강제 삭제, 운용 프로세스 미러 2026-07-03).
+        그래도 실패하면 [AUTO]_DELME_ rename (최후 fallback).
+        반환: 'deleted' | 'force_deleted' | 'renamed'. cleanup 루프에서 검색 1회 후 호출 (_skip_search 전제).
+        """
+        msg2 = self._delete_checked_row(name)
+        if ("할당" in msg2) or ("사용" in msg2) or ("참조" in msg2):
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            try:
+                self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
+                    state="detached", timeout=self._TIMEOUT_TABLE
+                )
+            except Exception:
+                pass
+            # 강제 삭제: 사용처 참조 전부 제거 후 재시도
+            try:
+                self.remove_all_usages(name)
+                msg_retry = self._delete_checked_row(name)
+                if not (("할당" in msg_retry) or ("사용" in msg_retry) or ("참조" in msg_retry)):
+                    if msg_retry:
+                        self.click_attached(self.SEL_CONFIRM_BTN)
+                    self.wait_for(self.SEL_ADD_BTN)
+                    return "force_deleted"
                 self.click_attached(self.SEL_CONFIRM_BTN)
-                try:
-                    self.page.locator(self.SEL_CONFIRM_MODAL).wait_for(
-                        state="detached", timeout=self._TIMEOUT_TABLE
-                    )
-                except Exception:
-                    pass
-                base = name.replace("[AUTO_KEEP]_", "").replace("[AUTO]_", "")
-                self.rename_item(name, f"[AUTO]_DELME_{base}")
-                return "renamed"
+            except Exception:
+                pass
+            base = re.sub(r"^\[AUTO(_\d{4,8}|_KEEP)?\]_", "", name)
+            self.rename_item(name, f"[AUTO]_DELME_{base}")
+            return "renamed"
+        if msg2:
             self.click_attached(self.SEL_CONFIRM_BTN)
         try:
             self.wait_for(self.SEL_ADD_BTN)
@@ -315,11 +487,16 @@ class NpouchTagPage(BasePage):
 
     def open_modify_modal(self, name: str) -> None:
         """행 선택 → 수정 버튼 클릭 → 모달 열림 대기."""
-        # 검색으로 행 노출
-        self.search_item(name)
+        # 행 노출 — [AUTO 계열은 공용 필터 유지(개별 이름 재검색 왕복 제거)
+        if name.startswith("[AUTO"):
+            self.ensure_auto_filter()
+        else:
+            self.search_item(name)
         self.page.wait_for_timeout(300)
 
-        row = self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
+        row = self._row_by_name(name)   # 정확 일치 — 접두사 이름 충돌 방지(2026-07-03)
+        if row is None:
+            raise Exception(f"행 없음(정확 일치): {name}")
         self._toggle_overlay(False)
         self.page.wait_for_timeout(80)
         try:

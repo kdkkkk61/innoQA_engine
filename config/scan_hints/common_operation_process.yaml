@@ -75,15 +75,15 @@ import_export:
   excel:
     auto: true
     method: download_detect        # 현재 프로세스 목록을 엑셀 형태로 다운로드
-    button_selector: "button#excelDownBtn"
+    button_selector: "button#excelDownload"    # 실측 정정 2026-07-03 (구 excelDownBtn 은 stale)
     check: file_downloaded
-    note: "목록 다운로드 확인만 — 파일 내용 검증은 수동"
+    note: "목록 다운로드 확인만 — 파일 내용 검증은 수동. sc3j 에서 실감지"
   example:
     auto: true
     method: download_detect        # Import에 사용 가능한 양식(예시 파일) 다운로드
-    button_selector: "button#exampleFileBtn"
+    button_selector: "button#downloadFileBtn"  # 실측 정정 2026-07-03 (구 exampleFileBtn 은 stale)
     check: file_downloaded
-    note: "양식 파일 다운로드 확인만 — 파일 형식 검증은 수동"
+    note: "양식 파일 다운로드 확인만 — 파일 형식 검증은 수동. sc3j 에서 실감지"
   import:
     auto: false
     manual: true

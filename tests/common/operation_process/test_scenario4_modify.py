@@ -39,9 +39,10 @@ class TestOperationProcessScenario4Modify(OperationProcessBase):
                        exec_path=_EXEC4, description=_DESC4)
 
     def _row_cells(self, p, name):
+        # 이름 셀 정확 일치 — 접두사 이름 충돌로 다른 행을 잡는 오탐 방지(2026-07-03)
         for row in p.page.locator(p.SEL_TABLE_ROW).all():
             tds = row.locator("td").all()
-            if tds and name in tds[0].inner_text():
+            if tds and tds[0].inner_text().strip() == name:
                 return row, [td.inner_text().strip() for td in tds]
         return None, []
 

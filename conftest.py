@@ -32,7 +32,7 @@ def pytest_collection_modifyitems(config, items):
         p = str(item.fspath).replace("\\", "/")
         if "tests/common/operation_process/" in p:
             return 0
-        if "tests/common/test_tag.py" in p:
+        if "tests/common/tag/" in p:
             return 1
         if "tests/common/control_suite/" in p:
             return 2

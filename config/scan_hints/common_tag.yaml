@@ -1,5 +1,7 @@
 scan_mode: list_page
 page_id: common_tag
+modal_id: "addItemModal"
+detect_hidden: true
 
 # ── 필드 정의 ──────────────────────────────────────────────────────
 fields:
@@ -16,12 +18,21 @@ fields:
     label: "설명"
     required: false
     order: 20
+    overflow_scan: true
     # 확인일: 2026-04-24 / Chrome MCP 탐색: 300자 OK, 301자 → 서버 오류 → 300자 제한(서버측)
-    # overflow_scan 미적용: tagName(정상값) + description(오버플로) 복합 제출 필요 → 테스트에서 직접 처리
+    # 2026-07-03: 공용 오버플로 헬퍼가 이름(정상값)+설명(오버플로) 복합 제출 지원 → overflow_scan 적용
 
 # ── 설명 필드 글자수 제한 (Chrome MCP 탐색 결과 직접 기록) ─────────
-# description_overflow: ok_at=300, error_at=301
-# → 테스트 scenario2에서 직접 301자 제출 후 서버 오류 확인
+# description_overflow: ok_at=300, error_at=301 (사다리 [101,501,1001] 기준 501에서 첫 오류 예상)
+
+# ── UIScanner sc0 스키마 (yaml↔DOM diff 입력 — core/scan_diff.extract_yaml_selectors 가 읽는 섹션) ──
+# ADD 모달(addItemModal) 스캔 대상. 삭제(discovered_missing) 감지용 명세.
+text_inputs:
+  - {selector: "input#tagName",        label: "태그 이름"}
+  - {selector: "textarea#description", label: "설명"}
+plain_checkboxes:
+  # ADD 모달 내 '등록 프로세스' 테이블 헤더 전체선택 (sc0 첫 diff 로 발견 → 실측 등재 2026-07-03)
+  - {selector: "input#processListHeaderCheckBox", label: "등록 프로세스 전체선택"}
 
 # ── Import / Export ────────────────────────────────────────────────
 import_export:

@@ -26,9 +26,9 @@ class TestOperationProcessScenario1Ui(OperationProcessBase):
             ("addItemBtn",      "추가 버튼"),
             ("modifyItemBtn",   "수정 버튼"),
             ("removeItemBtn",   "삭제 버튼"),
-            ("excelDownload",   "EXCEL 다운로드 버튼"),
-            ("importFileBtn",   "가져오기 버튼"),
-            ("downloadFileBtn", "내보내기 버튼"),
+            ("excelDownload",   "EXCEL(목록 다운로드) 버튼"),
+            ("importFileBtn",   "Import 버튼"),
+            ("downloadFileBtn", "Example(양식 다운로드) 버튼"),   # 라벨 실측 정정 2026-07-03
         ]:
             exists = page.page.locator(f"button#{btn_id}").count() > 0
             self._add("pass" if exists else "fail", f"sc1a — {label} 존재",
