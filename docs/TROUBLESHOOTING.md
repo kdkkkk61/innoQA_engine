@@ -5,6 +5,37 @@
 
 ---
 
+## [RESOLVED] 제어스위트 결함 카드 — 캡처 시점이 판정 지점 아님(내용↔사진 불일치) — 2026-07-06
+
+- **증상** (사용자 지적, 카드 #17): "(c) IP/Port 삭제 후 재추가 잘못된 중복" 카드가 결과='이미 등록된 IP와 Port 입니다'
+  라는데 **스크린샷엔 그 alert 가 안 보임**(모달만 있음). 내용과 사진이 불일치 → 무슨 이미지인지 확인 불가.
+- **원인**: sc3k c / sc4 (c) 두 카드에서 `page.dismiss_confirm_modal()` 을 `self._add()` **전에** 호출 →
+  _add 의 자동 캡처 시점엔 alert 가 이미 닫힘. (같은 파일의 '메시지 일관성 결함' 카드들은
+  "⚠ 모든 _add 끝나고 dismiss" 로 올바르게 돼 있었음 — 이 두 카드만 고립 실수.)
+- **수정** (2026-07-06): dismiss 를 _add 뒤로 이동(alert 떠 있는 상태 캡처) + `highlight=SEL_CONFIRM_MODAL_OPEN`
+  (alert 빨간 표시) + 구체 repro(추가→삭제→재추가) + `merge_key=csu_dup_readd::ip_port` 로 ADD/EDIT 병합.
+- **교훈**: alert 가 판정 근거인 카드는 **캡처(=_add)가 alert 떠 있는 동안** 일어나야 한다 — dismiss 는 그 후.
+  issue-screenshot-rules "캡처 지점=판정 지점" 원칙. (서버오류 카드들은 원래 _add 전에 dismiss 안 해서 정상이었음.)
+
+---
+
+## [RESOLVED] 제어스위트 cleanup — 검색 없이 pageSize=100 의존 → 밀린 [AUTO] 항목 누락 — 2026-07-06
+
+- **증상** (사용자 지적): 삭제 로직이 `[AUTO` 검색 없이 현재 렌더된 행만 읽어, 정책이 100개를 넘으면
+  뒤 페이지로 밀린 `[AUTO]` 항목을 못 찾고 남김("밀리거나 사라진 애들"). 운용프로세스/태그는
+  `search_item("[AUTO")` 검색-우선인데 제어스위트만 미적용(초기 구축이 검색 UI 없이 pageSize=100 해시만 씀).
+- **원인**: `npouch_control_suite_page.py` 에 `search_item`/`ensure_auto_filter` 자체가 없음.
+  `delete_all_test_data`/`delete_all_auto_policies` 가 `get_policy_names()`(현재 뷰) 위에서 루프 →
+  `_find_policy_row` 주석에 이미 인지됨("pageSize=100 초과 확인 필요").
+- **수정** (2026-07-06): 운용프로세스 미러로 검색-우선 이식.
+  - `search_item`/`ensure_auto_filter`/`restore_full_list` + `SEL_SEARCH_TEXT`/`SEL_SEARCH_BTN`(콘솔 공통 셀렉터) 신설.
+  - 두 cleanup 루프: 루프 상단 `ensure_auto_filter()`(멱등 — 차단 delete 의 `navigate_to` 가 필터를 지워도 복원)
+    + 종료 시 `restore_full_list()`(전체 리스트 복원 = 기존 종료 상태 유지, 회귀 없음).
+- **교훈**: cleanup 은 항상 **검색-우선**으로 전체 확보 후 삭제 — 현재 뷰(pageSize 상한) 의존은 페이지네이션 사각.
+  이미 형제 페이지(운용/태그)에 있는 패턴은 신규/미적용 페이지에 체크리스트로 대조할 것.
+
+---
+
 ## [RESOLVED] 운용 프로세스 재구성 — 개별 이름 재검색·중간 삭제 잔재 — 2026-07-03
 
 - **증상**: 재구성한 tests/common/operation_process/ 실행 시 "테스트마다 해당 이름 검색 → 완료 → 삭제"

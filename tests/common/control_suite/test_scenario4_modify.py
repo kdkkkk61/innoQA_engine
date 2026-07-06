@@ -265,6 +265,8 @@ class TestScenario4Modify(ControlSuiteBase):
         page.process.set_pnetwork(False)
         page.process.set_pcontrol_extension(False)
         page.process.set_access_drive(False)
+        _tog = self._shot("row_toggles_off_proc",
+                          caption="1. 프로세스 편집 — 클립보드·네트워크 등 토글 OFF 설정 (sub-modal, 확인 전)")
         page.process.confirm()
 
         # ── itemList 행 표시 대조 (모달 세션 내, 2026-07-02 신설) ──────────
@@ -275,12 +277,15 @@ class TestScenario4Modify(ControlSuiteBase):
                            ("제어할 확장자", "isControlExtension")):
             _cell = page.get_item_list_cell(0, _td)
             _st = "pass" if _cell == "X" else "warn"
+            # 조건부: 이 요소에서 stale 검출(warn) 시에만 [토글OFF→행O] 재현 2장
+            _shots = [_tog, self._shot(f"row_stale_{_td}", highlight=page.page.locator(page.SEL_ITEM_LIST_ROW).first,
+                                       caption=f"2. 확인 후 itemList 행의 '{_elem}' 컬럼이 여전히 O (X 여야 정상 — 모달 내 재렌더 실패)")] if _st == "warn" else None
             self._add(_st, f"itemList 행 표시 — {_elem} O→X 갱신(모달 세션 내)",
                       f"입력: 토글 OFF 후 확인 / 결과: 행 셀={_cell!r}(기대 'X') "
                       + ("(갱신 정상)" if _st == "pass"
                          else "[행 표시 stale — 저장·재오픈은 정상, 모달 내 재렌더만 실패(제품 버그, TROUBLESHOOTING 2026-07-02)]"),
                       sc=4,
-                      highlight=(None if _st == "pass" else page.page.locator(page.SEL_ITEM_LIST_ROW).first),
+                      screenshots=_shots,
                       merge_key=f"csu_row_stale::{_elem}::{_st}",   # 태그 탭 동일 요소·동일 결과와 카드 묶음
                       repro=f"1. 스위트 수정 모달 → 프로세스 행 편집 → {_elem} 토글 OFF → 확인\n"
                             f"2. 모달 안 목록 행의 {_elem} 컬럼이 여전히 O 인지(X 여야 정상)\n"
@@ -472,6 +477,8 @@ class TestScenario4Modify(ControlSuiteBase):
         page.process.set_pnetwork(False)
         page.process.set_pcontrol_extension(False)
         page.process.set_access_drive(False)
+        _tog = self._shot("row_toggles_off_tag",
+                          caption="1. 태그 편집 — 클립보드·네트워크 등 토글 OFF 설정 (sub-modal, 확인 전)")
         page.process.confirm()
 
         # ── itemTagList 행 표시 대조 (모달 세션 내, 2026-07-02 신설 — 프로세스 탭과 동일 버그 클래스) ──
@@ -480,12 +487,14 @@ class TestScenario4Modify(ControlSuiteBase):
                            ("제어할 확장자", "isControlExtension")):
             _cell = page.get_item_tag_list_cell(0, _td)
             _st = "pass" if _cell == "X" else "warn"
+            _shots = [_tog, self._shot(f"tagrow_stale_{_td}", highlight=page.page.locator(page.SEL_ITEM_TAG_LIST_ROW).first,
+                                       caption=f"2. 확인 후 itemTagList 행의 '{_elem}' 컬럼이 여전히 O (X 여야 정상 — 모달 내 재렌더 실패)")] if _st == "warn" else None
             self._add(_st, f"itemTagList 행 표시 — {_elem} O→X 갱신(모달 세션 내)",
                       f"입력: 태그 토글 OFF 후 확인 / 결과: 행 셀={_cell!r}(기대 'X') "
                       + ("(갱신 정상)" if _st == "pass"
                          else "[행 표시 stale — 저장·재오픈은 정상, 모달 내 재렌더만 실패(제품 버그, TROUBLESHOOTING 2026-07-02)]"),
                       sc=4,
-                      highlight=(None if _st == "pass" else page.page.locator(page.SEL_ITEM_TAG_LIST_ROW).first),
+                      screenshots=_shots,
                       merge_key=f"csu_row_stale::{_elem}::{_st}",   # 프로세스 탭 동일 요소·동일 결과와 카드 묶음
                       repro=f"1. 스위트 수정 모달 → 태그 탭 → 태그 행 편집 → {_elem} 토글 OFF → 확인\n"
                             f"2. 모달 안 목록 행의 {_elem} 컬럼이 여전히 O 인지(X 여야 정상)\n"
@@ -969,9 +978,14 @@ class TestScenario4Modify(ControlSuiteBase):
                     )
                     msg = page.get_confirm_message()
                     defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                    self._add("warn" if defect_found else "pass",
+                    _st = "warn" if defect_found else "pass"
+                    self._add(_st,
                               "[UX 결함 EDIT] 프로세스별 제어 (개별 프로세스) - 드라이브 letter 100자 → 메인 수정 시 서버 오류 (ADD-EDIT 동일 결함)",
-                              f"입력: EDIT '{TARGET_A}' + drv 100자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                              f"입력: EDIT '{TARGET_A}' + drv 100자 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                              merge_key=f"csu_srv_err::letter100_proc::{_st}::raw_server_error_no_client_guard",
+                              repro="1. 개별 프로세스 접근 드라이브 letter 100자 입력\n"
+                                    "2. sub-modal 통과 — 클라이언트 가드 없음\n"
+                                    "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                     page.dismiss_confirm_modal()
             page.close_modal()
         else:
@@ -998,9 +1012,14 @@ class TestScenario4Modify(ControlSuiteBase):
                 )
                 msg = page.get_confirm_message()
                 defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                self._add("warn" if defect_found else "pass",
+                _st = "warn" if defect_found else "pass"
+                self._add(_st,
                           "[UX 결함 EDIT] 프로세스별 제어 (개별 프로세스) - 허용 IP/Port Port=-1 추가 → 메인 수정 시 서버 오류",
-                          f"입력: EDIT '{TARGET_B}' + Port=-1 추가 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                          f"입력: EDIT '{TARGET_B}' + Port=-1 추가 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                          merge_key=f"csu_srv_err::port_neg_proc::{_st}::raw_server_error_no_client_guard",
+                          repro="1. 개별 프로세스 허용 IP/Port 에 Port='-1' 입력\n"
+                                "2. sub-modal 통과 — 클라이언트 가드 없음\n"
+                                "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                 page.dismiss_confirm_modal()
             page.close_modal()
         else:
@@ -1024,9 +1043,14 @@ class TestScenario4Modify(ControlSuiteBase):
                     )
                     msg = page.get_confirm_message()
                     defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                    self._add("warn" if defect_found else "pass",
+                    _st = "warn" if defect_found else "pass"
+                    self._add(_st,
                               "[UX 결함 EDIT] 웹제한 기능 - 기본폴더 basePath 400자 → 메인 수정 시 서버 오류 (ADD-EDIT 동일 결함)",
-                              f"입력: EDIT '{TARGET_C}' + basePath 400자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                              f"입력: EDIT '{TARGET_C}' + basePath 400자 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                              merge_key=f"csu_srv_err::basePath400::{_st}::raw_server_error_no_client_guard",
+                              repro="1. 웹제한 기본폴더 basePath 400자 입력\n"
+                                    "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
+                                    "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                     page.dismiss_confirm_modal()
             page.close_modal()
         else:
@@ -1049,9 +1073,14 @@ class TestScenario4Modify(ControlSuiteBase):
                 )
                 msg = page.get_confirm_message()
                 defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                self._add("warn" if defect_found else "pass",
+                _st = "warn" if defect_found else "pass"
+                self._add(_st,
                           "[UX 결함 EDIT] 웹제한 기능 - 웹제한 이름 webRestrictName 500자 → 메인 수정 시 서버 오류 (ADD-EDIT 동일 결함)",
-                          f"입력: EDIT '{TARGET_D}' + webName 500자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                          f"입력: EDIT '{TARGET_D}' + webName 500자 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                          merge_key=f"csu_srv_err::webname500::{_st}::raw_server_error_no_client_guard",
+                          repro="1. 웹제한 이름 webRestrictName 500자 입력\n"
+                                "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
+                                "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                 page.dismiss_confirm_modal()
             page.close_modal()
         else:
@@ -1075,9 +1104,14 @@ class TestScenario4Modify(ControlSuiteBase):
                     )
                     msg = page.get_confirm_message()
                     defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                    self._add("warn" if defect_found else "pass",
+                    _st = "warn" if defect_found else "pass"
+                    self._add(_st,
                               "[UX 결함 EDIT] 프로세스별 제어 (태그) - 접근 드라이브 letter 100자 → 메인 수정 시 서버 오류 (ADD-EDIT 동일 결함)",
-                              f"입력: EDIT '{TARGET_E}' + 태그 drv 100자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                              f"입력: EDIT '{TARGET_E}' + 태그 drv 100자 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                              merge_key=f"csu_srv_err::letter100_tag::{_st}::raw_server_error_no_client_guard",
+                              repro="1. 태그 mode 접근 드라이브 letter 100자 입력\n"
+                                    "2. sub-modal 통과 — 클라이언트 가드 없음\n"
+                                    "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                     page.dismiss_confirm_modal()
             page.close_modal()
         else:
@@ -1104,9 +1138,14 @@ class TestScenario4Modify(ControlSuiteBase):
                     )
                     msg = page.get_confirm_message()
                     defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                    self._add("warn" if defect_found else "pass",
+                    _st = "warn" if defect_found else "pass"
+                    self._add(_st,
                               "[UX 결함 EDIT] 프로세스별 제어 (개별 프로세스) - 캐시폴더 cacheFolderInput 500자 → 메인 수정 시 서버 오류 (sc3j Case K EDIT)",
-                              f"입력: EDIT '{tk}' + cache 500자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                              f"입력: EDIT '{tk}' + cache 500자 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                              merge_key=f"csu_srv_err::cache500_proc::{_st}::raw_server_error_no_client_guard",
+                              repro="1. 개별 프로세스 캐시폴더(cacheFolderInput) 500자 입력\n"
+                                    "2. process_modal 통과 — 클라이언트 글자수 가드 없음\n"
+                                    "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                     page.dismiss_confirm_modal()
                 else:
                     self._add("skip", "[UX 결함 EDIT] cache 500자 — 캐시폴더 기능 부재", f"'{tk}' SEL_CACHE_INPUT 없음", sc=4)
@@ -1135,9 +1174,14 @@ class TestScenario4Modify(ControlSuiteBase):
                     )
                     msg = page.get_confirm_message()
                     defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                    self._add("warn" if defect_found else "pass",
+                    _st = "warn" if defect_found else "pass"
+                    self._add(_st,
                               "[UX 결함 EDIT] 프로세스별 제어 (태그) - 캐시폴더 cacheFolderInput 500자 → 메인 수정 시 서버 오류 (sc3j Case P EDIT)",
-                              f"입력: EDIT '{tp}' + 태그 cache 500자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                              f"입력: EDIT '{tp}' + 태그 cache 500자 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                              merge_key=f"csu_srv_err::cache500_tag::{_st}::raw_server_error_no_client_guard",
+                              repro="1. 태그 mode 캐시폴더 500자 입력\n"
+                                    "2. process_modal 통과 — 클라이언트 글자수 가드 없음\n"
+                                    "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                     page.dismiss_confirm_modal()
                 else:
                     self._add("skip", "[UX 결함 EDIT] 태그 cache 500자 — 캐시폴더 기능 부재", f"'{tp}' SEL_CACHE_INPUT 없음", sc=4)
@@ -1166,9 +1210,14 @@ class TestScenario4Modify(ControlSuiteBase):
                 )
                 msg = page.get_confirm_message()
                 defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                self._add("warn" if defect_found else "pass",
+                _st = "warn" if defect_found else "pass"
+                self._add(_st,
                           "[UX 결함 EDIT] 프로세스별 제어 (개별 프로세스) - 허용 IP/Port Port=빈값 → 메인 수정 시 서버 오류 (sc3j Case G EDIT)",
-                          f"입력: EDIT '{tg}' + Port='' 추가 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                          f"입력: EDIT '{tg}' + Port='' 추가 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                          merge_key=f"csu_srv_err::port_empty_proc::{_st}::raw_server_error_no_client_guard",
+                          repro="1. 개별 프로세스 허용 IP/Port 에 Port='' (빈값) 입력\n"
+                                "2. sub-modal 통과 — 클라이언트 가드 없음\n"
+                                "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                 page.dismiss_confirm_modal()
             page.close_modal()
         else:
@@ -1198,9 +1247,14 @@ class TestScenario4Modify(ControlSuiteBase):
                 )
                 msg = page.get_confirm_message()
                 defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                self._add("warn" if defect_found else "pass",
+                _st = "warn" if defect_found else "pass"
+                self._add(_st,
                           "[UX 결함 EDIT] 웹제한 기능 - 적용 URL attachAllowUrl 1000자 → 메인 수정 시 서버 오류 (sc3j Case I EDIT)",
-                          f"입력: EDIT '{ti}' + URL 1000자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                          f"입력: EDIT '{ti}' + URL 1000자 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                          merge_key=f"csu_srv_err::url1000::{_st}::raw_server_error_no_client_guard",
+                          repro="1. 웹제한 적용 URL attachAllowUrl 1000자 입력 (silent invalid — 등록 안 됨)\n"
+                                "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
+                                "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                 page.dismiss_confirm_modal()
             page.close_modal()
         else:
@@ -1229,9 +1283,14 @@ class TestScenario4Modify(ControlSuiteBase):
                 )
                 msg = page.get_confirm_message()
                 defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                self._add("warn" if defect_found else "pass",
+                _st = "warn" if defect_found else "pass"
+                self._add(_st,
                           "[UX 결함 EDIT] 웹제한 기능 - 업로드 허용 확장자 allowFileExtention 500자 → 메인 수정 시 서버 오류 (sc3j Case J EDIT)",
-                          f"입력: EDIT '{tj}' + web 확장자 500자 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                          f"입력: EDIT '{tj}' + web 확장자 500자 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                          merge_key=f"csu_srv_err::webext500::{_st}::raw_server_error_no_client_guard",
+                          repro="1. 웹제한 업로드 허용 확장자 allowFileExtention 500자 입력\n"
+                                "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
+                                "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                 page.dismiss_confirm_modal()
             page.close_modal()
         else:
@@ -1258,9 +1317,14 @@ class TestScenario4Modify(ControlSuiteBase):
                 )
                 msg = page.get_confirm_message()
                 defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-                self._add("warn" if defect_found else "pass",
+                _st = "warn" if defect_found else "pass"
+                self._add(_st,
                           "[UX 결함 EDIT] 프로세스별 제어 (태그) - 허용 IP/Port Port=-1 → 메인 수정 시 서버 오류 (sc3j Case M EDIT)",
-                          f"입력: EDIT '{tm}' + 태그 Port=-1 + 수정 / 결과: 메시지={msg!r}", sc=4)
+                          f"입력: EDIT '{tm}' + 태그 Port=-1 + 수정 / 결과: 메시지={msg!r}", sc=4,
+                          merge_key=f"csu_srv_err::port_neg_tag::{_st}::raw_server_error_no_client_guard",
+                          repro="1. 태그 mode 허용 IP/Port 에 Port=-1 입력\n"
+                                "2. sub-modal 통과 — 클라이언트 가드 없음\n"
+                                "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
                 page.dismiss_confirm_modal()
             page.close_modal()
         else:
@@ -2177,11 +2241,17 @@ class TestScenario4Modify(ControlSuiteBase):
         page.process.add_ip_port(DUP_IP, DUP_PORT)
         if page.is_confirm_modal_visible(timeout=1500):
             msg_c = page.get_confirm_message()
-            page.dismiss_confirm_modal()
             is_dup = ("이미 등록" in msg_c) and ("IP" in msg_c.upper() or "Port" in msg_c)
-            self._add("warn" if is_dup else "fail",
+            # dismiss 는 _add(자동 캡처) 후에 — alert 떠 있는 상태를 스크린샷에 담음(내용↔사진 일치)
+            _st = "warn" if is_dup else "fail"
+            self._add(_st,
                       "EDIT process_modal — (c) IP/Port 삭제 후 재추가 잘못된 중복 (sc3k c EDIT, ux_bug)",
-                      f"입력: {DUP_IP}:{DUP_PORT} 추가→삭제→재추가 / 결과: 메시지={msg_c!r}", sc=4)
+                      f"입력: {DUP_IP}:{DUP_PORT} 추가→삭제→재추가 / 결과: 메시지={msg_c!r}", sc=4,
+                      merge_key=f"csu_dup_readd::ip_port::{_st}::false_already_registered",
+                      repro=f"1. process_modal 에서 {DUP_IP}:{DUP_PORT} 추가\n"
+                            "2. 같은 IP/Port 삭제(행 제거)\n"
+                            "3. 동일값 재추가 → 잘못된 '이미 등록된 IP와 Port 입니다' (삭제됐는데 중복 판정 — display:none 잔류 li)")
+            page.dismiss_confirm_modal()
         else:
             self._add("pass", "EDIT process_modal — (c) IP/Port 재추가 정상 (ux_bug 미재현)",
                       "입력: 추가→삭제→재추가 / 결과: 알림 없음", sc=4)

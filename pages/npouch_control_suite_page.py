@@ -35,6 +35,9 @@ class NpouchControlSuitePage(BasePage):
     SEL_ROW_CHECKBOX    = "input[type='checkbox'][list-checkbox-item]"
     # 정책명 셀 — cursorPointer (EDIT 진입 시 클릭) — yaml row_active_timing 참조
     SEL_ROW_NAME_CELL   = "td#strProcessName"
+    # 검색창 (매니저 콘솔 공통 — 운용프로세스/태그와 동일 셀렉터)
+    SEL_SEARCH_TEXT     = "input#searchText"
+    SEL_SEARCH_BTN      = "button#searchBtn"
 
     # ── 메인 모달 ──────────────────────────────────────────────────
     SEL_MODAL           = "div#controlSuite"
@@ -754,6 +757,36 @@ class NpouchControlSuitePage(BasePage):
     # ==================================================================
     # 3.7 정책 list (메인 페이지 — 모달 닫힘 후) (Step 3d)
     # ==================================================================
+    def _do_search(self, keyword: str) -> None:
+        """검색창 입력 + 검색 버튼 클릭 (운용프로세스 _do_search 미러)."""
+        self.page.locator(self.SEL_SEARCH_TEXT).first.fill(keyword)
+        self.page.locator(self.SEL_SEARCH_BTN).first.evaluate("el => el.click()")
+        self.page.wait_for_timeout(600)
+
+    def search_item(self, keyword: str) -> None:
+        """정책 이름 컬럼 검색. cleanup/조회 전 '[AUTO' 필터로 pageSize=100 초과 밀림 방지.
+        (제어스위트 list 는 검색옵션 드롭다운 없음 — 이름 검색 단일)."""
+        self._do_search(keyword)
+
+    def ensure_auto_filter(self) -> None:
+        """리스트를 '[AUTO' 검색 상태로 유지 — 이미 걸려 있으면 재검색 생략(운용프로세스 미러).
+        delete_policy 의 차단→navigate_to 가 필터를 지워도 다음 루프에서 복원(멱등)."""
+        try:
+            cur = self.page.locator(self.SEL_SEARCH_TEXT).first.input_value().strip()
+        except Exception:
+            cur = ""
+        if cur != "[AUTO":
+            self.search_item("[AUTO")
+
+    def restore_full_list(self) -> None:
+        """cleanup 후 검색 필터 해제 — 다음 조작이 전체 리스트를 보도록(검색창 비우고 재검색)."""
+        try:
+            self.page.locator(self.SEL_SEARCH_TEXT).first.fill("")
+            self.page.locator(self.SEL_SEARCH_BTN).first.evaluate("el => el.click()")
+            self.page.wait_for_timeout(400)
+        except Exception:
+            pass
+
     def get_policy_names(self) -> list[str]:
         """list 페이지 행의 첫 td (정책 이름) 추출. 빈 결과 메시지 제외."""
         names: list[str] = []
@@ -894,9 +927,11 @@ class NpouchControlSuitePage(BasePage):
 
         용도: 연결된 의존 테스트 (이전 테스트의 KEEP 데이터를 받아 쓰는 경우).
         예: 시나리오 4 가 시나리오 3 의 [AUTO_KEEP]_ 정책 사용.
+        검색-우선 (2026-07-06): '[AUTO' 필터로 pageSize=100 초과 밀린 항목까지 확보.
         """
         deleted = 0
         while True:
+            self.ensure_auto_filter()   # 매 루프 필터 복원 — 차단 delete 의 navigate_to 가 지워도 회복
             names = [
                 n for n in self.get_policy_names()
                 if n.startswith("[AUTO]") and not n.startswith("[AUTO_KEEP]")
@@ -909,6 +944,7 @@ class NpouchControlSuitePage(BasePage):
             if self.is_policy_exists(names[0]):
                 break
             deleted += 1
+        self.restore_full_list()
         return deleted
 
     def delete_all_test_data(self) -> int:
@@ -917,9 +953,11 @@ class NpouchControlSuitePage(BasePage):
         용도: 기본 cleanup — 자기 영역 깨끗히 시작 / 마지막 전체 청소.
         주의: 다음 테스트가 KEEP 데이터에 의존하는 경우 사용 금지.
         [AUTO]_DELME_ 제외 (참조 잠금 잔존물 — 재rename 방지).
+        검색-우선 (2026-07-06): '[AUTO' 필터로 pageSize=100 초과 밀린 항목까지 확보.
         """
         deleted = 0
         while True:
+            self.ensure_auto_filter()   # 매 루프 필터 복원 — 차단 delete 의 navigate_to 가 지워도 회복
             names = [
                 n for n in self.get_policy_names()
                 if (n.startswith("[AUTO]") or n.startswith("[AUTO_KEEP]"))
@@ -932,6 +970,7 @@ class NpouchControlSuitePage(BasePage):
             if self.is_policy_exists(names[0]):
                 break
             deleted += 1
+        self.restore_full_list()
         return deleted
 
     # ==================================================================

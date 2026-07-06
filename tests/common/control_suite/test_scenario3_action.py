@@ -1536,6 +1536,9 @@ class TestScenario3Action(ControlSuiteBase):
         if page.feature_exists(page.process.SEL_TOGGLE_ACCESS_DRIVE, timeout=1000):
             page.process.set_access_drive(True)
             page.process.set_drive_letter("a" * 100)
+            # 재현 프레임①: 입력 필드에 100자 들어간 상태 (아직 오류 여부 모름 — 시퀀스용 사전 프레임)
+            _f1 = self._shot("letter100_input", highlight=page.page.locator(page.process.SEL_DRIVE_LETTER).first,
+                             caption="1. 접근 드라이브 letter 100자 입력 — sub-modal 통과(클라이언트 가드 없음)")
             # process_modal 저장 시점 — 알림 없어야 정상 (사용자 검증)
             page.process.confirm()
             # 메인 저장 시도 — '서버에서 오류 발생' 알림 기대
@@ -1545,11 +1548,19 @@ class TestScenario3Action(ControlSuiteBase):
             )
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-            # 서버 오류 alert 떠있는 상태에서 _add → 스크린샷에 결함 상태 포함 (사용자 요청)
             # warn = UX 결함 재현 → BUG 리포트 / pass = sub-modal 정상 차단
-            self._add("warn" if defect_found else "pass",
+            _st = "warn" if defect_found else "pass"
+            # 조건부: 이 행위에서 오류가 실제 검출됐을 때만 재현 이미지 첨부 (pass 면 첨부 안 함)
+            _shots = [_f1, self._shot("letter100_srv_err",
+                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
+            self._add(_st,
                       "[UX 결함] 프로세스별 제어 (개별 프로세스) - 접근 드라이브 letter 100자 → 메인 저장 시 서버 오류 (sub-modal 단계에서 차단되어야 정상)",
-                      f"입력: letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                      f"입력: letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
+                      screenshots=_shots,
+                      merge_key=f"csu_srv_err::letter100_proc::{_st}::raw_server_error_no_client_guard",
+                      repro="1. 개별 프로세스 접근 드라이브 letter 100자 입력\n"
+                            "2. sub-modal 통과 — 클라이언트 가드 없음\n"
+                            "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
             page.dismiss_confirm_modal()
         else:
             self._add("skip", "[UX 결함] 프로세스별 제어 (개별 프로세스) - 접근 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
@@ -1583,6 +1594,8 @@ class TestScenario3Action(ControlSuiteBase):
         if page.feature_exists(page.web_restrict.SEL_BASE_PATH, timeout=1000):
             page.web_restrict.set_process_option(True)
             page.web_restrict.set_base_path("a" * 400)
+            _f1 = self._shot("basePath400_input", highlight=page.page.locator(page.web_restrict.SEL_BASE_PATH).first,
+                             caption="1. 웹제한 기본폴더 basePath 400자 입력 — web_restrict_modal 통과(클라이언트 가드 없음)")
             # web_restrict_modal 저장 — 사용자 검증: 여기선 알림 없음
             page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
             page.web_restrict.wait_closed(timeout=3000)
@@ -1593,10 +1606,17 @@ class TestScenario3Action(ControlSuiteBase):
             )
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-            # 스크린샷에 서버 오류 alert 포함되도록 dismiss 전에 _add
-            self._add("warn" if defect_found else "pass",
+            _st = "warn" if defect_found else "pass"
+            _shots = [_f1, self._shot("basePath400_srv_err",
+                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
+            self._add(_st,
                       "[UX 결함] 웹제한 기능 - 기본폴더 basePath 400자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상, 드라이브 letter 동일 패턴)",
-                      f"입력: basePath 400자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                      f"입력: basePath 400자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
+                      screenshots=_shots,
+                      merge_key=f"csu_srv_err::basePath400::{_st}::raw_server_error_no_client_guard",
+                      repro="1. 웹제한 기본폴더 basePath 400자 입력\n"
+                            "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
+                            "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
             page.dismiss_confirm_modal()
         else:
             self._add("skip", "[UX 결함] 웹제한 기능 - 기본폴더 basePath 400자 — 기능 부재", "(skip)", sc=3)
@@ -1631,6 +1651,8 @@ class TestScenario3Action(ControlSuiteBase):
             # sub-modal 알림 dismiss (Port='abc'/'99999' 같은 형식 차단 케이스 대비 — 안전)
             if page.is_confirm_modal_visible(timeout=1500):
                 page.dismiss_confirm_modal()
+            _f1 = self._shot("port_input", highlight=page.page.locator(page.process.SEL_IP_LIST_ITEM).first,
+                             caption=f"1. 허용 IP/Port 에 Port={port_val!r} 입력 — sub-modal 통과(클라이언트 가드 없음)")
             page.process.confirm()
             # 메인 저장
             page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
@@ -1641,9 +1663,18 @@ class TestScenario3Action(ControlSuiteBase):
             # dismiss 전 _add → 스크린샷에 서버 오류 alert 포함 (사용자 요청)
             if expect_server_error:
                 defect_found = "서버" in msg and ("오류" in msg or "발생" in msg)
-                self._add("warn" if defect_found else "pass",
+                _st = "warn" if defect_found else "pass"
+                _ekey = "port_neg_proc" if port_val == "-1" else "port_empty_proc"
+                _shots = [_f1, self._shot("port_srv_err",
+                                          caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
+                self._add(_st,
                           f"[UX 결함] 프로세스별 제어 (개별 프로세스) - 허용 IP/Port Port={port_val!r} {label} → 메인 저장 시 서버 오류 (sub-modal 단계에서 차단되어야 정상)",
-                          f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                          f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
+                          screenshots=_shots,
+                          merge_key=f"csu_srv_err::{_ekey}::{_st}::raw_server_error_no_client_guard",
+                          repro=f"1. 개별 프로세스 허용 IP/Port 에 Port={port_val!r} 입력\n"
+                                "2. sub-modal 통과 — 클라이언트 가드 없음\n"
+                                "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
             else:
                 ok = msg == "저장 하였습니다"
                 self._add("pass" if ok else "fail",
@@ -1670,6 +1701,8 @@ class TestScenario3Action(ControlSuiteBase):
         page.picker.wait_open()
         page.picker.select_first_and_confirm(mode="multi")
         page.web_restrict.set_name("a" * 500)
+        _f1 = self._shot("webname500_input", highlight=page.page.locator(page.web_restrict.SEL_NAME).first,
+                         caption="1. 웹제한 이름 webRestrictName 500자 입력 — web_restrict_modal 통과(클라이언트 가드 없음)")
         # web_restrict_modal 저장 (sub-modal 단계는 통과)
         page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
         page.web_restrict.wait_closed(timeout=3000)
@@ -1680,10 +1713,17 @@ class TestScenario3Action(ControlSuiteBase):
         )
         msg = page.get_confirm_message()
         defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-        # dismiss 전 _add → 스크린샷에 서버 오류 alert 포함
-        self._add("warn" if defect_found else "pass",
+        _st = "warn" if defect_found else "pass"
+        _shots = [_f1, self._shot("webname500_srv_err",
+                                  caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
+        self._add(_st,
                   "[UX 결함] 웹제한 기능 - 웹제한 이름 webRestrictName 500자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
-                  f"입력: webRestrictName 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                  f"입력: webRestrictName 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
+                  screenshots=_shots,
+                  merge_key=f"csu_srv_err::webname500::{_st}::raw_server_error_no_client_guard",
+                  repro="1. 웹제한 이름 webRestrictName 500자 입력\n"
+                        "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
+                        "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
         page.dismiss_confirm_modal()
         page.close_modal()
 
@@ -1700,6 +1740,8 @@ class TestScenario3Action(ControlSuiteBase):
         page.web_restrict.set_name("[AUTO]_web_sc3_step11")
         page.web_restrict.set_is_url(True)
         page.web_restrict.add_url("a" * 1000)
+        _f1 = self._shot("url1000_input", highlight=page.page.locator(page.web_restrict.SEL_URL_INPUT).first,
+                         caption="1. 적용 URL attachAllowUrl 1000자 입력 — web_restrict_modal 통과(silent invalid, 클라 가드 없음)")
         # web_restrict_modal 저장 (silent invalid — URL 등록 자체가 안 됨 + 알림 없음)
         page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
         page.web_restrict.wait_closed(timeout=3000)
@@ -1710,9 +1752,17 @@ class TestScenario3Action(ControlSuiteBase):
         )
         msg = page.get_confirm_message()
         defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-        self._add("warn" if defect_found else "pass",
+        _st = "warn" if defect_found else "pass"
+        _shots = [_f1, self._shot("url1000_srv_err",
+                                  caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
+        self._add(_st,
                   "[UX 결함] 웹제한 기능 - 적용 URL attachAllowUrl 1000자 → silent invalid + 메인 저장 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
-                  f"입력: URL 1000자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                  f"입력: URL 1000자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
+                  screenshots=_shots,
+                  merge_key=f"csu_srv_err::url1000::{_st}::raw_server_error_no_client_guard",
+                  repro="1. 웹제한 적용 URL attachAllowUrl 1000자 입력 (silent invalid — 등록 안 됨)\n"
+                        "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
+                        "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
         page.dismiss_confirm_modal()
         page.close_modal()
 
@@ -1730,6 +1780,8 @@ class TestScenario3Action(ControlSuiteBase):
         # web 확장자 500자 — sub-modal 단계는 통과 (yaml :164 동일 길이 등록 OK)
         if page.feature_exists(page.web_restrict.SEL_FILE_EXT_INPUT, timeout=1000):
             page.web_restrict.add_file_extension("a" * 500)
+            _f1 = self._shot("webext500_input", highlight=page.page.locator(page.web_restrict.SEL_FILE_EXT_INPUT).first,
+                             caption="1. 업로드 허용 확장자 allowFileExtention 500자 입력 — web_restrict_modal 통과(클라이언트 가드 없음)")
             page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
             page.web_restrict.wait_closed(timeout=3000)
             # 메인 저장 → 서버 오류
@@ -1739,9 +1791,17 @@ class TestScenario3Action(ControlSuiteBase):
             )
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-            self._add("warn" if defect_found else "pass",
+            _st = "warn" if defect_found else "pass"
+            _shots = [_f1, self._shot("webext500_srv_err",
+                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
+            self._add(_st,
                       "[UX 결함] 웹제한 기능 - 업로드 허용 확장자 allowFileExtention 500자 → 메인 저장 서버 오류 (process 확장자와 다른 동작 — web 만 차단)",
-                      f"입력: web 확장자 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                      f"입력: web 확장자 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
+                      screenshots=_shots,
+                      merge_key=f"csu_srv_err::webext500::{_st}::raw_server_error_no_client_guard",
+                      repro="1. 웹제한 업로드 허용 확장자 allowFileExtention 500자 입력\n"
+                            "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
+                            "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
             page.dismiss_confirm_modal()
         else:
             self._add("skip", "[UX 결함] 웹제한 기능 - 업로드 허용 확장자 500자 — 기능 부재", "(skip)", sc=3)
@@ -1762,6 +1822,8 @@ class TestScenario3Action(ControlSuiteBase):
         if page.feature_exists(page.process.SEL_CACHE_INPUT, timeout=1000):
             page.process.set_cache_input("a" * 500)
             page.process.click_cache_add_btn()
+            _f1 = self._shot("cache500_proc_input", highlight=page.page.locator(page.process.SEL_CACHE_INPUT).first,
+                             caption="1. 캐시폴더 cacheFolderInput 500자 입력 — process_modal 통과(클라이언트 글자수 가드 없음)")
             page.process.confirm()
             # 메인 저장 → 서버 오류 기대
             page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
@@ -1770,9 +1832,17 @@ class TestScenario3Action(ControlSuiteBase):
             )
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-            self._add("warn" if defect_found else "pass",
+            _st = "warn" if defect_found else "pass"
+            _shots = [_f1, self._shot("cache500_proc_srv_err",
+                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
+            self._add(_st,
                       "[UX 결함] 프로세스별 제어 (개별 프로세스) - 캐시폴더 지정 cacheFolderInput 500자 → 메인 저장 서버 오류 (process_modal 단계에서 글자수 차단되어야 정상)",
-                      f"입력: cache 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                      f"입력: cache 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
+                      screenshots=_shots,
+                      merge_key=f"csu_srv_err::cache500_proc::{_st}::raw_server_error_no_client_guard",
+                      repro="1. 개별 프로세스 캐시폴더(cacheFolderInput) 500자 입력\n"
+                            "2. process_modal 통과 — 클라이언트 글자수 가드 없음\n"
+                            "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
             page.dismiss_confirm_modal()
         else:
             self._add("skip", "[UX 결함] 프로세스별 제어 (개별 프로세스) - 캐시폴더 지정 cacheFolderInput 500자 — 기능 부재", "(skip)", sc=3)
@@ -1792,6 +1862,8 @@ class TestScenario3Action(ControlSuiteBase):
         if page.feature_exists(page.process.SEL_TOGGLE_ACCESS_DRIVE, timeout=1000):
             page.process.set_access_drive(True)
             page.process.set_drive_letter("a" * 100)
+            _f1 = self._shot("letter100_tag_input", highlight=page.page.locator(page.process.SEL_DRIVE_LETTER).first,
+                             caption="1. 태그 mode 접근 드라이브 letter 100자 입력 — sub-modal 통과(클라이언트 가드 없음)")
             page.process.confirm()
             page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
             page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
@@ -1799,9 +1871,17 @@ class TestScenario3Action(ControlSuiteBase):
             )
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-            self._add("warn" if defect_found else "pass",
+            _st = "warn" if defect_found else "pass"
+            _shots = [_f1, self._shot("letter100_tag_srv_err",
+                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
+            self._add(_st,
                       "[UX 결함] 프로세스별 제어 (태그) - 접근 드라이브 letter 100자 → 메인 저장 시 서버 오류 (개별 프로세스 동일 패턴, yaml :404)",
-                      f"입력: 태그 mode + letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                      f"입력: 태그 mode + letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
+                      screenshots=_shots,
+                      merge_key=f"csu_srv_err::letter100_tag::{_st}::raw_server_error_no_client_guard",
+                      repro="1. 태그 mode 접근 드라이브 letter 100자 입력\n"
+                            "2. sub-modal 통과 — 클라이언트 가드 없음\n"
+                            "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
             page.dismiss_confirm_modal()
         else:
             self._add("skip", "[UX 결함] 프로세스별 제어 (태그) - 접근 드라이브 letter 100자 — 기능 부재", "(skip)", sc=3)
@@ -1822,6 +1902,8 @@ class TestScenario3Action(ControlSuiteBase):
         page.process.add_ip_port("192.168.99.1", "-1")
         if page.is_confirm_modal_visible(timeout=1500):
             page.dismiss_confirm_modal()
+        _f1 = self._shot("port_neg_tag_input", highlight=page.page.locator(page.process.SEL_IP_LIST_ITEM).first,
+                         caption="1. 태그 mode 허용 IP/Port 에 Port=-1 입력 — sub-modal 통과(클라이언트 가드 없음)")
         page.process.confirm()
         page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
         page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
@@ -1829,9 +1911,17 @@ class TestScenario3Action(ControlSuiteBase):
         )
         msg = page.get_confirm_message()
         defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-        self._add("warn" if defect_found else "pass",
+        _st = "warn" if defect_found else "pass"
+        _shots = [_f1, self._shot("port_neg_tag_srv_err",
+                                  caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
+        self._add(_st,
                   "[UX 결함] 프로세스별 제어 (태그) - 허용 IP/Port Port=-1 → 메인 저장 시 서버 오류 (개별 프로세스 동일 패턴, yaml :403)",
-                  f"입력: 태그 mode + Port='-1' + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                  f"입력: 태그 mode + Port='-1' + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
+                  screenshots=_shots,
+                  merge_key=f"csu_srv_err::port_neg_tag::{_st}::raw_server_error_no_client_guard",
+                  repro="1. 태그 mode 허용 IP/Port 에 Port=-1 입력\n"
+                        "2. sub-modal 통과 — 클라이언트 가드 없음\n"
+                        "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
         page.dismiss_confirm_modal()
         page.close_modal()
 
@@ -1904,6 +1994,8 @@ class TestScenario3Action(ControlSuiteBase):
         if page.feature_exists(page.process.SEL_CACHE_INPUT, timeout=1000):
             page.process.set_cache_input("a" * 500)
             page.process.click_cache_add_btn()
+            _f1 = self._shot("cache500_tag_input", highlight=page.page.locator(page.process.SEL_CACHE_INPUT).first,
+                             caption="1. 태그 mode 캐시폴더 cacheFolderInput 500자 입력 — process_modal 통과(클라이언트 글자수 가드 없음)")
             page.process.confirm()
             page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
             page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
@@ -1911,9 +2003,17 @@ class TestScenario3Action(ControlSuiteBase):
             )
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-            self._add("warn" if defect_found else "pass",
+            _st = "warn" if defect_found else "pass"
+            _shots = [_f1, self._shot("cache500_tag_srv_err",
+                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
+            self._add(_st,
                       "[UX 결함] 프로세스별 제어 (태그) - 캐시폴더 지정 cacheFolderInput 500자 → 메인 저장 서버 오류 (개별 프로세스 동일 패턴, yaml :112)",
-                      f"입력: 태그 mode + cache 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3)
+                      f"입력: 태그 mode + cache 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
+                      screenshots=_shots,
+                      merge_key=f"csu_srv_err::cache500_tag::{_st}::raw_server_error_no_client_guard",
+                      repro="1. 태그 mode 캐시폴더 500자 입력\n"
+                            "2. process_modal 통과 — 클라이언트 글자수 가드 없음\n"
+                            "3. 메인 저장/수정 → '서버에서 오류가 발생 하였습니다'")
             page.dismiss_confirm_modal()
         else:
             self._add("skip", "[UX 결함] 프로세스별 제어 (태그) - 캐시폴더 지정 500자 — 기능 부재", "(skip)", sc=3)
@@ -2017,12 +2117,18 @@ class TestScenario3Action(ControlSuiteBase):
         page.process.add_ip_port(DUP_IP, DUP_PORT)
         if page.is_confirm_modal_visible(timeout=1500):
             msg_c = page.get_confirm_message()
-            page.dismiss_confirm_modal()
             is_dup_msg = ("이미 등록" in msg_c) and ("IP" in msg_c.upper() or "Port" in msg_c)
-            # 이 동작은 ux_bug — 메시지가 떴다는 것 자체가 제품 결함 확정
-            self._add("warn" if is_dup_msg else "fail",
+            # 이 동작은 ux_bug — 메시지가 떴다는 것 자체가 제품 결함 확정.
+            # dismiss 는 _add(자동 캡처) 후에 호출 — alert 떠 있는 상태를 스크린샷에 담음(내용↔사진 일치)
+            _st = "warn" if is_dup_msg else "fail"
+            self._add(_st,
                       "(c) process_modal — IP/Port 삭제 후 재추가 → 잘못된 '이미 등록' 알림 (yaml :197 ux_bug)",
-                      f"입력: {DUP_IP}:{DUP_PORT} 추가→삭제→재추가 / 결과: 메시지={msg_c!r}, IP after_del={len(ip_after_del)}", sc=3)
+                      f"입력: {DUP_IP}:{DUP_PORT} 추가→삭제→재추가 / 결과: 메시지={msg_c!r}, IP after_del={len(ip_after_del)}", sc=3,
+                      merge_key=f"csu_dup_readd::ip_port::{_st}::false_already_registered",
+                      repro=f"1. process_modal 에서 {DUP_IP}:{DUP_PORT} 추가\n"
+                            "2. 같은 IP/Port 삭제(행 제거)\n"
+                            "3. 동일값 재추가 → 잘못된 '이미 등록된 IP와 Port 입니다' (삭제됐는데 중복 판정 — display:none 잔류 li)")
+            page.dismiss_confirm_modal()
         else:
             # 메시지 미노출 = 버그 재현 안 됨 (제품이 정상 동작 — 좋은 일)
             self._add("pass", "(c) process_modal — IP/Port 삭제 후 재추가 정상 (yaml :197 ux_bug 미재현)",

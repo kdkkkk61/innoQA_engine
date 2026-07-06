@@ -25,6 +25,16 @@ def _ss(page, label: str, highlight=None) -> str | None:
         _SS_DIR.mkdir(parents=True, exist_ok=True)
         safe = re.sub(r"[^\w가-힣]", "_", label)[:40]
         path = _SS_DIR / f"BUG_{safe}_{int(time.time()*1000)}.png"
+        # 이전 호출이 남긴 빨간 outline 전부 제거 — locator 재해결 실패로 잔류하는 red 줄 방지
+        # (highlight.first 로 지우면 요소 re-render/detach 시 DOM 에 남아 다음 캡처 배경에 나타남)
+        try:
+            page.evaluate(
+                "() => document.querySelectorAll('[data-qa-hl]').forEach(el => {"
+                " el.style.outline=''; el.style.outlineOffset=''; el.style.boxShadow='';"
+                " el.removeAttribute('data-qa-hl'); })"
+            )
+        except Exception:
+            pass
         injected = False
         if highlight is not None:
             try:
@@ -171,6 +181,8 @@ class ControlSuiteBase:
 
     def _emit_pass(self, label: str, sc: int) -> None:
         """test 가 통과되면 끝에 호출 — 단일 pass ScanResult 첨부."""
+        if getattr(self, "_replay_mode", False):
+            return   # 리턴 재생 중에는 보고서 덮어쓰기 금지 (프레임만 _add 가 수집)
         sr = ScanResult(
             pattern="scenario_test", selector="", label=label,
             status="pass", detail="", extra={"scenario": sc},
@@ -181,6 +193,12 @@ class ControlSuiteBase:
     # 진단 hook 으로 fail 시점 정보는 그대로 수집 → 차후 원인 분석 가능.
     _SC_DEFAULT_TIMEOUT = 5000
 
+    # 자동 리턴 재생(_R): 큐레이션 캡처 없는 fail 발생 시 같은 테스트를 1회 재실행하며
+    # _add 지점마다 자동 캡처 → "리턴 재생(_R)" 카드로 어디서 끊겼는지 스텝별 확인
+    # (operation_process/tag base 미러). 실패한 테스트만 재실행하므로 정상 run 은 무영향.
+    _REPLAY_ON_FAIL = True
+    _REPLAY_MAX_FRAMES = 10
+
     @pytest.fixture(autouse=True)
     def _setup(self, request):
         """매 테스트 시작 — short timeout 적용 + 끝 F5 + 진단 정보 유지."""
@@ -188,6 +206,8 @@ class ControlSuiteBase:
         self._lines: list[str] = []
         self._srs:   list[ScanResult] = []
         self._page = None
+        self._replay_mode = False
+        self._replay_frames: list = []
         # crash 시점에 hook 이 page_id 추출 가능하도록 미리 attach (사용자 지적 2026-05-29
         # — _add 호출 전 crash 발생 시 보고서에 error 0 으로 누락 방지).
         request.node._npouch_page_id = self.PAGE_ID
@@ -199,6 +219,43 @@ class ControlSuiteBase:
         except Exception:
             pass
         yield
+        # ── 자동 리턴 재생(_R): 예기치 못한 fail(assert 실패 등) 시 같은 테스트를 캡처 모드로 1회 재실행 ──
+        # warn(알려진 제품결함)은 각 행위에서 조건부 다중 캡처(입력→오류)로 처리 → 여기선 fail 만 대상
+        # (warn 까지 넣으면 test 전체를 재실행해 10프레임 뭉뚱그리는 문제 → 행위별 정밀 재현이 목표).
+        try:
+            _need_replay = any(
+                s.status == "fail" and not (s.extra or {}).get("screenshots")
+                for s in self._srs
+            )
+            if self._REPLAY_ON_FAIL and not self._replay_mode and _need_replay:
+                self._replay_mode = True
+                fn_name = getattr(request.node, "originalname", None) or request.node.name.split("[")[0]
+                fn = getattr(self, fn_name, None)
+                if fn is not None:
+                    import inspect
+                    kwargs = {}
+                    for pname in inspect.signature(fn).parameters:
+                        try:
+                            kwargs[pname] = request.getfixturevalue(pname)
+                        except Exception:
+                            pass
+                    try:
+                        fn(**kwargs)
+                    except Exception:
+                        pass
+                self._replay_mode = False
+                if self._replay_frames:
+                    _sc0 = (self._srs[0].extra or {}).get("scenario", 0) if self._srs else 0
+                    t, s = _r("warn", f"{fn_name.replace('test_', '')} — 리턴 재생(_R) 스텝 캡처",
+                              f"fail 발생으로 같은 흐름을 1회 재실행하며 검증 지점마다 캡처 "
+                              f"({len(self._replay_frames)}장, 최대 {self._REPLAY_MAX_FRAMES}). "
+                              "재현 여부·끊긴 지점은 스텝 이미지로 확인.", sc=_sc0)
+                    s.extra["screenshots"] = self._replay_frames[:self._REPLAY_MAX_FRAMES]
+                    self._lines.append(t)
+                    self._srs.append(s)
+                    self._attach(self._srs)
+        except Exception:
+            pass
         # ScanResult fallback attach
         if self._srs and not getattr(self._request.node, "_scan_report", None):
             self._attach(self._srs)
@@ -216,17 +273,30 @@ class ControlSuiteBase:
             pass
 
     def _add(self, status: str, label: str, detail: str = "", sc: int = 0,
-             highlight=None, repro=None, merge_key: str = None) -> None:
+             highlight=None, repro=None, merge_key: str = None,
+             screenshots: list = None) -> None:
         """한 줄로 print + ScanResult 누적. 각 검증 블록 단위 호출.
 
         highlight (optional, Playwright Locator): fail/warn 시 캡처에 빨간 outline
         임시 주입 — 어느 영역의 이슈인지 시각적으로 표시.
+
+        screenshots (optional, list): _replay_shots 등으로 만든 다중 캡처(캡션 포함)를
+        결함 카드에 재현 순서로 첨부. [str | {"path","caption"}] — html_reporter 가 렌더.
 
         sub-numbering 자동 매핑 (2026-05-29 — 원본보호와 통일):
           메서드 이름 'test_scenarioNX_...' → sc = N*100 + sub_idx (a=1, b=2, ..., r=18, ...)
           sc3a → 301 / sc3j → 310 / sc3k → 311 / sc4r → 418 / sc5a → 501 / ...
           a~z 전부 안전 (sn*10 방식의 j/k 충돌 회피).
         """
+        # 리턴 재생(_R) 모드: 카드 누적 대신 검증 지점 화면만 수집(캡션 = 순번+판정+라벨)
+        if getattr(self, "_replay_mode", False):
+            if len(self._replay_frames) < self._REPLAY_MAX_FRAMES:
+                p = _ss(self._page, f"R_{label}", highlight=highlight)
+                if p:
+                    icon = _STATUS_ICON.get(status, "?")
+                    self._replay_frames.append(
+                        {"path": p, "caption": f"R{len(self._replay_frames) + 1}. {icon} {label}"})
+            return
         try:
             nm = self._request.node.name
             m = re.match(r"test_scenario(\d+)([a-z])_", nm)
@@ -238,14 +308,47 @@ class ControlSuiteBase:
                     sc = sn * 100 + sub
         except Exception:
             pass
+        # screenshots(큐레이션 다중 캡처)가 있으면 자동 단일 캡처는 생략 — 중복 방지
+        _auto_cap = status in ("fail", "warn") and not screenshots
         t, s = _r(status, label, detail, sc=sc,
-                  page=self._page if status in ("fail", "warn") else None,
-                  highlight=highlight if status in ("fail", "warn") else None,
+                  page=self._page if _auto_cap else None,
+                  highlight=highlight if _auto_cap else None,
                   repro=repro, merge_key=merge_key)
+        if screenshots:
+            s.extra["screenshots"] = [x for x in screenshots if x]
         print(t)
         self._lines.append(t)
         self._srs.append(s)
         self._attach(self._srs)
+
+    def _shot(self, label: str, highlight=None, caption: str = None):
+        """중간 시점 추가 캡처 — 두 화면 대조/재현 순서 전용(운용프로세스 _shot 미러).
+        caption 지정 시 {"path","caption"} 반환(스텝 라벨), 아니면 경로 문자열."""
+        if self._page is None:
+            return None
+        p = _ss(self._page, label, highlight=highlight)
+        if p and caption:
+            return {"path": p, "caption": caption}
+        return p
+
+    def _replay_shots(self, steps) -> list:
+        """이슈 확정 후 '리턴 재생' — 스텝을 다시 실행하며 단계별 캡처(캡션 포함).
+        운용프로세스 _replay_shots 미러. steps: [(라벨, 동작fn 또는 None, 캡처대상 Locator 또는 None), ...]"""
+        shots = []
+        for label, action, target in steps:
+            try:
+                if action:
+                    action()
+                self._page.wait_for_timeout(300)
+                p = _ss(self._page, f"replay_{label}", highlight=target)
+                if p:
+                    shots.append({"path": p, "caption": f"{len(shots) + 1}. {label}"})
+            except Exception:
+                p = _ss(self._page, f"replay_{label}_예외중단")
+                if p:
+                    shots.append({"path": p, "caption": f"{len(shots) + 1}. {label} — 예외로 중단(오류 지점)"})
+                break
+        return shots
 
     def _finish(self, context: str = "") -> None:
         """메서드 끝 호출 — attach + FAIL 어서션."""
