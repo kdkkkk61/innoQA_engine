@@ -69,15 +69,21 @@ class TestSecureZoneTemplateSyncFolderScenario5Lifecycle(SecureZoneTemplateSyncF
                       f"sc5a — 재오픈 round-trip: {label}",
                       f"결과: 유지={ok}", sc=5,
                       repro=f"1. 항목 저장(전체 필드)\n2. 재오픈\n3. {label} 유지 확인")
-        # ② 속성 모달 표시 — 항목/카운트
+        # ② 속성 모달 표시 — 요소별 (재오픈은 유지 확인됨 — 불일치면 표시 버그 = warn)
         try:
             page.open_detail_modal(_FULL)
             dtext = page.detail_modal_text()
-            shown_item = _ITEM in dtext
-            self._add("pass" if shown_item else "warn",
-                      "sc5a — 속성 모달 표시: 항목 설정명",
-                      f"입력: 속성 열람 / 결과: {_ITEM!r} 표시={shown_item} "
-                      "(재오픈은 유지 — 불일치면 표시 버그)", sc=5)
+            for label, expected in (("템플릿 이름", _FULL),
+                                    ("항목 설정명", _ITEM),
+                                    ("등록 카운트(1 건)", "1")):
+                shown = expected in dtext
+                self._add("pass" if shown else "warn",
+                          f"sc5a — 속성 모달 표시: {label}",
+                          f"입력: 속성 열람 / 결과: {expected!r} 표시={shown}", sc=5)
+            has_usage = "사용처" in dtext
+            self._add("pass" if has_usage else "warn",
+                      "sc5a — 속성 모달: 사용처 섹션 존재(정책 연계 표시 위치)",
+                      f"결과: 사용처 섹션={has_usage}", sc=5)
             page.close_detail_modal()
         except Exception as e:
             self._add("warn", "sc5a — 속성 모달 표시 검증", f"예외: {e!r}", sc=5)
@@ -153,6 +159,19 @@ class TestSecureZoneTemplateSyncFolderScenario5Lifecycle(SecureZoneTemplateSyncF
         self._add("pass" if cnt == 0 else "fail",
                   "sc5c — 매핑 제거 → 등록 0건",
                   f"입력: 항목 제거 / 결과: 확인메시지={msg!r}, 잔여={cnt}건", sc=5)
+        # ★수정 후 속성 재확인 (속성-확인 법칙: 추가→속성→수정→속성) — 제거가 속성에도 반영됐는가
+        try:
+            page.open_detail_modal(_FULL)
+            dtext = page.detail_modal_text()
+            item_gone = _ITEM not in dtext
+            self._add("pass" if item_gone else "warn",
+                      "sc5c — 수정 후 속성 재확인: 제거된 항목이 속성에서도 사라짐",
+                      f"입력: 매핑 제거 후 속성 열람 / 결과: {_ITEM!r} 미표시={item_gone} "
+                      "(표시되면 속성 stale — 표시 버그)", sc=5,
+                      repro="1. 항목 제거\n2. 속성 모달 열람\n3. 제거 항목이 안 보여야")
+            page.close_detail_modal()
+        except Exception as e:
+            self._add("warn", "sc5c — 수정 후 속성 재확인", f"예외: {e!r}", sc=5)
 
     # ── 5d: 마무리 cleanup — 휘발성 [AUTO] 만 삭제 ──────────────────
     def test_scenario5d_final_cleanup(self, logged_in_page, settings):
