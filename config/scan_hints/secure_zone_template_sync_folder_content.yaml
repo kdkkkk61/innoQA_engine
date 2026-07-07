@@ -54,6 +54,11 @@ add_modal:
     - {selector: "input#isOriginRemoveSchedule",  label: "스케줄시 원본삭제 — 조건부"}
     - {selector: "input#isOriginRemoveRealtime",  label: "실시간시 원본삭제 — 조건부"}
 
+# ── 관찰 (자동 검증 경계 — 사용자 발견 2026-07-07) ──
+# 하위속성 상세 모달(viewDetailItemModal)의 스케줄(매주) 요일 영역 레이아웃 틀어짐(라벨-체크박스
+# 정렬 깨짐). DOM 은 정상이라 존재/값 검증으론 미검출 — 시각 회귀(스크린샷 diff)/좌표 휴리스틱
+# 필요 = 별도 트랙(현재 미구현 결정). sc5a/sc6a 속성 캡처가 수동 검수 증거로 남음.
+
 # ── 문서형 참조 (스캔 대상 아님) ──
 content_fields_doc:
   source_target: "div#sourcePath / div#destinationPath (contenteditable, '특수폴더' picker=selectReservedWordControl)"
