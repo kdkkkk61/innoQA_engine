@@ -257,17 +257,25 @@ class TestScenario4Modify(ControlSuiteBase):
                       f"process_modal — 재진입 입력값 일치: {k}",
                       f"입력: itemList 행 클릭 (재진입) / 결과: 일치={ok}", sc=4)
 
-        # ── 라운드 2: ON→OFF 양방향 (7 토글) ──────────────────
-        page.process.set_process_except(False)
-        page.process.set_pclipboard_restrict(False)
-        page.process.set_sandbox(False)
-        page.process.set_deny_except_drive(False)
-        page.process.set_pnetwork(False)
-        page.process.set_pcontrol_extension(False)
-        page.process.set_access_drive(False)
-        _tog = self._shot("row_toggles_off_proc",
-                          caption="1. 프로세스 편집 — 클립보드·네트워크 등 토글 OFF 설정 (sub-modal, 확인 전)")
-        page.process.confirm()
+        # ── 라운드 2: ON→OFF 양방향 (7 토글) — 행위 저널 (stale warn 검출 시 자동 재생) ──
+        self._ckpt()
+
+        def _ensure_proc_modal():
+            # 1차 실행: 모달 이미 열림(라운드1 재진입 상태) → no-op / 재생: 닫혀 있으므로 행 클릭 재진입
+            if page.page.locator(page.process.SEL_MODAL_OPEN).count() == 0:
+                page.click_item_list_row(0)
+                page.process.wait_open()
+        self._act("프로세스 행 편집 진입(itemList 행)", _ensure_proc_modal)
+        self._act("클립보드·네트워크 등 7 토글 OFF 설정 (sub-modal, 확인 전)",
+                  lambda: (page.process.set_process_except(False),
+                           page.process.set_pclipboard_restrict(False),
+                           page.process.set_sandbox(False),
+                           page.process.set_deny_except_drive(False),
+                           page.process.set_pnetwork(False),
+                           page.process.set_pcontrol_extension(False),
+                           page.process.set_access_drive(False)))
+        self._act("확인 — sub-modal 닫힘(itemList 행 표시가 X 로 갱신되어야 정상)",
+                  lambda: page.process.confirm())
 
         # ── itemList 행 표시 대조 (모달 세션 내, 2026-07-02 신설) ──────────
         # 직접조작 확정 제품 버그: 토글 OFF 확인 후 행의 클립보드·네트워크 컬럼이 O 유지
@@ -277,15 +285,11 @@ class TestScenario4Modify(ControlSuiteBase):
                            ("제어할 확장자", "isControlExtension")):
             _cell = page.get_item_list_cell(0, _td)
             _st = "pass" if _cell == "X" else "warn"
-            # 조건부: 이 요소에서 stale 검출(warn) 시에만 [토글OFF→행O] 재현 2장
-            _shots = [_tog, self._shot(f"row_stale_{_td}", highlight=page.page.locator(page.SEL_ITEM_LIST_ROW).first,
-                                       caption=f"2. 확인 후 itemList 행의 '{_elem}' 컬럼이 여전히 O (X 여야 정상 — 모달 내 재렌더 실패)")] if _st == "warn" else None
             self._add(_st, f"itemList 행 표시 — {_elem} O→X 갱신(모달 세션 내)",
                       f"입력: 토글 OFF 후 확인 / 결과: 행 셀={_cell!r}(기대 'X') "
                       + ("(갱신 정상)" if _st == "pass"
                          else "[행 표시 stale — 저장·재오픈은 정상, 모달 내 재렌더만 실패(제품 버그, TROUBLESHOOTING 2026-07-02)]"),
                       sc=4,
-                      screenshots=_shots,
                       merge_key=f"csu_row_stale::{_elem}::{_st}",   # 태그 탭 동일 요소·동일 결과와 카드 묶음
                       repro=f"1. 스위트 수정 모달 → 프로세스 행 편집 → {_elem} 토글 OFF → 확인\n"
                             f"2. 모달 안 목록 행의 {_elem} 컬럼이 여전히 O 인지(X 여야 정상)\n"
@@ -469,17 +473,25 @@ class TestScenario4Modify(ControlSuiteBase):
                       f"태그 process_modal — 재진입 입력값 일치: {k}",
                       f"입력: itemTagList 행 클릭 (재진입) / 결과: 일치={ok}", sc=4)
 
-        # ── 라운드 2: ON→OFF 양방향 (7 토글) ──────────────────
-        page.process.set_process_except(False)
-        page.process.set_pclipboard_restrict(False)
-        page.process.set_sandbox(False)
-        page.process.set_deny_except_drive(False)
-        page.process.set_pnetwork(False)
-        page.process.set_pcontrol_extension(False)
-        page.process.set_access_drive(False)
-        _tog = self._shot("row_toggles_off_tag",
-                          caption="1. 태그 편집 — 클립보드·네트워크 등 토글 OFF 설정 (sub-modal, 확인 전)")
-        page.process.confirm()
+        # ── 라운드 2: ON→OFF 양방향 (7 토글) — 행위 저널 (stale warn 검출 시 자동 재생) ──
+        self._ckpt()
+
+        def _ensure_tag_modal():
+            # 1차 실행: 모달 이미 열림(라운드1 재진입 상태) → no-op / 재생: 닫혀 있으므로 행 클릭 재진입
+            if page.page.locator(page.process.SEL_MODAL_OPEN).count() == 0:
+                page.click_item_tag_list_row(0)
+                page.process.wait_open()
+        self._act("태그 행 편집 진입(itemTagList 행)", _ensure_tag_modal)
+        self._act("클립보드·네트워크 등 7 토글 OFF 설정 (sub-modal, 확인 전)",
+                  lambda: (page.process.set_process_except(False),
+                           page.process.set_pclipboard_restrict(False),
+                           page.process.set_sandbox(False),
+                           page.process.set_deny_except_drive(False),
+                           page.process.set_pnetwork(False),
+                           page.process.set_pcontrol_extension(False),
+                           page.process.set_access_drive(False)))
+        self._act("확인 — sub-modal 닫힘(itemTagList 행 표시가 X 로 갱신되어야 정상)",
+                  lambda: page.process.confirm())
 
         # ── itemTagList 행 표시 대조 (모달 세션 내, 2026-07-02 신설 — 프로세스 탭과 동일 버그 클래스) ──
         for _elem, _td in (("클립보드 제어", "isClipboardRestrict"),
@@ -487,14 +499,11 @@ class TestScenario4Modify(ControlSuiteBase):
                            ("제어할 확장자", "isControlExtension")):
             _cell = page.get_item_tag_list_cell(0, _td)
             _st = "pass" if _cell == "X" else "warn"
-            _shots = [_tog, self._shot(f"tagrow_stale_{_td}", highlight=page.page.locator(page.SEL_ITEM_TAG_LIST_ROW).first,
-                                       caption=f"2. 확인 후 itemTagList 행의 '{_elem}' 컬럼이 여전히 O (X 여야 정상 — 모달 내 재렌더 실패)")] if _st == "warn" else None
             self._add(_st, f"itemTagList 행 표시 — {_elem} O→X 갱신(모달 세션 내)",
                       f"입력: 태그 토글 OFF 후 확인 / 결과: 행 셀={_cell!r}(기대 'X') "
                       + ("(갱신 정상)" if _st == "pass"
                          else "[행 표시 stale — 저장·재오픈은 정상, 모달 내 재렌더만 실패(제품 버그, TROUBLESHOOTING 2026-07-02)]"),
                       sc=4,
-                      screenshots=_shots,
                       merge_key=f"csu_row_stale::{_elem}::{_st}",   # 프로세스 탭 동일 요소·동일 결과와 카드 묶음
                       repro=f"1. 스위트 수정 모달 → 태그 탭 → 태그 행 편집 → {_elem} 토글 OFF → 확인\n"
                             f"2. 모달 안 목록 행의 {_elem} 컬럼이 여전히 O 인지(X 여야 정상)\n"
@@ -1497,10 +1506,16 @@ class TestScenario4Modify(ControlSuiteBase):
                               f"입력: URL 재추가 / 결과: 메시지에 'URL/주소' 포함, '폴더/경로' 미포함 = {msg_b!r}", sc=4)
                 elif is_folder_msg:
                     self._add("warn", "[메시지 일관성 결함] EDIT 웹제한 URL 중복 — 'URL' 영역인데 '폴더 경로' 메시지 노출",
-                              f"입력: URL '{dup_url}' 재추가 / 결과: 메시지='폴더 경로' 포함 (UI 영역 ≠ 메시지 영역 불일치) = {msg_b!r}", sc=4)
+                              f"입력: URL '{dup_url}' 재추가 / 결과: 메시지='폴더 경로' 포함 (UI 영역 ≠ 메시지 영역 불일치) = {msg_b!r}", sc=4,
+                              merge_key="csu_msg_incons::url_dup::warn::folder_path_message",   # sc3f ADD 미러와 병합
+                              repro="1. 웹제한 모달 적용 URL 에 'naver.com' 추가\n"
+                                    "2. 같은 URL 재추가\n"
+                                    "3. 'URL' 영역인데 '이미 등록된 폴더 경로가 존재합니다' — 영역≠메시지 불일치")
                 else:
                     self._add("warn", "[메시지 일관성 결함] EDIT 웹제한 URL 중복 — URL/주소 단어 누락",
-                              f"입력: URL 재추가 / 결과: 메시지에 'URL'/'주소'/'폴더'/'경로' 모두 없음 = {msg_b!r}", sc=4)
+                              f"입력: URL 재추가 / 결과: 메시지에 'URL'/'주소'/'폴더'/'경로' 모두 없음 = {msg_b!r}", sc=4,
+                              merge_key="csu_msg_incons::url_dup::warn::no_url_word",
+                              repro="1. 웹제한 모달 적용 URL 재추가\n2. 중복 메시지에 'URL/주소' 단어 없음")
                 # 모든 _add 후 dismiss
                 page.dismiss_confirm_modal()
             else:

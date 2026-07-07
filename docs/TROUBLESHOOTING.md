@@ -5,6 +5,56 @@
 
 ---
 
+## [RESOLVED] 행위 저널 재생 — 잔여 alert 미정리로 sc4d 중단 + 후속 warn 카드 프레임 미공유 — 2026-07-07
+
+- **증상**: ①sc4d "[테스트 중단]" — 행stale 저널 재생 후 `save_policy('수정')` 클릭이
+  `modal-backdrop intercepts pointer events` TimeoutError. ②같은 블록 둘째 warn(#15 네트워크)이
+  단일 캡처인데 사진엔 엉뚱한 alert('수정된 항목이 없습니다')가 찍힘.
+- **원인**: 저널 재생이 행위를 재실행할 때 1차 실행과 상태가 달라(토글 이미 OFF → no-op 확인)
+  제품이 '수정된 항목이 없습니다' alert 를 띄움 — 재생 종료 시 이걸 **안 닫아** backdrop 잔존.
+  또 재생 프레임을 블록의 첫 warn 카드에만 붙여 후속 warn 은 단일 캡처(그 시점 잔여 alert 오염).
+- **수정** (_base 자동재생 훅): ①재생 직후 잔여 confirm modal dismiss + (열린 모달 없을 때만)
+  backdrop 정리. ②프레임을 `_journal_frames` 로 보관 — 같은 블록의 모든 warn/fail 카드가 공유(재실행 없음).
+- **2차 회귀 (2026-07-07 같은 날)**: ①의 무조건 dismiss 가 **본 흐름이 직접 dismiss 할 alert**(서버오류 —
+  _add 시점에 열려있는 게 정상)까지 닫아버림 → sc3j 의 `dismiss_confirm_modal()` 이 timeout → Case B 에서
+  중단 → 후속 케이스 미실행 → ADD 카드(시퀀스) 부재로 병합 카드가 EDIT 단일캡처를 대표로 사용
+  ("스크린샷이 다 하나가 됨") + sc4m 연쇄 실패(전제 정책 미생성).
+- **최종 수정**: 재생 **전** alert 열림 상태 스냅샷 → 원래 열려 있었으면 그대로 두고(재생 마지막 행위가
+  같은 alert 를 재현하므로 본 흐름 dismiss 정상), **원래 없던 alert 만** 재생 후 정리.
+- **교훈**: 재생(replay)은 1차 실행과 다른 상태에서 돌 수 있다(멱등 no-op → 제품 알림). 재생 후 정리는
+  "재생이 새로 만든 것"에 한정 — **본 흐름의 상태 계약(어떤 modal 이 열려 있어야 하는가)을 보존**해야 한다.
+  프레임은 블록 단위 자산(카드 단위 아님).
+
+---
+
+## [RESOLVED] 제어스위트 sc2f — 태그 picker 행 카운트 타이밍 오탐 — 2026-07-07
+
+- **증상**: sc2f "[입력 확인] 태그 선택 모달 — 진입" fail — `title='태그 선택', 행 수=0`.
+  그런데 직후 카드 "첫 행 + 확인 + 반영"은 성공(선택='공용 프로세스 묶음') + 스크린샷엔 116건 표시 = 행은 존재.
+- **원인**: `picker.wait_open()`(모달 .in 부착) 직후 바로 `get_row_count()` — 태그 목록은 async 렌더라
+  느린 응답이면 제목은 떴는데 행이 아직 0. 잠복 race 가 이번 run(6:17, 평소보다 느림)에서 발현.
+- **수정**: 카운트 전 `picker.SEL_ROW` 첫 행 attached 대기(3s, 실패 무시) 삽입.
+- **교훈**: "모달 열림 대기 ≠ 내용 렌더 대기". 목록 카운트/읽기는 반드시 행 attached 대기 후.
+  (부가 관찰: 이런 '예상 밖 지점 fail'이 단일 스크린샷+generic repro 로만 남는 문제 — 행위 저널(_ckpt/_act)
+  광역 롤아웃이 해결하는 바로 그 케이스.)
+
+---
+
+## [RESOLVED] sc0 조건부 필드를 yaml 에서 제외 → discovered_new 오탐 (폴더동기화) — 2026-07-07
+
+- **증상** (사용자 지적): 폴더동기화 sc0b 가 요일 체크박스(checkSun~checkSat)·minutes·days·executeHour 등
+  **13개를 "추가(discovered_new) 신규 기능"으로 오탐**. + select#syncFolderScheduleType 이 "초기값 빈값 아님(NONE)" fail.
+- **원인**: "조건부/숨김 필드는 스캔 노이즈니 yaml 에서 빼자"고 판단한 게 **정반대**.
+  조건부 필드도 **DOM 엔 항상 존재**(display:none) → yaml 미선언이면 diff 가 "DOM 에만 있음 = discovered_new"로 판정.
+  또 select 을 text_inputs 로 선언하면 UIScanner 가 텍스트 초기값 검증(빈값 기대)을 걸어 select 기본값(NONE)에 fail.
+- **수정** (2026-07-07): ①조건부 필드 **전부 등재**(discovered_new 방지). ②select·조건부는 `add_modal.fields`
+  (extract_yaml_selectors 는 읽지만 UI 검증은 미트리거 — diff 전용)로 선언. ③`detect_hidden: false`
+  (조건부는 기본상태 숨김이라 detect_hidden 켜면 discovered_hidden 상시 노이즈). docs/scenario_0_scan.md §3.2 정정.
+- **교훈**: sc0(yaml↔DOM diff)는 **정적 존재 확인**. DOM 에 있는 요소는 무조건 등재해야 하며(빼면 discovered_new),
+  조건부 "노출 동작"은 sc1(조건부 노출)/sc2(gating 존재)가 검증한다. 모달은 한 상태 스냅샷만 봄.
+
+---
+
 ## [RESOLVED] 제어스위트 결함 카드 — 캡처 시점이 판정 지점 아님(내용↔사진 불일치) — 2026-07-06
 
 - **증상** (사용자 지적, 카드 #17): "(c) IP/Port 삭제 후 재추가 잘못된 중복" 카드가 결과='이미 등록된 IP와 Port 입니다'

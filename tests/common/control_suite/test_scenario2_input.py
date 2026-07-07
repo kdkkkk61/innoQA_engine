@@ -883,6 +883,13 @@ class TestScenario2Input(ControlSuiteBase):
         page.process.click_pick_btn()
         page.picker.wait_open()
         title = page.picker.get_title()
+        # 태그 목록 async 렌더 대기 — 모달 열림(제목) 직후 행 카운트가 렌더 전 0 으로
+        # 읽히는 타이밍 오탐 방지 (2026-07-07 run 실측: fail 직후 행 선택은 성공 = 행 존재)
+        try:
+            page.page.locator(page.picker.SEL_ROW).first.wait_for(
+                state="attached", timeout=3000)
+        except Exception:
+            pass
         cnt = page.picker.get_row_count()
         self._add("pass" if title == "태그 선택" and cnt > 0 else "fail",
                   "[입력 확인] 태그 선택 모달 — 진입",

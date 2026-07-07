@@ -942,10 +942,16 @@ class TestScenario3Action(ControlSuiteBase):
                           f"입력: URL 재추가 / 결과: 메시지에 'URL/주소' 포함, '폴더/경로' 미포함 = {msg!r}", sc=3)
             elif is_folder_msg:
                 self._add("warn", "[메시지 일관성 결함] 웹제한 URL 중복 — 'URL' 영역인데 '폴더 경로' 메시지 노출",
-                          f"입력: 'naver.com' 재추가 / 결과: UI 영역 ≠ 메시지 영역 불일치 = {msg!r}", sc=3)
+                          f"입력: 'naver.com' 재추가 / 결과: UI 영역 ≠ 메시지 영역 불일치 = {msg!r}", sc=3,
+                          merge_key="csu_msg_incons::url_dup::warn::folder_path_message",   # sc4l EDIT 미러와 병합
+                          repro="1. 웹제한 모달 적용 URL 에 'naver.com' 추가\n"
+                                "2. 같은 URL 재추가\n"
+                                "3. 'URL' 영역인데 '이미 등록된 폴더 경로가 존재합니다' — 영역≠메시지 불일치")
             else:
                 self._add("warn", "[메시지 일관성 결함] 웹제한 URL 중복 — URL/주소 단어 누락",
-                          f"입력: URL 재추가 / 결과: 'URL'/'주소'/'폴더'/'경로' 모두 없음 = {msg!r}", sc=3)
+                          f"입력: URL 재추가 / 결과: 'URL'/'주소'/'폴더'/'경로' 모두 없음 = {msg!r}", sc=3,
+                          merge_key="csu_msg_incons::url_dup::warn::no_url_word",
+                          repro="1. 웹제한 모달 적용 URL 재추가\n2. 중복 메시지에 'URL/주소' 단어 없음")
             # ⚠ 모든 _add 끝나고 dismiss (스크린샷 캡처 완료 후)
             page.dismiss_confirm_modal()
         else:
@@ -1524,39 +1530,35 @@ class TestScenario3Action(ControlSuiteBase):
                       f"입력: SEL_TOGGLE_ACCESS_DRIVE 매칭 실패 / 결과: 기능 부재 (구 빌드)", sc=3)
 
         # ── Case B: 드라이브 letter 100자 (메인 저장 시 서버 오류) ─
-        page.navigate_to_clean()
-        page.open_add_modal()
-        page.set_csu_name("[AUTO]_sc3_step9_drv100")
-        page.click_individual_process_tab()
-        page.click_add_process_btn()
-        page.process.wait_open()
-        page.process.click_pick_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="single")
+        # [파일럿 2026-07-07] 행위 저널(_ckpt/_act) 방식 — 손코딩 캡처 제거.
+        # warn/fail 검출 시 저널 행위들을 자동 재실행·단계별 캡처(캡션=행위 라벨). pass 면 비용 0.
+        self._ckpt()
+        self._act("제어스위트 추가 모달 — 정책 이름 입력",
+                  lambda: (page.navigate_to_clean(), page.open_add_modal(),
+                           page.set_csu_name("[AUTO]_sc3_step9_drv100")))
+        self._act("개별 프로세스 탭 — 프로세스 선택(picker)",
+                  lambda: (page.click_individual_process_tab(), page.click_add_process_btn(),
+                           page.process.wait_open(), page.process.click_pick_btn(),
+                           page.picker.wait_open(), page.picker.select_first_and_confirm(mode="single")))
         if page.feature_exists(page.process.SEL_TOGGLE_ACCESS_DRIVE, timeout=1000):
-            page.process.set_access_drive(True)
-            page.process.set_drive_letter("a" * 100)
-            # 재현 프레임①: 입력 필드에 100자 들어간 상태 (아직 오류 여부 모름 — 시퀀스용 사전 프레임)
-            _f1 = self._shot("letter100_input", highlight=page.page.locator(page.process.SEL_DRIVE_LETTER).first,
-                             caption="1. 접근 드라이브 letter 100자 입력 — sub-modal 통과(클라이언트 가드 없음)")
-            # process_modal 저장 시점 — 알림 없어야 정상 (사용자 검증)
-            page.process.confirm()
-            # 메인 저장 시도 — '서버에서 오류 발생' 알림 기대
-            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
-            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
-                state="attached", timeout=page._TIMEOUT_MODAL
-            )
+            self._act("접근 드라이브 letter 100자 입력 — sub-modal 통과(클라이언트 가드 없음)",
+                      lambda: (page.process.set_access_drive(True),
+                               page.process.set_drive_letter("a" * 100)),
+                      shot_target=page.page.locator(page.process.SEL_DRIVE_LETTER).first)
+            self._act("프로세스 등록 확인 — sub-modal 닫힘(알림 없어야 정상)",
+                      lambda: page.process.confirm())
+            self._act("메인 저장 → 알림 대기",
+                      lambda: (page._click(page.page.locator(page.SEL_SUBMIT_ADD).first),
+                               page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                                   state="attached", timeout=page._TIMEOUT_MODAL)))
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
-            # warn = UX 결함 재현 → BUG 리포트 / pass = sub-modal 정상 차단
+            # warn = UX 결함 재현 → BUG 리포트 / pass = sub-modal 정상 차단.
+            # screenshots 미지정 — warn 이면 _add 가 저널을 자동 재생해 재현 순서 캡처 첨부.
             _st = "warn" if defect_found else "pass"
-            # 조건부: 이 행위에서 오류가 실제 검출됐을 때만 재현 이미지 첨부 (pass 면 첨부 안 함)
-            _shots = [_f1, self._shot("letter100_srv_err",
-                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
             self._add(_st,
                       "[UX 결함] 프로세스별 제어 (개별 프로세스) - 접근 드라이브 letter 100자 → 메인 저장 시 서버 오류 (sub-modal 단계에서 차단되어야 정상)",
                       f"입력: letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
-                      screenshots=_shots,
                       merge_key=f"csu_srv_err::letter100_proc::{_st}::raw_server_error_no_client_guard",
                       repro="1. 개별 프로세스 접근 드라이브 letter 100자 입력\n"
                             "2. sub-modal 통과 — 클라이언트 가드 없음\n"
@@ -1573,46 +1575,40 @@ class TestScenario3Action(ControlSuiteBase):
             pass
 
         # ── Case C: basePath 400자 (web_restrict 기본폴더 — 메인 저장 시 서버 오류) ─
-        page.navigate_to_clean()
-        page.open_add_modal()
-        page.set_csu_name("[AUTO]_sc3_step9_bp100")
-        page.click_individual_process_tab()
-        page.click_add_process_btn()
-        page.process.wait_open()
-        page.process.click_pick_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="single")
-        page.process.confirm()  # 메인 itemList 행 1건 등록
-        # 웹제한 추가
-        page.click_add_web_restrict_btn()
-        page.web_restrict.wait_open()
-        page.web_restrict.click_add_process_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="multi")
-        page.web_restrict.set_name("[AUTO]_web_sc3_step9_bp")
+        # 행위 저널 — warn/fail 검출 시 자동 재생·단계별 캡처(캡션=행위 라벨)
+        self._ckpt()
+        self._act("제어스위트 추가 모달 — 정책 이름 입력",
+                  lambda: (page.navigate_to_clean(), page.open_add_modal(),
+                           page.set_csu_name("[AUTO]_sc3_step9_bp100")))
+        self._act("개별 프로세스 등록(itemList 1건) — picker 선택 + 확인",
+                  lambda: (page.click_individual_process_tab(), page.click_add_process_btn(),
+                           page.process.wait_open(), page.process.click_pick_btn(),
+                           page.picker.wait_open(), page.picker.select_first_and_confirm(mode="single"),
+                           page.process.confirm()))
+        self._act("웹제한 모달 진입 — 프로세스 선택 + 이름 입력",
+                  lambda: (page.click_add_web_restrict_btn(), page.web_restrict.wait_open(),
+                           page.web_restrict.click_add_process_btn(), page.picker.wait_open(),
+                           page.picker.select_first_and_confirm(mode="multi"),
+                           page.web_restrict.set_name("[AUTO]_web_sc3_step9_bp")))
         # basePath 영역 (isProcessOption 토글 ON + basePath 400자)
         if page.feature_exists(page.web_restrict.SEL_BASE_PATH, timeout=1000):
-            page.web_restrict.set_process_option(True)
-            page.web_restrict.set_base_path("a" * 400)
-            _f1 = self._shot("basePath400_input", highlight=page.page.locator(page.web_restrict.SEL_BASE_PATH).first,
-                             caption="1. 웹제한 기본폴더 basePath 400자 입력 — web_restrict_modal 통과(클라이언트 가드 없음)")
-            # web_restrict_modal 저장 — 사용자 검증: 여기선 알림 없음
-            page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
-            page.web_restrict.wait_closed(timeout=3000)
-            # 메인 저장 — '서버에서 오류 발생' 기대
-            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
-            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
-                state="attached", timeout=page._TIMEOUT_MODAL
-            )
+            self._act("기본폴더 basePath 400자 입력 — web_restrict_modal 통과(클라이언트 가드 없음)",
+                      lambda: (page.web_restrict.set_process_option(True),
+                               page.web_restrict.set_base_path("a" * 400)),
+                      shot_target=page.page.locator(page.web_restrict.SEL_BASE_PATH).first)
+            self._act("웹제한 모달 저장 — 알림 없어야 정상",
+                      lambda: (page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first),
+                               page.web_restrict.wait_closed(timeout=3000)))
+            self._act("메인 저장 → 알림 대기",
+                      lambda: (page._click(page.page.locator(page.SEL_SUBMIT_ADD).first),
+                               page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                                   state="attached", timeout=page._TIMEOUT_MODAL)))
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
             _st = "warn" if defect_found else "pass"
-            _shots = [_f1, self._shot("basePath400_srv_err",
-                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
             self._add(_st,
                       "[UX 결함] 웹제한 기능 - 기본폴더 basePath 400자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상, 드라이브 letter 동일 패턴)",
                       f"입력: basePath 400자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
-                      screenshots=_shots,
                       merge_key=f"csu_srv_err::basePath400::{_st}::raw_server_error_no_client_guard",
                       repro="1. 웹제한 기본폴더 basePath 400자 입력\n"
                             "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
@@ -1636,41 +1632,40 @@ class TestScenario3Action(ControlSuiteBase):
             ("",      True,  "빈값 (서버 차단)", "G"),
         ]
         for port_val, expect_server_error, label, case_id in port_test_cases:
-            page.navigate_to_clean()
-            page.open_add_modal()
+            # 행위 저널 — 이터레이션마다 블록 (warn 검출 시 그 이터레이션만 자동 재생)
+            self._ckpt()
             csu = f"[AUTO]_sc3_step9_port_{case_id}"
-            page.set_csu_name(csu)
-            page.click_individual_process_tab()
-            page.click_add_process_btn()
-            page.process.wait_open()
-            page.process.click_pick_btn()
-            page.picker.wait_open()
-            page.picker.select_first_and_confirm(mode="single")
-            page.process.set_pnetwork(True)
-            page.process.add_ip_port(f"192.168.99.{case_id[-1] if case_id[-1].isdigit() else '1'}", port_val)
-            # sub-modal 알림 dismiss (Port='abc'/'99999' 같은 형식 차단 케이스 대비 — 안전)
-            if page.is_confirm_modal_visible(timeout=1500):
-                page.dismiss_confirm_modal()
-            _f1 = self._shot("port_input", highlight=page.page.locator(page.process.SEL_IP_LIST_ITEM).first,
-                             caption=f"1. 허용 IP/Port 에 Port={port_val!r} 입력 — sub-modal 통과(클라이언트 가드 없음)")
-            page.process.confirm()
-            # 메인 저장
-            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
-            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
-                state="attached", timeout=page._TIMEOUT_MODAL
-            )
+            self._act("제어스위트 추가 모달 — 정책 이름 입력",
+                      lambda: (page.navigate_to_clean(), page.open_add_modal(),
+                               page.set_csu_name(csu)))
+            self._act("개별 프로세스 탭 — 프로세스 선택(picker)",
+                      lambda: (page.click_individual_process_tab(), page.click_add_process_btn(),
+                               page.process.wait_open(), page.process.click_pick_btn(),
+                               page.picker.wait_open(), page.picker.select_first_and_confirm(mode="single")))
+            def _port_input():
+                page.process.set_pnetwork(True)
+                page.process.add_ip_port(f"192.168.99.{case_id[-1] if case_id[-1].isdigit() else '1'}", port_val)
+                # sub-modal 알림 dismiss (형식 차단 케이스 대비 — 안전)
+                if page.is_confirm_modal_visible(timeout=1500):
+                    page.dismiss_confirm_modal()
+            self._act(f"허용 IP/Port 에 Port={port_val!r} 입력 — sub-modal 통과(클라이언트 가드 없음)",
+                      _port_input,
+                      shot_target=page.page.locator(page.process.SEL_IP_LIST_ITEM).first)
+            self._act("프로세스 등록 확인 — sub-modal 닫힘",
+                      lambda: page.process.confirm())
+            self._act("메인 저장 → 알림 대기",
+                      lambda: (page._click(page.page.locator(page.SEL_SUBMIT_ADD).first),
+                               page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                                   state="attached", timeout=page._TIMEOUT_MODAL)))
             msg = page.get_confirm_message()
             # dismiss 전 _add → 스크린샷에 서버 오류 alert 포함 (사용자 요청)
             if expect_server_error:
                 defect_found = "서버" in msg and ("오류" in msg or "발생" in msg)
                 _st = "warn" if defect_found else "pass"
                 _ekey = "port_neg_proc" if port_val == "-1" else "port_empty_proc"
-                _shots = [_f1, self._shot("port_srv_err",
-                                          caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
                 self._add(_st,
                           f"[UX 결함] 프로세스별 제어 (개별 프로세스) - 허용 IP/Port Port={port_val!r} {label} → 메인 저장 시 서버 오류 (sub-modal 단계에서 차단되어야 정상)",
                           f"입력: Port={port_val!r} + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
-                          screenshots=_shots,
                           merge_key=f"csu_srv_err::{_ekey}::{_st}::raw_server_error_no_client_guard",
                           repro=f"1. 개별 프로세스 허용 IP/Port 에 Port={port_val!r} 입력\n"
                                 "2. sub-modal 통과 — 클라이언트 가드 없음\n"
@@ -1691,35 +1686,31 @@ class TestScenario3Action(ControlSuiteBase):
                     pass
 
         # ── Case H: webRestrictName 500자 → 메인 저장 시 서버 오류 (UX 결함) ─
-        # 본서버 Chrome MCP 2026-05-19 검증: 100자 OK / 500자 차단
-        page.navigate_to_clean()
-        page.open_add_modal()
-        page.set_csu_name("[AUTO]_sc3_step10_webname500")
-        page.click_add_web_restrict_btn()
-        page.web_restrict.wait_open()
-        page.web_restrict.click_add_process_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="multi")
-        page.web_restrict.set_name("a" * 500)
-        _f1 = self._shot("webname500_input", highlight=page.page.locator(page.web_restrict.SEL_NAME).first,
-                         caption="1. 웹제한 이름 webRestrictName 500자 입력 — web_restrict_modal 통과(클라이언트 가드 없음)")
-        # web_restrict_modal 저장 (sub-modal 단계는 통과)
-        page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
-        page.web_restrict.wait_closed(timeout=3000)
-        # 메인 저장 → '서버에서 오류 발생'
-        page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
-        page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
-            state="attached", timeout=page._TIMEOUT_MODAL
-        )
+        # 본서버 Chrome MCP 2026-05-19 검증: 100자 OK / 500자 차단. 행위 저널(재생은 navigate 부터).
+        self._ckpt()
+        self._act("제어스위트 추가 모달 — 정책 이름 입력",
+                  lambda: (page.navigate_to_clean(), page.open_add_modal(),
+                           page.set_csu_name("[AUTO]_sc3_step10_webname500")))
+        self._act("웹제한 모달 진입 — 프로세스 선택(picker)",
+                  lambda: (page.click_add_web_restrict_btn(), page.web_restrict.wait_open(),
+                           page.web_restrict.click_add_process_btn(), page.picker.wait_open(),
+                           page.picker.select_first_and_confirm(mode="multi")))
+        self._act("웹제한 이름 webRestrictName 500자 입력 — web_restrict_modal 통과(클라이언트 가드 없음)",
+                  lambda: page.web_restrict.set_name("a" * 500),
+                  shot_target=page.page.locator(page.web_restrict.SEL_NAME).first)
+        self._act("웹제한 모달 저장 — sub-modal 단계는 통과",
+                  lambda: (page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first),
+                           page.web_restrict.wait_closed(timeout=3000)))
+        self._act("메인 저장 → 알림 대기",
+                  lambda: (page._click(page.page.locator(page.SEL_SUBMIT_ADD).first),
+                           page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                               state="attached", timeout=page._TIMEOUT_MODAL)))
         msg = page.get_confirm_message()
         defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
         _st = "warn" if defect_found else "pass"
-        _shots = [_f1, self._shot("webname500_srv_err",
-                                  caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
         self._add(_st,
                   "[UX 결함] 웹제한 기능 - 웹제한 이름 webRestrictName 500자 → 메인 저장 시 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
                   f"입력: webRestrictName 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
-                  screenshots=_shots,
                   merge_key=f"csu_srv_err::webname500::{_st}::raw_server_error_no_client_guard",
                   repro="1. 웹제한 이름 webRestrictName 500자 입력\n"
                         "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
@@ -1728,37 +1719,33 @@ class TestScenario3Action(ControlSuiteBase):
         page.close_modal()
 
         # ── Case I: attachAllowUrl 1000자 (silent invalid + 메인 저장 서버 오류) ─
-        # yaml :326 verified — URL list 등록 안 됨 + 알림 없음 (silent invalid) + 메인 저장 서버 오류
-        page.navigate_to_clean()
-        page.open_add_modal()
-        page.set_csu_name("[AUTO]_sc3_step11_url1000")
-        page.click_add_web_restrict_btn()
-        page.web_restrict.wait_open()
-        page.web_restrict.click_add_process_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="multi")
-        page.web_restrict.set_name("[AUTO]_web_sc3_step11")
-        page.web_restrict.set_is_url(True)
-        page.web_restrict.add_url("a" * 1000)
-        _f1 = self._shot("url1000_input", highlight=page.page.locator(page.web_restrict.SEL_URL_INPUT).first,
-                         caption="1. 적용 URL attachAllowUrl 1000자 입력 — web_restrict_modal 통과(silent invalid, 클라 가드 없음)")
-        # web_restrict_modal 저장 (silent invalid — URL 등록 자체가 안 됨 + 알림 없음)
-        page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
-        page.web_restrict.wait_closed(timeout=3000)
-        # 메인 저장 → 서버 오류 기대
-        page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
-        page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
-            state="attached", timeout=page._TIMEOUT_MODAL
-        )
+        # yaml :326 verified — URL list 등록 안 됨 + 알림 없음 (silent invalid). 행위 저널.
+        self._ckpt()
+        self._act("제어스위트 추가 모달 — 정책 이름 입력",
+                  lambda: (page.navigate_to_clean(), page.open_add_modal(),
+                           page.set_csu_name("[AUTO]_sc3_step11_url1000")))
+        self._act("웹제한 모달 진입 — 프로세스 선택 + 이름 입력",
+                  lambda: (page.click_add_web_restrict_btn(), page.web_restrict.wait_open(),
+                           page.web_restrict.click_add_process_btn(), page.picker.wait_open(),
+                           page.picker.select_first_and_confirm(mode="multi"),
+                           page.web_restrict.set_name("[AUTO]_web_sc3_step11")))
+        self._act("적용 URL attachAllowUrl 1000자 입력 — silent invalid(등록 안 됨, 알림 없음)",
+                  lambda: (page.web_restrict.set_is_url(True),
+                           page.web_restrict.add_url("a" * 1000)),
+                  shot_target=page.page.locator(page.web_restrict.SEL_URL_INPUT).first)
+        self._act("웹제한 모달 저장 — sub-modal 단계는 통과",
+                  lambda: (page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first),
+                           page.web_restrict.wait_closed(timeout=3000)))
+        self._act("메인 저장 → 알림 대기",
+                  lambda: (page._click(page.page.locator(page.SEL_SUBMIT_ADD).first),
+                           page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                               state="attached", timeout=page._TIMEOUT_MODAL)))
         msg = page.get_confirm_message()
         defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
         _st = "warn" if defect_found else "pass"
-        _shots = [_f1, self._shot("url1000_srv_err",
-                                  caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
         self._add(_st,
                   "[UX 결함] 웹제한 기능 - 적용 URL attachAllowUrl 1000자 → silent invalid + 메인 저장 서버 오류 (web_restrict_modal 단계에서 차단되어야 정상)",
                   f"입력: URL 1000자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
-                  screenshots=_shots,
                   merge_key=f"csu_srv_err::url1000::{_st}::raw_server_error_no_client_guard",
                   repro="1. 웹제한 적용 URL attachAllowUrl 1000자 입력 (silent invalid — 등록 안 됨)\n"
                         "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
@@ -1768,36 +1755,33 @@ class TestScenario3Action(ControlSuiteBase):
 
         # ── Case J: allowFileExtention 500자 (web 확장자) → 메인 저장 서버 오류 ─
         # yaml :360 verified — process 확장자는 안전 / web 확장자만 백엔드 차단 (server-side 검증 차이)
-        page.navigate_to_clean()
-        page.open_add_modal()
-        page.set_csu_name("[AUTO]_sc3_step12_webext500")
-        page.click_add_web_restrict_btn()
-        page.web_restrict.wait_open()
-        page.web_restrict.click_add_process_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="multi")
-        page.web_restrict.set_name("[AUTO]_web_sc3_step12")
+        self._ckpt()   # 행위 저널
+        self._act("제어스위트 추가 모달 — 정책 이름 입력",
+                  lambda: (page.navigate_to_clean(), page.open_add_modal(),
+                           page.set_csu_name("[AUTO]_sc3_step12_webext500")))
+        self._act("웹제한 모달 진입 — 프로세스 선택 + 이름 입력",
+                  lambda: (page.click_add_web_restrict_btn(), page.web_restrict.wait_open(),
+                           page.web_restrict.click_add_process_btn(), page.picker.wait_open(),
+                           page.picker.select_first_and_confirm(mode="multi"),
+                           page.web_restrict.set_name("[AUTO]_web_sc3_step12")))
         # web 확장자 500자 — sub-modal 단계는 통과 (yaml :164 동일 길이 등록 OK)
         if page.feature_exists(page.web_restrict.SEL_FILE_EXT_INPUT, timeout=1000):
-            page.web_restrict.add_file_extension("a" * 500)
-            _f1 = self._shot("webext500_input", highlight=page.page.locator(page.web_restrict.SEL_FILE_EXT_INPUT).first,
-                             caption="1. 업로드 허용 확장자 allowFileExtention 500자 입력 — web_restrict_modal 통과(클라이언트 가드 없음)")
-            page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first)
-            page.web_restrict.wait_closed(timeout=3000)
-            # 메인 저장 → 서버 오류
-            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
-            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
-                state="attached", timeout=page._TIMEOUT_MODAL
-            )
+            self._act("업로드 허용 확장자 allowFileExtention 500자 입력 — web_restrict_modal 통과(클라이언트 가드 없음)",
+                      lambda: page.web_restrict.add_file_extension("a" * 500),
+                      shot_target=page.page.locator(page.web_restrict.SEL_FILE_EXT_INPUT).first)
+            self._act("웹제한 모달 저장 — sub-modal 단계는 통과",
+                      lambda: (page._click(page.page.locator(page.web_restrict.SEL_CONFIRM_BTN).first),
+                               page.web_restrict.wait_closed(timeout=3000)))
+            self._act("메인 저장 → 알림 대기",
+                      lambda: (page._click(page.page.locator(page.SEL_SUBMIT_ADD).first),
+                               page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                                   state="attached", timeout=page._TIMEOUT_MODAL)))
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
             _st = "warn" if defect_found else "pass"
-            _shots = [_f1, self._shot("webext500_srv_err",
-                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
             self._add(_st,
                       "[UX 결함] 웹제한 기능 - 업로드 허용 확장자 allowFileExtention 500자 → 메인 저장 서버 오류 (process 확장자와 다른 동작 — web 만 차단)",
                       f"입력: web 확장자 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
-                      screenshots=_shots,
                       merge_key=f"csu_srv_err::webext500::{_st}::raw_server_error_no_client_guard",
                       repro="1. 웹제한 업로드 허용 확장자 allowFileExtention 500자 입력\n"
                             "2. web_restrict_modal 통과 — 클라이언트 가드 없음\n"
@@ -1810,35 +1794,31 @@ class TestScenario3Action(ControlSuiteBase):
         # ── Case K: cacheFolderInput 500자 → 메인 저장 서버 오류 ─
         # yaml :361 verified — 한글/특수/500자 모두 sub-modal 통과 (DOM 차단 없음) + 메인 저장 서버 오류
         # 진단 격리: 500자만 단독 (한글/특수와 분리)
-        page.navigate_to_clean()
-        page.open_add_modal()
-        page.set_csu_name("[AUTO]_sc3_step13_cache500")
-        page.click_individual_process_tab()
-        page.click_add_process_btn()
-        page.process.wait_open()
-        page.process.click_pick_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="single")
+        self._ckpt()   # 행위 저널
+        self._act("제어스위트 추가 모달 — 정책 이름 입력",
+                  lambda: (page.navigate_to_clean(), page.open_add_modal(),
+                           page.set_csu_name("[AUTO]_sc3_step13_cache500")))
+        self._act("개별 프로세스 탭 — 프로세스 선택(picker)",
+                  lambda: (page.click_individual_process_tab(), page.click_add_process_btn(),
+                           page.process.wait_open(), page.process.click_pick_btn(),
+                           page.picker.wait_open(), page.picker.select_first_and_confirm(mode="single")))
         if page.feature_exists(page.process.SEL_CACHE_INPUT, timeout=1000):
-            page.process.set_cache_input("a" * 500)
-            page.process.click_cache_add_btn()
-            _f1 = self._shot("cache500_proc_input", highlight=page.page.locator(page.process.SEL_CACHE_INPUT).first,
-                             caption="1. 캐시폴더 cacheFolderInput 500자 입력 — process_modal 통과(클라이언트 글자수 가드 없음)")
-            page.process.confirm()
-            # 메인 저장 → 서버 오류 기대
-            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
-            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
-                state="attached", timeout=page._TIMEOUT_MODAL
-            )
+            self._act("캐시폴더 cacheFolderInput 500자 입력 — process_modal 통과(클라이언트 글자수 가드 없음)",
+                      lambda: (page.process.set_cache_input("a" * 500),
+                               page.process.click_cache_add_btn()),
+                      shot_target=page.page.locator(page.process.SEL_CACHE_INPUT).first)
+            self._act("프로세스 등록 확인 — sub-modal 닫힘",
+                      lambda: page.process.confirm())
+            self._act("메인 저장 → 알림 대기",
+                      lambda: (page._click(page.page.locator(page.SEL_SUBMIT_ADD).first),
+                               page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                                   state="attached", timeout=page._TIMEOUT_MODAL)))
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
             _st = "warn" if defect_found else "pass"
-            _shots = [_f1, self._shot("cache500_proc_srv_err",
-                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
             self._add(_st,
                       "[UX 결함] 프로세스별 제어 (개별 프로세스) - 캐시폴더 지정 cacheFolderInput 500자 → 메인 저장 서버 오류 (process_modal 단계에서 글자수 차단되어야 정상)",
                       f"입력: cache 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
-                      screenshots=_shots,
                       merge_key=f"csu_srv_err::cache500_proc::{_st}::raw_server_error_no_client_guard",
                       repro="1. 개별 프로세스 캐시폴더(cacheFolderInput) 500자 입력\n"
                             "2. process_modal 통과 — 클라이언트 글자수 가드 없음\n"
@@ -1850,34 +1830,31 @@ class TestScenario3Action(ControlSuiteBase):
 
         # ── Case L: 태그 mode drive letter 100자 → 메인 저장 서버 오류 (yaml :404 process 동일) ──
         # 신규 추가 — 태그 영역도 process 와 동일 UX 결함 적용 검증
-        page.navigate_to_clean()
-        page.open_add_modal()
-        page.set_csu_name("[AUTO]_sc3_step14_tag_drv100")
-        page.click_tag_tab()
-        page.click_add_process_btn()
-        page.process.wait_open()
-        page.process.click_pick_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="tag")
+        self._ckpt()   # 행위 저널
+        self._act("제어스위트 추가 모달 — 정책 이름 입력",
+                  lambda: (page.navigate_to_clean(), page.open_add_modal(),
+                           page.set_csu_name("[AUTO]_sc3_step14_tag_drv100")))
+        self._act("태그 탭 — 태그 선택(picker)",
+                  lambda: (page.click_tag_tab(), page.click_add_process_btn(),
+                           page.process.wait_open(), page.process.click_pick_btn(),
+                           page.picker.wait_open(), page.picker.select_first_and_confirm(mode="tag")))
         if page.feature_exists(page.process.SEL_TOGGLE_ACCESS_DRIVE, timeout=1000):
-            page.process.set_access_drive(True)
-            page.process.set_drive_letter("a" * 100)
-            _f1 = self._shot("letter100_tag_input", highlight=page.page.locator(page.process.SEL_DRIVE_LETTER).first,
-                             caption="1. 태그 mode 접근 드라이브 letter 100자 입력 — sub-modal 통과(클라이언트 가드 없음)")
-            page.process.confirm()
-            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
-            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
-                state="attached", timeout=page._TIMEOUT_MODAL
-            )
+            self._act("태그 mode 접근 드라이브 letter 100자 입력 — sub-modal 통과(클라이언트 가드 없음)",
+                      lambda: (page.process.set_access_drive(True),
+                               page.process.set_drive_letter("a" * 100)),
+                      shot_target=page.page.locator(page.process.SEL_DRIVE_LETTER).first)
+            self._act("태그 등록 확인 — sub-modal 닫힘",
+                      lambda: page.process.confirm())
+            self._act("메인 저장 → 알림 대기",
+                      lambda: (page._click(page.page.locator(page.SEL_SUBMIT_ADD).first),
+                               page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                                   state="attached", timeout=page._TIMEOUT_MODAL)))
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
             _st = "warn" if defect_found else "pass"
-            _shots = [_f1, self._shot("letter100_tag_srv_err",
-                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
             self._add(_st,
                       "[UX 결함] 프로세스별 제어 (태그) - 접근 드라이브 letter 100자 → 메인 저장 시 서버 오류 (개별 프로세스 동일 패턴, yaml :404)",
                       f"입력: 태그 mode + letter 100자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
-                      screenshots=_shots,
                       merge_key=f"csu_srv_err::letter100_tag::{_st}::raw_server_error_no_client_guard",
                       repro="1. 태그 mode 접근 드라이브 letter 100자 입력\n"
                             "2. sub-modal 통과 — 클라이언트 가드 없음\n"
@@ -1889,35 +1866,34 @@ class TestScenario3Action(ControlSuiteBase):
 
         # ── Case M: 태그 mode Port -1 → 메인 저장 서버 오류 (yaml :403 process 동일) ──
         # 신규 추가 — 태그 영역 Port 같은 UX 결함 검증
-        page.navigate_to_clean()
-        page.open_add_modal()
-        page.set_csu_name("[AUTO]_sc3_step15_tag_port_m1")
-        page.click_tag_tab()
-        page.click_add_process_btn()
-        page.process.wait_open()
-        page.process.click_pick_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="tag")
-        page.process.set_pnetwork(True)
-        page.process.add_ip_port("192.168.99.1", "-1")
-        if page.is_confirm_modal_visible(timeout=1500):
-            page.dismiss_confirm_modal()
-        _f1 = self._shot("port_neg_tag_input", highlight=page.page.locator(page.process.SEL_IP_LIST_ITEM).first,
-                         caption="1. 태그 mode 허용 IP/Port 에 Port=-1 입력 — sub-modal 통과(클라이언트 가드 없음)")
-        page.process.confirm()
-        page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
-        page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
-            state="attached", timeout=page._TIMEOUT_MODAL
-        )
+        self._ckpt()   # 행위 저널
+        self._act("제어스위트 추가 모달 — 정책 이름 입력",
+                  lambda: (page.navigate_to_clean(), page.open_add_modal(),
+                           page.set_csu_name("[AUTO]_sc3_step15_tag_port_m1")))
+        self._act("태그 탭 — 태그 선택(picker)",
+                  lambda: (page.click_tag_tab(), page.click_add_process_btn(),
+                           page.process.wait_open(), page.process.click_pick_btn(),
+                           page.picker.wait_open(), page.picker.select_first_and_confirm(mode="tag")))
+        def _tag_port_input():
+            page.process.set_pnetwork(True)
+            page.process.add_ip_port("192.168.99.1", "-1")
+            if page.is_confirm_modal_visible(timeout=1500):
+                page.dismiss_confirm_modal()
+        self._act("태그 mode 허용 IP/Port 에 Port=-1 입력 — sub-modal 통과(클라이언트 가드 없음)",
+                  _tag_port_input,
+                  shot_target=page.page.locator(page.process.SEL_IP_LIST_ITEM).first)
+        self._act("태그 등록 확인 — sub-modal 닫힘",
+                  lambda: page.process.confirm())
+        self._act("메인 저장 → 알림 대기",
+                  lambda: (page._click(page.page.locator(page.SEL_SUBMIT_ADD).first),
+                           page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                               state="attached", timeout=page._TIMEOUT_MODAL)))
         msg = page.get_confirm_message()
         defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
         _st = "warn" if defect_found else "pass"
-        _shots = [_f1, self._shot("port_neg_tag_srv_err",
-                                  caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
         self._add(_st,
                   "[UX 결함] 프로세스별 제어 (태그) - 허용 IP/Port Port=-1 → 메인 저장 시 서버 오류 (개별 프로세스 동일 패턴, yaml :403)",
                   f"입력: 태그 mode + Port='-1' + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
-                  screenshots=_shots,
                   merge_key=f"csu_srv_err::port_neg_tag::{_st}::raw_server_error_no_client_guard",
                   repro="1. 태그 mode 허용 IP/Port 에 Port=-1 입력\n"
                         "2. sub-modal 통과 — 클라이언트 가드 없음\n"
@@ -1982,34 +1958,31 @@ class TestScenario3Action(ControlSuiteBase):
         # ── Case P: 태그 mode 캐시폴더 500자 → 메인 저장 서버 오류 (UX 결함, yaml :112) ──
         # 신규 추가 — yaml :112 "모드 변경만 다름. UI 요소는 14필드 + cache_folder + 라디오 모두 동일"
         # 태그 모드도 개별 프로세스와 동일하게 cache_folder UX 결함 적용 검증
-        page.navigate_to_clean()
-        page.open_add_modal()
-        page.set_csu_name("[AUTO]_sc3_step18_tag_cache500")
-        page.click_tag_tab()
-        page.click_add_process_btn()
-        page.process.wait_open()
-        page.process.click_pick_btn()
-        page.picker.wait_open()
-        page.picker.select_first_and_confirm(mode="tag")
+        self._ckpt()   # 행위 저널
+        self._act("제어스위트 추가 모달 — 정책 이름 입력",
+                  lambda: (page.navigate_to_clean(), page.open_add_modal(),
+                           page.set_csu_name("[AUTO]_sc3_step18_tag_cache500")))
+        self._act("태그 탭 — 태그 선택(picker)",
+                  lambda: (page.click_tag_tab(), page.click_add_process_btn(),
+                           page.process.wait_open(), page.process.click_pick_btn(),
+                           page.picker.wait_open(), page.picker.select_first_and_confirm(mode="tag")))
         if page.feature_exists(page.process.SEL_CACHE_INPUT, timeout=1000):
-            page.process.set_cache_input("a" * 500)
-            page.process.click_cache_add_btn()
-            _f1 = self._shot("cache500_tag_input", highlight=page.page.locator(page.process.SEL_CACHE_INPUT).first,
-                             caption="1. 태그 mode 캐시폴더 cacheFolderInput 500자 입력 — process_modal 통과(클라이언트 글자수 가드 없음)")
-            page.process.confirm()
-            page._click(page.page.locator(page.SEL_SUBMIT_ADD).first)
-            page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
-                state="attached", timeout=page._TIMEOUT_MODAL
-            )
+            self._act("태그 mode 캐시폴더 cacheFolderInput 500자 입력 — process_modal 통과(클라이언트 글자수 가드 없음)",
+                      lambda: (page.process.set_cache_input("a" * 500),
+                               page.process.click_cache_add_btn()),
+                      shot_target=page.page.locator(page.process.SEL_CACHE_INPUT).first)
+            self._act("태그 등록 확인 — sub-modal 닫힘",
+                      lambda: page.process.confirm())
+            self._act("메인 저장 → 알림 대기",
+                      lambda: (page._click(page.page.locator(page.SEL_SUBMIT_ADD).first),
+                               page.page.locator(page.SEL_CONFIRM_MODAL_OPEN).first.wait_for(
+                                   state="attached", timeout=page._TIMEOUT_MODAL)))
             msg = page.get_confirm_message()
             defect_found = ("서버" in msg and "오류" in msg) or "발생" in msg
             _st = "warn" if defect_found else "pass"
-            _shots = [_f1, self._shot("cache500_tag_srv_err",
-                                      caption="2. 메인 저장 → '서버에서 오류가 발생 하였습니다' (백엔드에서만 차단)")] if defect_found else None
             self._add(_st,
                       "[UX 결함] 프로세스별 제어 (태그) - 캐시폴더 지정 cacheFolderInput 500자 → 메인 저장 서버 오류 (개별 프로세스 동일 패턴, yaml :112)",
                       f"입력: 태그 mode + cache 500자 + 정책 저장 / 결과: 메시지={msg!r}", sc=3,
-                      screenshots=_shots,
                       merge_key=f"csu_srv_err::cache500_tag::{_st}::raw_server_error_no_client_guard",
                       repro="1. 태그 mode 캐시폴더 500자 입력\n"
                             "2. process_modal 통과 — 클라이언트 글자수 가드 없음\n"
