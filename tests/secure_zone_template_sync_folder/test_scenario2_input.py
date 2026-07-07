@@ -217,3 +217,41 @@ class TestSecureZoneTemplateSyncFolderScenario2Input(SecureZoneTemplateSyncFolde
                   repro="1. 스케줄 '매일' 선택\n2. 하위필드 속성/기본값 확인")
         page.close_content_modal()
         page.close_folder_modal()
+
+    # ══ sc2g: 숫자 필드 형식 수용 + 조건부 원본삭제 토글 (기본 검증 전수 — 2026-07-07) ══
+    def test_scenario2g_numeric_and_conditional_toggles(self, logged_in_page, settings):
+        """숫자 필드(파일용량/분주기/일주기)에 문자·음수 입력 수용 여부(형식 필터 실측)
+        + 미커버였던 isOriginRemoveSchedule/Realtime 존재·초기값."""
+        print("\n━━ [폴더동기화] sc2g: 숫자 필드 형식 + 원본삭제 토글 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        self._open_content(page)
+
+        # 숫자 필드 형식 수용 — fill 후 input_value (클라 숫자 필터 유무 실측 수집)
+        numeric = [("파일 용량", page.SEL_C_FILE_LIMIT, None),
+                   ("분 주기", page.SEL_C_MINUTES, "MINUTES"),
+                   ("일 주기", page.SEL_C_DAYS, "DAYS")]
+        for label, sel, sched in numeric:
+            if sched:
+                page.set_schedule_type(sched)
+            got = {}
+            for probe in ("abc", "-1", "0"):
+                page.fill(sel, probe)
+                got[probe] = page.page.locator(sel).first.input_value()
+                page.fill(sel, "")
+            self._add("pass", f"sc2g — {label} 형식 수용 실측(문자/음수/0)",
+                      f"입력: 'abc'/'-1'/'0' / 수용값: {got} "
+                      "(클라 숫자 필터 유무 — 저장 시 처리는 sc3u)", sc=2,
+                      repro=f"1. {label} 에 문자/음수/0 입력\n2. 실제 수용값 확인")
+        page.set_schedule_type("NONE")
+
+        # 조건부 원본삭제 토글 2종 — 존재 + 초기값 (기본 검증 미커버였던 필드)
+        for label, sel in (("스케줄시 원본삭제", page.SEL_C_ORIGIN_RM_SCHED),
+                           ("실시간시 원본삭제", page.SEL_C_ORIGIN_RM_REAL)):
+            present = page.field_present(sel)
+            checked = page.page.locator(sel).first.is_checked() if present else None
+            self._add("pass" if present and not checked else "warn",
+                      f"sc2g — {label} 존재 + 초기값 OFF",
+                      f"결과: 존재={present}, 초기 체크={checked}", sc=2)
+        page.close_content_modal()
+        page.close_folder_modal()

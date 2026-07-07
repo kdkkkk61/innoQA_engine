@@ -604,3 +604,51 @@ class TestSecureZoneTemplateSyncFolderScenario3Action(SecureZoneTemplateSyncFold
                   repro="1. 설정명에 특수문자\n2. 추가\n3. 허용/차단 여부")
         page.close_content_modal()
         page.close_folder_modal()
+
+    # ── sc3u: 스케줄 하위 required/경계 저장 (기본 검증 전수 — 2026-07-07) ──
+    def test_scenario3u_schedule_required_boundary(self, logged_in_page, settings):
+        """스케줄 타입별 하위필드 미입력/경계 저장 시 처리 — 미실측 수집(추정 금지):
+        매분+분주기 빈값 / 매분+분주기 0 / 매주+요일 0개. (sc3e 는 정상값 커밋만 확인)"""
+        print("\n━━ [폴더동기화] sc3u: 스케줄 하위 required/경계 저장 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.ensure_template(self._TPL)
+
+        cases = [
+            ("MINUTES", "매분 + 분주기 빈값", "sync_u_min_e", lambda: None),
+            ("MINUTES", "매분 + 분주기 0",   "sync_u_min_0",
+             lambda: page.fill(page.SEL_C_MINUTES, "0")),
+            ("WEEKS",   "매주 + 요일 0개",   "sync_u_week_0", lambda: None),
+        ]
+        for stype, desc, iname, fill_sub in cases:
+            self._ckpt()
+
+            def _enter(stype=stype, iname=iname, fill_sub=fill_sub):
+                page.navigate_to_clean()   # 상태 리셋(F5) — 재생 가능 조건
+                page.open_folder_modal(self._TPL)
+                page.open_content_add()
+                page.fill(page.SEL_C_NAME, iname)
+                page.pick_path("source", 0)
+                page.pick_path("target", 1)
+                page.set_schedule_type(stype)
+                fill_sub()
+            self._act(f"내용 모달 — {desc} 상태 구성", _enter,
+                      shot_target=page.page.locator(page.SEL_C_SCHEDULE).first)
+            before = page.folder_item_count()
+            self._act("추가 클릭 → 처리 결과(차단/커밋 수집)",
+                      lambda: self._content_add_wait_alert(page))
+            msg = (page.get_modal_message()
+                   if page.page.locator(page.SEL_CONFIRM_MODAL_OPENED).count() > 0 else "")
+            after = page.folder_item_count()
+            committed = after == before + 1
+            raw_err = ("서버" in msg and "오류" in msg)
+            st = "warn" if raw_err else "pass"
+            self._add(st,
+                      f"sc3u — {desc} 저장 → 처리(수집)",
+                      f"입력: {desc} + 추가 / 결과: 경고={msg!r}, 커밋={committed}"
+                      + (" [raw 서버 오류]" if raw_err else ""), sc=3,
+                      merge_key=(f"szsync_sched_req::{desc}::warn::raw_server_error" if raw_err else None),
+                      repro=f"1. 내용 모달 {desc}\n2. 추가\n3. 차단 메시지/커밋 여부 확인")
+            self._dismiss_alert_if_open(page)
+            page.close_content_modal()
+            page.close_folder_modal()

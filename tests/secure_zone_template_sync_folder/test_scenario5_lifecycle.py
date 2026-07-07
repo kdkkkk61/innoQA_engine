@@ -39,9 +39,16 @@ class TestSecureZoneTemplateSyncFolderScenario5Lifecycle(SecureZoneTemplateSyncF
             page.set_schedule_type("WEEKS")
             page.page.locator("input#checkMon").first.evaluate(
                 "el => { if (!el.checked) el.click(); }")
+            # 전체 필드 채움 — roundtrip 전수(기본 검증: 모든 저장 가능 필드)
+            page.fill(page.SEL_C_EXT_LIST, "txt;doc")
+            page.page.locator(page.SEL_C_EXT_HEADER).first.evaluate(
+                "el => { if (!el.checked) el.click(); }")
+            page.fill(page.SEL_C_FILE_LIMIT, "10")
+            page.page.locator(page.SEL_C_REALTIME).first.evaluate(
+                "el => { if (!el.checked) el.click(); }")
             page.fill(page.SEL_C_DESC, _DESC)
             page.content_add_message()
-        # ① 재오픈 — 요소별 round-trip
+        # ① 재오픈 — 요소별 round-trip (저장 가능 필드 전수)
         page.open_folder_item_edit(_ITEM)
         checks = {
             "설정명":   page.page.locator(page.SEL_C_NAME).first.input_value() == _ITEM,
@@ -49,6 +56,11 @@ class TestSecureZoneTemplateSyncFolderScenario5Lifecycle(SecureZoneTemplateSyncF
             "스케줄(매주)": page.page.locator(page.SEL_C_SCHEDULE).first.evaluate("el => el.value") == "WEEKS",
             "요일(월)":  page.page.locator("input#checkMon").first.is_checked(),
             "원본위치":  "[/DESKTOP/]" in (page.page.locator(page.SEL_C_SOURCE).first.inner_text() or ""),
+            "대상위치":  "[/MYDOC/]" in (page.page.locator(page.SEL_C_TARGET).first.inner_text() or ""),
+            "확장자 목록": "txt" in page.page.locator(page.SEL_C_EXT_LIST).first.input_value(),
+            "헤더 체크(ON)": page.page.locator(page.SEL_C_EXT_HEADER).first.is_checked(),
+            "파일 용량":  page.page.locator(page.SEL_C_FILE_LIMIT).first.input_value() == "10",
+            "실시간 동기화(ON)": page.page.locator(page.SEL_C_REALTIME).first.is_checked(),
         }
         page.close_content_modal()
         page.close_folder_modal()
