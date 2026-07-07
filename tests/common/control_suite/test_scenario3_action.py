@@ -923,8 +923,20 @@ class TestScenario3Action(ControlSuiteBase):
                       f"입력: 같은 확장자 재추가 / 결과: 알림 없음", sc=3)
 
         # ── Case 3: URL 중복 (yaml 386) — 차단 동작 + 메시지 일관성 분리 (sc4l 과 대칭) ──
-        page.web_restrict.add_url("naver.com")
-        page.web_restrict.add_url("naver.com")  # 중복
+        # 행위 저널 — Case 7 이 같은 모달을 이어 쓰므로 재진입 불가 → URL 태그 제거로 블록 리셋.
+        self._ckpt()
+
+        def _url_reset():
+            # 1차: naver.com 미등록 → no-op / 재생: 잔여 알림 닫고 기존 태그 제거(깨끗한 상태)
+            if page.is_confirm_modal_visible(timeout=300):
+                page.dismiss_confirm_modal()
+            page.web_restrict.remove_url("naver.com")
+        self._act("적용 URL 초기화(잔여 'naver.com' 제거)", _url_reset)
+        self._act("적용 URL 'naver.com' 추가",
+                  lambda: page.web_restrict.add_url("naver.com"),
+                  shot_target=page.page.locator(page.web_restrict.SEL_URL_LIST_TAG).first)
+        self._act("같은 URL 'naver.com' 재추가 — 중복 알림 대기",
+                  lambda: page.web_restrict.add_url("naver.com"))
         if page.is_confirm_modal_visible():
             msg = page.get_confirm_message()
             # ⚠ 사용자 지적 (2026-05-28): dismiss 전에 _add → 스크린샷에 알림 상태 캡처
@@ -2078,16 +2090,39 @@ class TestScenario3Action(ControlSuiteBase):
         # 정리 — process_modal cancel 시 어차피 폐기되므로 별도 cache 제거 불필요
 
         # ── (c) IP/Port 삭제 후 동일값 재추가 잘못된 중복 (yaml :197/264 ux_bug) ─
-        page.process.set_pnetwork(True)
+        # 행위 저널 — (a)(b) 세션과 분리한 자체 process_modal 세션(재생 가능 블록).
+        # 잔류 li 가 곧 버그라 세션 내 리셋 불가 → 블록 첫 행위 = 모달 재진입(깨끗한 세션).
+        self._ckpt()
         DUP_IP, DUP_PORT = "192.168.99.99", "8888"
-        page.process.add_ip_port(DUP_IP, DUP_PORT)
-        if page.is_confirm_modal_visible(timeout=500):
-            page.dismiss_confirm_modal()
+
+        def _fresh_process_modal():
+            # 1차: (a)(b) 세션 닫고 재진입 / 재생: 잔여 알림 닫고 재진입 — 둘 다 깨끗한 세션 보장
+            if page.is_confirm_modal_visible(timeout=300):
+                page.dismiss_confirm_modal()
+            if page.page.locator(page.process.SEL_MODAL_OPEN).count() > 0:
+                page.process.close()
+            page.click_add_process_btn()
+            page.process.wait_open()
+            page.process.click_pick_btn()
+            page.picker.wait_open()
+            page.picker.select_first_and_confirm(mode="single")
+
+        def _add_dup_ip():
+            page.process.set_pnetwork(True)
+            page.process.add_ip_port(DUP_IP, DUP_PORT)
+            if page.is_confirm_modal_visible(timeout=500):
+                page.dismiss_confirm_modal()
+        self._act("process_modal 재진입 — 프로세스 선택(깨끗한 세션)", _fresh_process_modal)
+        self._act(f"허용 IP/Port {DUP_IP}:{DUP_PORT} 추가",
+                  _add_dup_ip,
+                  shot_target=page.page.locator(page.process.SEL_IP_LIST_ITEM).first)
         ip_after_add = page.process.get_ip_list()
-        page.process.remove_ip_port(DUP_IP, DUP_PORT)
+        self._act("같은 IP/Port 삭제(행 제거)",
+                  lambda: page.process.remove_ip_port(DUP_IP, DUP_PORT))
         ip_after_del = page.process.get_ip_list()
         # 재추가 → 잘못된 '이미 등록' 알림 기대 (display:none 잔류 li 가 dup-check 통과 못 함)
-        page.process.add_ip_port(DUP_IP, DUP_PORT)
+        self._act("동일값 재추가 — 삭제됐는데 중복 판정되면 결함",
+                  lambda: page.process.add_ip_port(DUP_IP, DUP_PORT))
         if page.is_confirm_modal_visible(timeout=1500):
             msg_c = page.get_confirm_message()
             is_dup_msg = ("이미 등록" in msg_c) and ("IP" in msg_c.upper() or "Port" in msg_c)
