@@ -1,0 +1,65 @@
+# 시큐어존 템플릿 — 폴더동기화 '내용 모달' sc0 전용 스키마.
+# UIScanner yaml↔DOM diff 입력만 담당 (모달 달라 page_id 분리).
+#
+# ★설계 (2026-07-07, 사용자 지적 반영):
+#   조건부 필드(스케줄 매분/매일/매주에서만 노출: minutes/days/executeHour/executeMinute/요일/원본삭제)는
+#   DOM 에는 항상 존재(display:none) → yaml 에서 빼면 오히려 "discovered_new(신규)" 오탐.
+#   → 전부 **등재하되**, 조건부/select 은 add_modal.fields(diff 만, UI 검증 미트리거)로 선언.
+#      (text_inputs 로 넣으면 select 에 '초기값 빈값' 텍스트 검증이 걸려 오탐 — 실측 2026-07-07)
+#   → detect_hidden: false — 조건부 필드가 기본(NONE)상태에서 숨김이라 detect_hidden 켜면 상시 노이즈.
+#   "어떤 상황에서 노출되는지"(조건부 동작)는 sc1e/sc2d 가 검증. sc0 = 정적 존재 확인.
+#
+# 제외(DOM id 추출 대상 아님 → 애초에 diff 에 안 잡힘): div#sourcePath/destinationPath(contenteditable),
+#   isExtensionInclude radio(id 없음).
+#
+# 수집: Chrome 직접조작 (2026-07-07, 콘솔 192.168.13.141)
+
+page_id: "secure_zone_template_sync_folder_content"
+modal_id: "addModifySecureZoneSyncFolder"
+scan_mode: "list_page"
+detect_hidden: false
+
+# ── 항상 노출 + UI 검증 대상 ──
+text_inputs:
+  - {selector: "input#syncFolderName",       label: "설정명"}
+  - {selector: "textarea#extensionIncludes", label: "확장자 목록(포함/제외)"}
+  - {selector: "input#fileLimitSize",        label: "파일 용량"}
+  - {selector: "textarea#description",       label: "설명"}
+radio_groups:
+  - name: "항목 상태"
+    options:
+      - {selector: "input#CREATE", label: "활성"}
+      - {selector: "input#DELETE", label: "비활성"}
+plain_checkboxes:
+  - {selector: "input#isExtensionIncludeHeaderCheck", label: "확장자 헤더 체크"}
+  - {selector: "input#isRealTime",                    label: "실시간 동기화"}
+  - {selector: "input#isRemoveFolder",                label: "폴더 삭제"}
+  - {selector: "input#isStartAutoSchedule",           label: "시작시 스케줄"}
+
+# ── 조건부/select = diff 만 (UI 검증 미트리거) : discovered_new 방지 ──
+add_modal:
+  fields:
+    - {selector: "select#syncFolderScheduleType", label: "스케줄 동작(없음/매분/매일/매주)"}
+    - {selector: "select#executeHour",   label: "실행 시각(시) — 매일/매주"}
+    - {selector: "select#executeMinute", label: "실행 시각(분) — 매일/매주"}
+    - {selector: "input#minutes",        label: "분 주기 — 매분"}
+    - {selector: "input#days",           label: "일 주기 — 매일"}
+    - {selector: "input#checkSun", label: "요일:일 — 매주"}
+    - {selector: "input#checkMon", label: "요일:월 — 매주"}
+    - {selector: "input#checkTue", label: "요일:화 — 매주"}
+    - {selector: "input#checkWed", label: "요일:수 — 매주"}
+    - {selector: "input#checkThu", label: "요일:목 — 매주"}
+    - {selector: "input#checkFri", label: "요일:금 — 매주"}
+    - {selector: "input#checkSat", label: "요일:토 — 매주"}
+    - {selector: "input#isOriginRemoveSchedule",  label: "스케줄시 원본삭제 — 조건부"}
+    - {selector: "input#isOriginRemoveRealtime",  label: "실시간시 원본삭제 — 조건부"}
+
+# ── 문서형 참조 (스캔 대상 아님) ──
+content_fields_doc:
+  source_target: "div#sourcePath / div#destinationPath (contenteditable, '특수폴더' picker=selectReservedWordControl)"
+  ext_include:   "input[name=isExtensionInclude] radio ×2 (포함/제외, id 없음)"
+  schedule_conditional:
+    NONE:    "스케줄 하위필드 없음"
+    MINUTES: "input#minutes"
+    DAYS:    "select#executeHour + select#executeMinute + input#days"
+    WEEKS:   "select#executeHour + select#executeMinute + input#checkSun~checkSat(요일 7)"

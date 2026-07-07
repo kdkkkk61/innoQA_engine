@@ -10,6 +10,7 @@
 | 문서 | 태그 |
 |------|------|
 | `docs/test_scenario_standard.md` | [기본 경로 — 필독] |
+| `docs/scenario_0_scan.md` | [기본 경로 — sc0 UIScanner 스캔·삭제/숨김 감지·스키마 제외정책] |
 | `docs/scenario_N_*.md` (1~6) | [기본 경로] |
 | `docs/architecture.md` | [공통 — 새 pages/ 파일 추가 시] [공통 — docs/ 파일 작성·수정 시] |
 | `docs/scan-architecture.md` | [공통 — 새 pages/ 파일 추가 시] [공통 — 새 test_*.py 파일 추가 시] [공통 — UIScanner 통합 결정 시] |

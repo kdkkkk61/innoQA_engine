@@ -1,0 +1,68 @@
+# 시큐어존 템플릿 — 폴더동기화 탭 (SYNC_FOLDER) : 방식 B (list_page + sc0 UIScanner)
+#
+# sc0(UIScanner phase=2)의 yaml↔DOM diff 입력 + 참조 메모.
+# 1단계(껍데기) ADD 모달(addModifySecureZoneSyncFolderTemplate)을 스캔.
+# ⚠️ 폴더 항목(설정명/원본/대상/스케줄...)은 '2단계 내용 모달'에 있어 1단계 스캔엔 안 잡힘
+#    → content yaml(secure_zone_template_sync_folder_content.yaml) 이 담당.
+#
+# 수집: Chrome 직접조작 (2026-07-07, 콘솔 192.168.13.141)
+
+page_id: "secure_zone_template_sync_folder"
+modal_id: "addModifySecureZoneSyncFolderTemplate"
+scan_mode: "list_page"
+# detect_hidden: false — 단일 타입 radio(input#SYNC_FOLDER)가 display:none(선택지 없음, 자동 지정)이라
+#   detect_hidden 켜면 상시 discovered_hidden 오탐. 1단계엔 조건부 필드 없어 hidden 감지 실익 없음.
+detect_hidden: false
+
+modal_trigger:
+  add:    "button#addItemBtn"
+  modify: "button#modifyItemBtn"
+list_toolbar:
+  add:            "템플릿 추가 (button#addItemBtn)"
+  modify:         "수정 (button#modifyItemBtn)"
+  folder_add_del: "폴더 추가/제거 (button#syncFolderAddDeleteBtn) — 폴더동기화 탭 전용 2단계 진입"
+  copy:           "복사"
+  remove:         "삭제"
+filters:
+  type:   "전체 / 폴더 동기화 (szTemplateType)"
+  status: "상태 / 활성 / 비활성"
+  search: "input#searchText (템플릿 이름)"
+
+# ── 1단계 모달 (껍데기) addModifySecureZoneSyncFolderTemplate ──
+# 실측 2026-07-07. 이름 + 타입(SYNC_FOLDER 단일, 용도 분기 없음) + 상태.
+stage1_fields:
+  - {selector: "input#templateName", label: "템플릿 이름", required: true, order: 10}
+  - selector: "input#SYNC_FOLDER"
+    label:    "템플릿 타입 (szTemplateType radio, 단일 — 특수폴더의 SHORTCUT/REGIST 같은 용도 분기 없음)"
+  - selector: "input#CREATE | input#INACTIVE"
+    label:    "상태 (status radio)"
+    values:   "CREATE(표시:활성, 기본) / INACTIVE(표시:비활성)"
+stage1_save: "확인(추가) / 재오픈 시 수정"
+
+# ── UIScanner sc0 스키마 (yaml↔DOM diff 입력 — core/scan_diff.extract_yaml_selectors) ──
+text_inputs:
+  - {selector: "input#templateName", label: "템플릿 이름"}
+radio_groups:
+  - name: "szTemplateType(타입)"
+    options:
+      - {selector: "input#SYNC_FOLDER", label: "폴더 동기화"}
+  - name: "status(상태)"
+    options:
+      - {selector: "input#CREATE",   label: "활성"}
+      - {selector: "input#INACTIVE", label: "비활성"}
+
+# ── 2단계 흐름 (행 선택 → 폴더 추가/제거 → 내용 모달) ──
+stage2_flow:
+  open: "행 선택(tActive) → button#syncFolderAddDeleteBtn"
+  folder_modal:
+    id:      "addDeleteSecureZoneSyncFolder"
+    title:   "폴더동기화 추가/삭제"
+    buttons: ["+(addItemBtn)", "-(removeItemBtn)", "닫기"]
+  content_modal_add: "+(addItemBtn) → 내용 모달 addModifySecureZoneSyncFolder (content yaml 참조)"
+
+# ── 시나리오별 방향성 ──
+scenario_focus:
+  sc0: "1단계 모달(1a) + 내용 모달(0b, content yaml) yaml↔DOM diff — 추가/삭제/숨김 감지"
+  sc1: "폴더동기화 탭 UI(툴바·필터·컬럼·1단계/2단계 모달) + ★스케줄 조건부 노출(1e)"
+  sc2: "입력구조(1단계 이름·상태 / 내용모달 설정명·원본·대상·스케줄타입별 조건부 필드)"
+  sc3: "동작(템플릿 CRUD / 폴더 매핑 추가 / 예약어 picker / 스케줄 설정 / 복사 / 검색)"
