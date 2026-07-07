@@ -152,3 +152,68 @@ class TestSecureZoneTemplateSyncFolderScenario2Input(SecureZoneTemplateSyncFolde
                       repro="1. 스케줄 '없음' → 하위필드 숨김\n2. '매주' → 요일 체크 노출")
         page.close_content_modal()
         page.close_folder_modal()
+
+    # ══ sc2e: 내용 모달 초기값 스냅샷 (최다 필드 탭 — 표준 '모든 필드 초기값') ══
+    def test_scenario2e_content_defaults(self, logged_in_page, settings):
+        """내용 모달 초기값: 텍스트류 빈값 / 스케줄=없음 / 상태=활성 / 토글류 전부 OFF."""
+        print("\n━━ [폴더동기화] sc2e: 내용 모달 초기값 스냅샷 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        self._open_content(page)
+
+        texts = {"설정명": page.SEL_C_NAME, "확장자 목록": page.SEL_C_EXT_LIST,
+                 "파일 용량": page.SEL_C_FILE_LIMIT, "설명": page.SEL_C_DESC}
+        text_vals = {k: page.page.locator(s).first.input_value() for k, s in texts.items()}
+        empties_ok = all(v == "" for v in text_vals.values())
+        self._add("pass" if empties_ok else "warn",
+                  "sc2e — 텍스트 필드 초기값 빈값(설정명/확장자/파일용량/설명)",
+                  f"결과: {text_vals}", sc=2)
+
+        sched = page.page.locator(page.SEL_C_SCHEDULE).first.evaluate("el => el.value")
+        create_on = page.page.locator(page.SEL_C_STATUS_CREATE).first.is_checked()
+        self._add("pass" if (sched == "NONE" and create_on) else "warn",
+                  "sc2e — 초기값: 스케줄=없음 / 상태=활성",
+                  f"결과: 스케줄={page.sched_ko(sched)!r}, 활성={create_on}", sc=2)
+
+        toggles = {"실시간 동기화": page.SEL_C_REALTIME, "폴더 삭제": page.SEL_C_REMOVE_FOLDER,
+                   "시작시 스케줄": page.SEL_C_START_AUTO, "확장자 헤더체크": page.SEL_C_EXT_HEADER}
+        tog_vals = {k: page.page.locator(s).first.is_checked() for k, s in toggles.items()}
+        all_off = not any(tog_vals.values())
+        self._add("pass" if all_off else "warn",
+                  "sc2e — 토글류 초기값 전부 OFF",
+                  f"결과: {tog_vals}", sc=2,
+                  repro="1. 내용 모달 진입\n2. 각 필드 초기 상태 확인")
+        page.close_content_modal()
+        page.close_folder_modal()
+
+    # ══ sc2f: 나머지 입력필드 maxlength/속성 (파일용량·확장자·스케줄 하위) ══
+    def test_scenario2f_remaining_field_attrs(self, logged_in_page, settings):
+        """표준 '입력 가능한 모든 필드 maxlength': fileLimitSize/extensionIncludes
+        + 스케줄 하위(minutes maxlength=3 — sc0 발견값 대조 / days / executeHour·Minute 기본값)."""
+        print("\n━━ [폴더동기화] sc2f: 나머지 입력필드 maxlength/속성 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        self._open_content(page)
+
+        for label, sel in (("파일 용량(fileLimitSize)", page.SEL_C_FILE_LIMIT),
+                           ("확장자 목록(extensionIncludes)", page.SEL_C_EXT_LIST)):
+            ml = page.page.locator(sel).first.get_attribute("maxlength")
+            self._add("pass", f"sc2f — {label} maxlength",
+                      f"결과: maxlength={ml!r} " + ("(클라 가드)" if ml is not None else "(null — 서버 측)"), sc=2)
+
+        # 스케줄 하위필드 — 해당 타입 선택 후 속성 확인 (조건부라 노출 상태에서 읽기)
+        page.set_schedule_type("MINUTES")
+        min_ml = page.page.locator(page.SEL_C_MINUTES).first.get_attribute("maxlength")
+        self._add("pass" if min_ml == "3" else "warn",
+                  "sc2f — 분 주기(minutes) maxlength=3 (sc0 발견값 대조)",
+                  f"결과: maxlength={min_ml!r} (기대 '3')", sc=2)
+
+        page.set_schedule_type("DAYS")
+        days_ml = page.page.locator(page.SEL_C_DAYS).first.get_attribute("maxlength")
+        hour_def = page.page.locator(page.SEL_C_EXEC_HOUR).first.evaluate("el => el.value")
+        min_def = page.page.locator(page.SEL_C_EXEC_MIN).first.evaluate("el => el.value")
+        self._add("pass", "sc2f — 일 주기(days) maxlength + 실행 시각 기본값",
+                  f"결과: days maxlength={days_ml!r}, 실행시각 기본={hour_def}:{min_def}", sc=2,
+                  repro="1. 스케줄 '매일' 선택\n2. 하위필드 속성/기본값 확인")
+        page.close_content_modal()
+        page.close_folder_modal()

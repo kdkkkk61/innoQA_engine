@@ -9,9 +9,10 @@ import pytest
 
 from core.models import ScanResult, PageScanReport
 from tests.secure_zone_policy._base import _ss, _r   # 공유 헬퍼(crop 스크린샷 포함)
+from tests.shared_journal import ActionJournalMixin
 
 
-class SecureZoneTemplateSyncFolderBase:
+class SecureZoneTemplateSyncFolderBase(ActionJournalMixin):
     """시큐어존 템플릿(폴더동기화) 공통 base."""
 
     PAGE_ID = "secure_zone_template_sync_folder"
@@ -157,10 +158,14 @@ class SecureZoneTemplateSyncFolderBase:
                     sc = sn * 100 + sub
         except Exception:
             pass
-        cap = self._page if (status in ("fail", "warn") and screenshot) else None
+        # ── 행위 저널 자동 재생 (tests/shared_journal.ActionJournalMixin) ──
+        screenshots = self._journal_frames_for_issue(status, screenshots)
+        cap = self._page if (status in ("fail", "warn") and screenshot
+                             and not screenshots) else None
         t, s = _r(status, label, detail, sc=sc,
                   page=cap,
-                  highlight=highlight if (status in ("fail", "warn") and screenshot) else None,
+                  highlight=highlight if (status in ("fail", "warn") and screenshot
+                                          and not screenshots) else None,
                   repro=repro)
         if merge_key:
             s.extra["merge_key"] = merge_key

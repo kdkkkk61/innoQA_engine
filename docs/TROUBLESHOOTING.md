@@ -5,6 +5,26 @@
 
 ---
 
+## [RESOLVED] 폴더동기화 sc3 저널 — 블록 첫 행위에 상태 리셋 누락 → 재생 1행위에서 예외 중단 — 2026-07-07
+
+- **증상**: sc3k(원본 3000자) warn 카드의 재생 시퀀스가 1프레임 "폴더 추가/제거 → + — 예외로 중단"에서 끝남.
+- **원인**: warn 검출 시점엔 내용 모달이 열려 있는데(서버오류 후 잔존), 블록 첫 행위가
+  `open_folder_modal`(행 선택)이라 열린 모달 위에서 재실행 → 예외. **"블록 첫 행위 = 상태 리셋"
+  규칙(shared_journal docstring)을 sc3 신규 작성에서 누락** — control_suite 는 navigate_to_clean 으로 지켰음.
+- **수정**: sc3 전 저널 블록(9곳) 첫 행위에 `page.navigate_to()`(내부 _close_all_modals 로 모달 전부
+  닫음) 프리픽스.
+- **교훈**: 저널 블록 작성 체크리스트 1번 = 첫 행위가 어떤 잔존 상태에서도 재실행 가능한가.
+  (부가: 예외 중단 프레임 자체는 설계대로 동작 — 끊긴 지점의 화면(3000자 입력 상태)이 그대로 증거로 남음.)
+- **2차 (같은 날)**: navigate_to() 리셋으로도 재생이 act1 에서 재차 예외 중단 — sync_folder 의
+  navigate_to 는 같은 URL 이면 reload 없이 return → **같은 페이지 세션에서 모달 재오픈 시 AngularJS
+  modal 상태 누적으로 open 실패** (control_suite navigate_to_clean docstring 에 기록된 그 이슈).
+  → sync_folder 페이지에 `navigate_to_clean()`(F5+navigate) 신설, 저널 리셋 9곳 전부 교체.
+  + shared_journal 재생 예외를 로그에 print(원인 진단 가능하게 — 이전엔 조용히 중단만 됨).
+- **교훈2**: 저널 리셋은 modal-close 수준이 아니라 **F5 수준**이어야 한다(AngularJS 모달 상태 누적).
+  새 스위트에 저널 도입 시 navigate_to_clean 부터 만들 것.
+
+---
+
 ## [RESOLVED] 행위 저널 재생 — 잔여 alert 미정리로 sc4d 중단 + 후속 warn 카드 프레임 미공유 — 2026-07-07
 
 - **증상**: ①sc4d "[테스트 중단]" — 행stale 저널 재생 후 `save_policy('수정')` 클릭이

@@ -9,6 +9,7 @@ import pytest
 from pathlib import Path
 
 from core.models import ScanResult, PageScanReport
+from tests.shared_journal import ActionJournalMixin
 
 
 # ── 스크린샷 헬퍼 ──────────────────────────────────────────────────
@@ -102,7 +103,7 @@ def _assert_no_fail(lines: list[str], context: str = "") -> None:
         raise AssertionError(f"{context} 실패 항목:\n" + "\n".join(failed))
 
 
-class ControlSuiteBase:
+class ControlSuiteBase(ActionJournalMixin):
     """nPouch 제어 스위트 시나리오 공통 base.
 
     각 시나리오 class 는 이 base 를 상속받아 자기 시나리오 메서드만 정의한다.
@@ -308,40 +309,9 @@ class ControlSuiteBase:
                     sc = sn * 100 + sub
         except Exception:
             pass
-        # ── 행위 저널 자동 재생: warn/fail 검출 + 큐레이션 캡처 없음 + _ckpt 블록 활성 시
-        #    저널 행위들을 그대로 재실행하며 단계별 캡처(캡션=행위 라벨) → 재현 순서 자동 첨부.
-        #    재생은 블록당 1회 — 같은 블록의 후속 warn/fail 카드는 같은 프레임을 공유(재실행 없음).
-        if (status in ("fail", "warn") and not screenshots
-                and getattr(self, "_journal", None)):
-            if not getattr(self, "_journal_replayed", True):
-                self._journal_replayed = True
-                # 재생 전 alert 상태 스냅샷 — 본 흐름이 직접 dismiss 할 alert(서버오류 등)가
-                # 이미 열려 있으면 재생 후에도 그대로 둬야 함(닫으면 본 흐름 dismiss 가
-                # timeout — sc3j 회귀 2026-07-07). 재생이 '새로' 만든 alert 만 정리 대상.
-                _alert_before = False
-                try:
-                    _alert_before = self._page.locator(
-                        "div#__globalMessageModal.in").count() > 0
-                except Exception:
-                    pass
-                self._journal_frames = self._replay_shots(list(self._journal))
-                if not _alert_before:
-                    # 재생이 새로 띄운 alert 정리 (예: no-op 확인의 '수정된 항목이 없습니다'
-                    # — sc4d 중단 원인). 원래 없던 것만 닫아 본 흐름 상태 계약 유지.
-                    try:
-                        _btn = self._page.locator(
-                            "div#__globalMessageModal.in button:has-text('확인')")
-                        if _btn.count() > 0:
-                            _btn.first.evaluate("el => el.click()")
-                            self._page.wait_for_timeout(300)
-                        self._page.evaluate(
-                            "() => { if (!document.querySelector('.modal-wrap.in, .modal.in')) {"
-                            " document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());"
-                            " document.body.classList.remove('modal-open'); } }")
-                    except Exception:
-                        pass
-            _frames = getattr(self, "_journal_frames", None)
-            screenshots = list(_frames) if _frames else None
+        # ── 행위 저널 자동 재생 (tests/shared_journal.ActionJournalMixin) ──
+        # warn/fail + 큐레이션 없음 + _ckpt 블록 활성 → 저널 재실행·단계별 캡처(프레임 블록 공유).
+        screenshots = self._journal_frames_for_issue(status, screenshots)
         # screenshots(큐레이션 다중 캡처)가 있으면 자동 단일 캡처는 생략 — 중복 방지
         _auto_cap = status in ("fail", "warn") and not screenshots
         t, s = _r(status, label, detail, sc=sc,
@@ -355,23 +325,7 @@ class ControlSuiteBase:
         self._srs.append(s)
         self._attach(self._srs)
 
-    # ── 행위 저널 + 자동 리턴재생 (전역 캡처 지원, 사용자 설계 2026-07-07) ──
-    # 목표: 오류가 '손코딩해둔 지점'이 아니어도 같은 품질의 재현 캡처가 자동으로 나오게.
-    # 사용: 케이스 시작에 _ckpt() → 행위를 _act("라벨", fn, 캡처대상)로 실행(기록만, 캡처 0)
-    #       → _add 가 warn/fail 검출 시 저널 행위들을 재실행하며 단계별 캡처(캡션=라벨) 자동 첨부.
-    # 재생 가능 조건: 블록 첫 행위가 상태 리셋(navigate_to_clean 등)이어야 함([AUTO] 데이터 한정).
-    def _ckpt(self) -> None:
-        """행위 블록 시작 — 이후 warn/fail 검출 시 여기서부터 재생. 블록당 재생 1회(프레임 공유)."""
-        self._journal = []
-        self._journal_replayed = False
-        self._journal_frames = None
-
-    def _act(self, label: str, fn, shot_target=None) -> None:
-        """행위 실행 + 저널 기록. 1차 실행에선 캡처하지 않음(검출 시에만 재생 캡처)."""
-        fn()
-        if not hasattr(self, "_journal"):
-            self._journal, self._journal_replayed = [], False
-        self._journal.append((label, fn, shot_target))
+    # 행위 저널(_ckpt/_act) 은 ActionJournalMixin (tests/shared_journal.py) 제공.
 
     def _shot(self, label: str, highlight=None, caption: str = None):
         """중간 시점 추가 캡처 — 두 화면 대조/재현 순서 전용(운용프로세스 _shot 미러).

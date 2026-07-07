@@ -149,6 +149,16 @@ class SecureZoneTemplateSyncFolderPage(BasePage):
     # ──────────────────────────────────────────────────────────────
     # 네비게이션 (특수폴더와 동일 — hash-set 만으론 탭 미전환, 전체 goto)
     # ──────────────────────────────────────────────────────────────
+    def navigate_to_clean(self) -> None:
+        """F5 reload + navigate_to — 모달 open/close 반복 후 AngularJS modal 상태 누적 정리
+        (control_suite navigate_to_clean 동일 패턴). 저널 재생 등 재진입 블록의 상태 리셋용."""
+        try:
+            self.page.reload(wait_until="domcontentloaded", timeout=15000)
+            self.page.wait_for_timeout(500)
+        except Exception:
+            pass
+        self.navigate_to()
+
     def navigate_to(self) -> None:
         self._close_all_modals()
         self._dismiss_stale_confirm_modal()
