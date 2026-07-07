@@ -260,33 +260,48 @@ class TestSecureZoneTemplateSyncFolderScenario4Modify(SecureZoneTemplateSyncFold
                   f"입력: 설정명 '' + 수정 / 결과: 경고={msg!r}, 원 항목 유지={kept}", sc=4,
                   repro="1. 항목 설정명 비움\n2. 수정\n3. 경고 + 행 유지")
 
-    # ── 4j: 원본 3000자 (수정 — sc3k EDIT 미러, merge) ──────────────
+    # ── 4j: 3000자 오버플로 전수 (수정 — sc3k EDIT 미러, 요소별 merge) ──
     def test_scenario4j_path_overflow_in_modify(self, logged_in_page, settings):
-        print("\n━━ [폴더동기화] sc4j: 원본 3000자(수정) ━━━")
+        """오버플로 클래스 전수(수정 컨텍스트): 원본/대상(contenteditable)+확장자 목록(textarea).
+        sc3k(생성)와 같은 요소·같은 결과면 merge_key 로 카드 1장."""
+        print("\n━━ [폴더동기화] sc4j: 3000자 오버플로 전수(수정) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         self._ensure_item(page)
-        self._ckpt()
-        self._act(f"항목 '{self._ITEM}' 재오픈 — 원본 3000자 직접입력",
-                  lambda: (page.navigate_to_clean(), page.open_folder_modal(self._TPL),
-                           page.open_folder_item_edit(self._ITEM),
-                           page.set_content_path(page.SEL_C_SOURCE, "a" * 3000)),
-                  shot_target=page.page.locator(page.SEL_C_SOURCE).first)
-        self._act("수정 저장 → 처리 결과(경고 알림/커밋)",
-                  lambda: self._content_save_wait_alert(page))
-        msg = (page.get_modal_message()
-               if page.page.locator(page.SEL_CONFIRM_MODAL_OPENED).count() > 0 else "")
-        raw_err = ("서버" in msg and "오류" in msg)
-        st = "warn" if raw_err else "pass"
-        self._add(st,
-                  "sc4j — 원본위치 3000자 + 수정 → 서버 처리(수집, sc3k EDIT 미러)",
-                  f"입력: 원본 3000자 수정 / 결과: 경고={msg!r}"
-                  + (" [raw 서버 오류 — 클라 길이 가드 부재]" if raw_err else ""), sc=4,
-                  merge_key=("szsync_ovf::원본위치::warn::raw_server_error" if raw_err else None),
-                  repro="1. 항목 재오픈 원본에 3000자\n2. 수정\n3. 처리 확인")
-        self._dismiss_alert_if_open(page)
-        page.close_content_modal()
-        page.close_folder_modal()
+
+        elems = [("원본위치", "src", page.SEL_C_SOURCE),
+                 ("대상위치", "tgt", page.SEL_C_TARGET),
+                 ("확장자 목록", "ext", page.SEL_C_EXT_LIST)]
+        for elem, mode, sel in elems:
+            self._ckpt()
+
+            def _reopen_fill(mode=mode):
+                page.navigate_to_clean()   # 상태 리셋(F5) — 재생 가능 조건
+                page.open_folder_modal(self._TPL)
+                page.open_folder_item_edit(self._ITEM)
+                if mode == "src":
+                    page.set_content_path(page.SEL_C_SOURCE, "a" * 3000)
+                elif mode == "tgt":
+                    page.set_content_path(page.SEL_C_TARGET, "a" * 3000)
+                else:
+                    page.fill(page.SEL_C_EXT_LIST, "a" * 3000)
+            self._act(f"항목 '{self._ITEM}' 재오픈 — {elem} 3000자 입력", _reopen_fill,
+                      shot_target=page.page.locator(sel).first)
+            self._act("수정 저장 → 처리 결과(경고 알림/커밋)",
+                      lambda: self._content_save_wait_alert(page))
+            msg = (page.get_modal_message()
+                   if page.page.locator(page.SEL_CONFIRM_MODAL_OPENED).count() > 0 else "")
+            raw_err = ("서버" in msg and "오류" in msg)
+            st = "warn" if raw_err else "pass"
+            self._add(st,
+                      f"sc4j — {elem} 3000자 + 수정 → 서버 처리(수집, 오버플로 전수)",
+                      f"입력: {elem} 3000자 수정 / 결과: 경고={msg!r}"
+                      + (" [raw 서버 오류 — 클라 길이 가드 부재]" if raw_err else ""), sc=4,
+                      merge_key=(f"szsync_ovf::{elem}::warn::raw_server_error" if raw_err else None),
+                      repro=f"1. 항목 재오픈 {elem} 에 3000자\n2. 수정\n3. 처리 확인")
+            self._dismiss_alert_if_open(page)
+            page.close_content_modal()
+            page.close_folder_modal()
 
     # ── 4k: 항목 설정명 rename 중복 ─────────────────────────────────
     def test_scenario4k_item_rename_duplicate(self, logged_in_page, settings):

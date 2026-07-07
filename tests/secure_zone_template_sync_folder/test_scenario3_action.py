@@ -319,39 +319,60 @@ class TestSecureZoneTemplateSyncFolderScenario3Action(SecureZoneTemplateSyncFold
         page.close_content_modal()
         page.close_folder_modal()
 
-    # ── sc3k: 경로 3000자 오버플로 (특수폴더 sc3s 미러) ─────────────
+    # ── sc3k: 3000자 오버플로 — 클래스 전수(요소별 카드) ─────────────
     def test_scenario3k_path_overflow(self, logged_in_page, settings):
-        print("\n━━ [폴더동기화] sc3k: 원본 경로 3000자 오버플로 ━━━")
+        """오버플로 클래스 전수(issue-card-rules — spot-check 금지): 서버측 자유입력 3요소.
+        원본/대상위치(contenteditable) + 확장자 목록(textarea, maxlength=None — sc2f 실측).
+        제외(클라 clamp 실측): 설정명(30)/파일용량(30)/분주기(3). 설명(300자 서버가드)=sc3i."""
+        print("\n━━ [폴더동기화] sc3k: 3000자 오버플로 전수(원본/대상/확장자) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         page.ensure_template(self._TPL)
-        self._ckpt()
-        self._act(f"'{self._TPL}' 폴더 추가/제거 → + (내용 모달)",
-                  lambda: (page.navigate_to_clean(), page.open_folder_modal(self._TPL),
-                           page.open_content_add()))
-        self._act("설정명 + 원본 3000자 직접입력 + 대상 picker",
-                  lambda: (page.fill(page.SEL_C_NAME, "sync_path_ovf"),
-                           page.set_content_path(page.SEL_C_SOURCE, "a" * 3000),
-                           page.pick_path("target", 1)),
-                  shot_target=page.page.locator(page.SEL_C_SOURCE).first)
-        before = page.folder_item_count()
-        self._act("추가 클릭 → 처리 결과(경고 알림/커밋)",
-                  lambda: self._content_add_wait_alert(page))
-        msg = (page.get_modal_message()
-               if page.page.locator(page.SEL_CONFIRM_MODAL_OPENED).count() > 0 else "")
-        after = page.folder_item_count()
-        committed = after == before + 1
-        raw_err = ("서버" in msg and "오류" in msg)
-        st = "warn" if raw_err else "pass"
-        self._add(st,
-                  "sc3k — 원본위치 3000자 + 추가 → 서버 처리(수집, 특수폴더 sc3s 동일 클래스)",
-                  f"입력: 원본 3000자 / 결과: 경고={msg!r}, 커밋={committed}"
-                  + (" [raw 서버 오류 — 클라 길이 가드 부재]" if raw_err else ""), sc=3,
-                  merge_key=("szsync_ovf::원본위치::warn::raw_server_error" if raw_err else None),
-                  repro="1. 내용 모달 원본위치에 3000자 직접입력\n2. 대상 picker\n3. 추가 → 처리 확인")
-        self._dismiss_alert_if_open(page)
-        page.close_content_modal()
-        page.close_folder_modal()
+
+        # (요소라벨, 아이템명, 채우기모드) — 모드: src=원본3000+대상picker / tgt=원본picker+대상3000
+        #                                        / ext=원본·대상 picker+확장자3000
+        elems = [("원본위치", "sync_ovf_src", "src", page.SEL_C_SOURCE),
+                 ("대상위치", "sync_ovf_tgt", "tgt", page.SEL_C_TARGET),
+                 ("확장자 목록", "sync_ovf_ext", "ext", page.SEL_C_EXT_LIST)]
+        for elem, iname, mode, sel in elems:
+            self._ckpt()
+
+            def _enter(iname=iname, mode=mode):
+                page.navigate_to_clean()   # 상태 리셋(F5) — 재생 가능 조건
+                page.open_folder_modal(self._TPL)
+                page.open_content_add()
+                page.fill(page.SEL_C_NAME, iname)
+                if mode == "src":
+                    page.set_content_path(page.SEL_C_SOURCE, "a" * 3000)
+                    page.pick_path("target", 1)
+                elif mode == "tgt":
+                    page.pick_path("source", 0)
+                    page.set_content_path(page.SEL_C_TARGET, "a" * 3000)
+                else:
+                    page.pick_path("source", 0)
+                    page.pick_path("target", 1)
+                    page.fill(page.SEL_C_EXT_LIST, "a" * 3000)
+            self._act(f"내용 모달 진입 + {elem} 3000자 입력(나머지 필수는 정상값)", _enter,
+                      shot_target=page.page.locator(sel).first)
+            before = page.folder_item_count()
+            self._act("추가 클릭 → 처리 결과(경고 알림/커밋)",
+                      lambda: self._content_add_wait_alert(page))
+            msg = (page.get_modal_message()
+                   if page.page.locator(page.SEL_CONFIRM_MODAL_OPENED).count() > 0 else "")
+            after = page.folder_item_count()
+            committed = after == before + 1
+            raw_err = ("서버" in msg and "오류" in msg)
+            st = "warn" if raw_err else "pass"
+            self._add(st,
+                      f"sc3k — {elem} 3000자 + 추가 → 서버 처리(수집, 오버플로 전수)",
+                      f"입력: {elem} 3000자 / 결과: 경고={msg!r}, 커밋={committed}"
+                      + (" [raw 서버 오류 — 클라 길이 가드 부재]" if raw_err else ""), sc=3,
+                      merge_key=(f"szsync_ovf::{elem}::warn::raw_server_error" if raw_err else None),
+                      repro=f"1. 내용 모달 {elem} 에 3000자 입력(나머지 필수 정상)\n"
+                            "2. 추가\n3. 처리 결과(경고/커밋) 확인")
+            self._dismiss_alert_if_open(page)
+            page.close_content_modal()
+            page.close_folder_modal()
 
     # ══ 보강 (특수폴더 sc3 미러 대조 — 2026-07-07) ═══════════════════════
 
@@ -463,18 +484,12 @@ class TestSecureZoneTemplateSyncFolderScenario3Action(SecureZoneTemplateSyncFold
             return [r.inner_text() for r in page.page.locator(page.SEL_TABLE_ROW).all()
                     if r.inner_text().strip() and "없습니다" not in r.inner_text()]
 
-        # 이 탭 리스트엔 타입 컬럼 없음(헤더 실측: 이름/등록경로/상태/등록일/수정일 — sc1b)
-        # → 단일 타입 탭이라 '전체'↔'폴더 동기화' 결과 집합 동일함을 검증(행 텍스트 매칭 불가).
-        page.filter_by(template_type="전체")
-        all_cnt = len(_row_texts())
-        page.filter_by(template_type="폴더 동기화")
-        typed_cnt = len(_row_texts())
-        type_ok = typed_cnt == all_cnt and typed_cnt > 0
-        self._add("pass" if type_ok else "warn",
-                  "sc3p — 타입 필터(폴더 동기화) — 단일 타입 탭: 전체와 동일 집합",
-                  f"입력: 전체={all_cnt}행 ↔ 폴더 동기화={typed_cnt}행 / 결과: 동일={type_ok}", sc=3,
-                  repro="1. 타입 드롭다운=폴더 동기화\n2. 검색(돋보기)\n3. 전체와 동일 행 수(단일 타입)")
-        page.filter_by(template_type="전체")
+        # 타입 필터: 옵션이 '전체/폴더 동기화' 2개뿐(단일 타입 탭) + 리스트에 타입 컬럼도 없음
+        # (헤더 실측: 이름/등록경로/상태/등록일/수정일 — sc1b) → 결과가 달라질 수 없어 변별 검증 불가.
+        self._add("skip",
+                  "sc3p — 타입 필터 [검증 불가 — 단일 타입 탭]",
+                  "결과: 옵션=전체/폴더 동기화(동일 집합), 리스트 타입 컬럼 없음 — "
+                  "필터 존재는 sc1 커버, 변별 동작은 타입이 여러 개인 탭(프로세스 등)에서 검증", sc=3)
         page.filter_by(status="활성")
         rows = _row_texts()
         status_ok = all("비활성" not in t for t in rows)
