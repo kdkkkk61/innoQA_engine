@@ -45,6 +45,26 @@
 
 ---
 
+## 방식 B(list_page) sc5 표준 구조 — 속성-확인 법칙 (2026-07-07 정리)
+
+> 실구현 기준(코드 인용): `tests/secure_zone_template_sync_folder/test_scenario5_lifecycle.py`,
+> `tests/secure_zone_template_manage_folder/test_scenario5_lifecycle.py`, `tests/common/tag/test_scenario5_lifecycle.py`.
+
+**법칙: 추가 → 속성 → 수정(되돌리기) → 속성.** 네 단계가 다 있어야 완성.
+
+| 단계 | 검증 | 판정 역할 구분 |
+|------|------|------|
+| 5a 케이스A(전체) | 모든 저장 가능 필드 채워 저장 → **재오픈 round-trip 요소별** → **속성(상세) 모달 표시 요소별** | 재오픈 손실=**fail**(데이터 버그) / 속성만 불일치=**warn**(표시 버그 — 데이터는 안전) |
+| 5b 케이스B(필수만) | 선택 필드 빈값·연결 항목 0건 유지 — 폴더모달/리스트/속성 **다계층 표기** 통합 판정 | |
+| 5c 되돌리기 | 값→비움 수정(선택 필드) + 연결 항목 제거 → 재오픈 잔존 확인(**'값→빈값 silent 무시' 버그 클래스**) → ★**수정 후 속성 재확인**(제거가 속성에도 반영됐는가 — 잔존=속성 stale) | silent 무시=fail / 속성 stale=warn |
+| 5d 마무리 cleanup | 날짜 없는 `[AUTO]`(휘발성)만 삭제, `[AUTO_<MMDD>]`(날짜본·연계) 보존 | cleanup 라이프사이클: sc1 시작=전부 / sc5 끝=휘발성만 |
+
+- 재오픈 round-trip 은 **저장 가능 필드 전수** (`docs/baseline-verification-matrix.md` — 대표 필드만 하면 갭).
+- 속성 표시도 **요소별 카드**(이름/항목/카운트/사용처 각 1장 — 뭉치면 이슈 귀속 불가, `issue-card-rules.md`).
+- 결함 가능 블록(5c 등)은 행위 저널(`_ckpt/_act` + F5 리셋 — `tests/shared_journal.py`)로 재현 시퀀스 자동화.
+
+---
+
 ## ⚠️ 두 가지 함정
 
 ### 함정 1: ON/OFF만 구현하는 함정
