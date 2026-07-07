@@ -369,3 +369,106 @@ class TestSecureZoneTemplateSyncFolderScenario4Modify(SecureZoneTemplateSyncFold
                   "sc4m — 항목 상태 수정(활성→비활성) → 재오픈 반영",
                   f"입력: 비활성 저장 / 결과: 재오픈 비활성={delete_on}", sc=4,
                   repro="1. 항목 재오픈 상태=비활성\n2. 수정\n3. 재오픈 radio 대조")
+
+    # ══ 수정-컨텍스트 미러 보강 (미러 sc4 감사 — 2026-07-08) ═══════════════
+    # 상태 의존 버그(생성 땐 되는데 수정 뒤 안 되는) 포착 원칙(특수폴더 sc4, 사용자 지시 2026-07-02).
+    # ※ 관리자 예약어 modify 미러는 제외 — sc3r 실측: 이 탭은 게이팅 자체가 없음(근거 있는 제외).
+
+    # ── 4e: 템플릿 특수문자 rename ──────────────────────────────────
+    def test_scenario4e_special_char_rename(self, logged_in_page, settings):
+        print("\n━━ [폴더동기화] sc4e: 템플릿 특수문자 rename ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        base = "[AUTO]_sz_sync_ren"
+        sp = "[AUTO]_sz_sync_ren<>!@#"
+        if sp in page.get_template_names():   # 재실행 잔존 가드
+            page.delete_template(sp)
+            page.navigate_to()
+        page.ensure_template(base)
+        page.open_modify_modal(base)
+        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", sp)
+        msg = page.submit_and_message()
+        page._close_modal_if_open()
+        page.navigate_to()
+        renamed = sp in page.get_template_names()
+        self._add("pass" if renamed else "warn",
+                  "sc4e — 템플릿 특수문자 rename(수정 컨텍스트)",
+                  f"입력: '{base}'→'{sp}' / 결과: 경고={msg!r}, 반영={renamed} "
+                  "(생성측 sc3l 허용 — 수정측 동일 여부)", sc=4,
+                  repro="1. 수정 모달 이름에 특수문자\n2. 수정\n3. 허용/차단 여부")
+
+    # ── 4n: 설정명 clamp (수정 컨텍스트 — sc3h 미러) ────────────────
+    def test_scenario4n_content_name_clamp_in_modify(self, logged_in_page, settings):
+        print("\n━━ [폴더동기화] sc4n: 설정명 clamp(수정, 실타이핑) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        self._ensure_item(page)
+        page.open_folder_item_edit(self._ITEM)
+        accepted = page.type_real(page.SEL_C_NAME, "a" * 60)
+        page.close_content_modal()   # 저장 안 함 — 측정만
+        page.close_folder_modal()
+        self._add("pass" if accepted == 30 else "warn",
+                  "sc4n — 설정명 수정 모달 실타이핑 60자 → 수용 길이",
+                  f"결과: 수용={accepted}자 (생성측 sc3h=30 — 동일 여부)", sc=4,
+                  repro="1. 항목 재오픈 설정명에 60자 타이핑\n2. 수용 길이 확인(저장 안 함)")
+
+    # ── 4o: 템플릿 이름 clamp (수정 컨텍스트 — sc3s 미러) ───────────
+    def test_scenario4o_template_name_clamp_in_modify(self, logged_in_page, settings):
+        print("\n━━ [폴더동기화] sc4o: 템플릿 이름 clamp(수정, 실타이핑) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.ensure_template(self._TPL)
+        page.open_modify_modal(self._TPL)
+        accepted = page.type_real(f"{page.SEL_MODAL} {page.SEL_NAME}", "a" * 60)
+        page._close_modal_if_open()   # 저장 안 함 — 측정만
+        self._add("pass" if accepted == 30 else "warn",
+                  "sc4o — 템플릿 이름 수정 모달 실타이핑 60자 → 수용 길이",
+                  f"결과: 수용={accepted}자 (생성측 sc3s=30 — 동일 여부)", sc=4,
+                  repro="1. 수정 모달 이름에 60자 타이핑\n2. 수용 길이 확인(저장 안 함)")
+
+    # ── 4p: 항목 설정명 특수문자 rename (sc3t 미러) ─────────────────
+    def test_scenario4p_item_special_char_rename(self, logged_in_page, settings):
+        print("\n━━ [폴더동기화] sc4p: 항목 설정명 특수문자 rename ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.ensure_template(self._TPL)
+        page.open_folder_modal(self._TPL)
+        if not page.folder_row_values("sync_sp_ren"):
+            page.open_content_add()
+            page.add_folder_mapping("sync_sp_ren", use_picker=True, src_index=0, tgt_index=1)
+        sp_name = "sp_ren<>!@"
+        page.open_folder_item_edit("sync_sp_ren")
+        page.fill(page.SEL_C_NAME, sp_name)
+        msg = page.content_save_message()
+        renamed = bool(page.folder_row_values(sp_name))
+        page.close_folder_modal()
+        self._add("pass" if (renamed or msg) else "warn",
+                  "sc4p — 항목 설정명 특수문자 rename(수정 컨텍스트)",
+                  f"입력: 'sync_sp_ren'→'{sp_name}' / 결과: 경고={msg!r}, 반영={renamed} "
+                  "(생성측 sc3t 허용 — 수정측 동일 여부)", sc=4,
+                  repro="1. 항목 재오픈 설정명에 특수문자\n2. 수정\n3. 허용/차단 여부")
+
+    # ── 4q: 항목 제거 (수정 컨텍스트 재검증 — sc3d 미러) ────────────
+    def test_scenario4q_item_remove_in_modify(self, logged_in_page, settings):
+        """수정 세션(항목 편집 후)에서의 제거 — 생성 직후(sc3d)와 상태가 다른 컨텍스트."""
+        print("\n━━ [폴더동기화] sc4q: 항목 제거(수정 컨텍스트) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_sync_m_rm"
+        page.ensure_template(tpl)
+        page.open_folder_modal(tpl)
+        if not page.folder_row_values("rm4"):
+            page.open_content_add()
+            page.add_folder_mapping("rm4", use_picker=True, src_index=0, tgt_index=1)
+        # 수정 컨텍스트 진입 흔적: 항목 편집 열었다 닫기(값 변경 없음) 후 제거
+        page.open_folder_item_edit("rm4")
+        page.close_content_modal()
+        before = page.folder_item_count()
+        msg = page.remove_folder_item(0)
+        after = page.folder_item_count()
+        page.close_folder_modal()
+        ok = ("삭제 하시겠습니까" in msg) and (after == before - 1)
+        self._add("pass" if ok else "fail",
+                  "sc4q — 항목 제거(수정 컨텍스트) → 확인 → 등록 -1",
+                  f"입력: 편집 재진입 후 제거 / 결과: 확인메시지={msg!r}, 등록 {before}→{after}", sc=4,
+                  repro="1. 항목 편집 열었다 닫기\n2. 항목 체크 + 제거\n3. 확인 → 감소")
