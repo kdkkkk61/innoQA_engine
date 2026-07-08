@@ -163,21 +163,31 @@ class SecureZoneTemplateProcessPage(BasePage):
     # 목록 / 행 (★이름=td[1])
     # ──────────────────────────────────────────────────────────────
     def get_template_names(self) -> list[str]:
-        names = []
-        for row in self.page.locator(self.SEL_TABLE_ROW).all():
-            tds = row.locator("td")
-            if tds.count() > self.NAME_COL:
-                t = tds.nth(self.NAME_COL).inner_text().strip()
-                if t and "없습니다" not in t:
-                    names.append(t)
-        return names
+        """이름 컬럼(td[1]) 전체 — 단일 evaluate. 이 리스트는 100행+라 행당 locator 왕복이
+        RPC 폭풍(호출당 200+ 왕복, cleanup 수 분 소요)이 됨 → 1 왕복으로 축소 (2026-07-08)."""
+        try:
+            return self.page.locator("table tbody").first.evaluate(
+                "tb => [...tb.querySelectorAll('tr')]"
+                ".map(r => (r.cells && r.cells.length > 1) ? r.cells[1].innerText.trim() : '')"
+                ".filter(t => t && !t.includes('없습니다'))")
+        except Exception:
+            return []
+
+    def _row_index(self, name: str) -> int:
+        """이름 정확 일치 행 인덱스 — 단일 evaluate."""
+        try:
+            return self.page.locator("table tbody").first.evaluate(
+                "(tb, nm) => [...tb.querySelectorAll('tr')]"
+                ".findIndex(r => r.cells && r.cells.length > 1 && r.cells[1].innerText.trim() === nm)",
+                name)
+        except Exception:
+            return -1
 
     def _row_locator(self, name: str):
-        """이름 정확 일치(td[NAME_COL]) 행 — 부분 일치 오탐 방지."""
-        for row in self.page.locator(self.SEL_TABLE_ROW).all():
-            tds = row.locator("td")
-            if tds.count() > self.NAME_COL and tds.nth(self.NAME_COL).inner_text().strip() == name:
-                return row
+        """이름 정확 일치(td[NAME_COL]) 행 — 부분 일치 오탐 방지. 인덱스 조회 1 왕복."""
+        idx = self._row_index(name)
+        if idx >= 0:
+            return self.page.locator(self.SEL_TABLE_ROW).nth(idx)
         return self.page.locator(self.SEL_TABLE_ROW).filter(has_text=name).first
 
     def row_type_text(self, name: str) -> str:
@@ -212,8 +222,35 @@ class SecureZoneTemplateProcessPage(BasePage):
     # 삭제 / cleanup (검색-우선)
     # ──────────────────────────────────────────────────────────────
     def _delete_matching(self, pred) -> None:
-        for name in [n for n in self.get_template_names() if pred(n)]:
-            self.delete_template(name)
+        """매칭 행 전부 체크 → 삭제 버튼 1회 → 확인 1회(일괄). 건별 삭제(행 스캔+confirm ×N)가
+        100행+ 리스트에서 수 분 걸리던 병목 제거 (2026-07-08). 재렌더/페이지 대비 반복."""
+        for _ in range(6):
+            targets = [n for n in self.get_template_names() if pred(n)]
+            if not targets:
+                return
+            for n in targets:
+                if not self._AUTO_ANY.match(n):
+                    raise Exception(f"[AUTO] 접두사 아님 — 일괄 삭제 대상 오류: {n}")
+            # 매칭 행 체크박스 일괄 체크 — 단일 evaluate
+            self.page.locator("table tbody").first.evaluate(
+                "(tb, nms) => { const s = new Set(nms);"
+                " [...tb.querySelectorAll('tr')].forEach(r => {"
+                "  if (r.cells && r.cells.length > 1 && s.has(r.cells[1].innerText.trim())) {"
+                "   const c = r.querySelector(\"input[type='checkbox']\");"
+                "   if (c && !c.checked) c.click(); } }); }",
+                targets)
+            self.page.wait_for_timeout(300)
+            self.click(self.SEL_DELETE_BTN)
+            if not self.is_confirm_modal_visible():
+                raise Exception("일괄 삭제 — 확인 모달 없음")
+            msg = self.get_modal_message()
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+            if "하시겠습니까" not in msg:
+                raise Exception(f"일괄 삭제 중 에러 모달: {msg!r}")
+            self._dismiss_stale_confirm_modal()   # 결과 알림(있으면)
+            self.wait_for(self.SEL_ADD_BTN)
+            self.page.wait_for_timeout(400)
 
     def delete_all_test_data(self) -> None:
         try:
@@ -424,15 +461,14 @@ class SecureZoneTemplateProcessPage(BasePage):
         self.page.wait_for_timeout(900)
 
     def list_type_values(self) -> list[str]:
-        """리스트 각 행의 '프로세스 타입'(td[2]) 텍스트 — 필터 변별 검증용."""
-        vals = []
-        for r in self.page.locator(self.SEL_TABLE_ROW).all():
-            tds = r.locator("td")
-            if tds.count() > 2:
-                t = tds.nth(2).inner_text().strip()
-                if t:
-                    vals.append(t)
-        return vals
+        """리스트 각 행의 '프로세스 타입'(td[2]) — 단일 evaluate(필터 변별 검증용)."""
+        try:
+            return self.page.locator("table tbody").first.evaluate(
+                "tb => [...tb.querySelectorAll('tr')]"
+                ".map(r => (r.cells && r.cells.length > 2) ? r.cells[2].innerText.trim() : '')"
+                ".filter(t => t)")
+        except Exception:
+            return []
 
     # ── 속성 모달 (sc5) ────────────────────────────────────────────
     def open_detail_modal(self, name: str) -> None:
