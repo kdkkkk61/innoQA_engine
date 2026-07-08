@@ -470,16 +470,15 @@ class SecureZoneTemplateProcessPage(BasePage):
         self.page.wait_for_timeout(700)
 
     def l2_bulk_remove(self) -> str:
-        """L2 헤더 전체선택 → removeItemBtn → 일괄 제거. 확인 메시지 반환."""
+        """L2 헤더 전체선택 → removeItemBtn → 일괄 제거. 확인 후 0건 될 때까지 대기(재렌더)."""
+        if self.l2_item_count() == 0:
+            return ""
         hdr = self.page.locator(f"{self.SEL_L2_MODAL} thead input[type='checkbox']").first
         hdr.evaluate("el => { if (!el.checked) el.click(); }")
         self.page.wait_for_timeout(300)
         self.page.locator(self.SEL_L2_DEL_ITEM).first.evaluate("el => el.click()")
-        msg = ""
-        if self.is_confirm_modal_visible():
-            msg = self.get_modal_message()
-            self.click_attached(self.SEL_CONFIRM_BTN)
-            self.wait_for_modal_closed()
+        msg = self._confirm_and_dismiss_all()
+        self._wait_l2_count(0)   # 재렌더 대기 — 너무 빨리 읽어 stale 되던 문제(2026-07-08)
         return msg
 
     def l3_add_message(self, ttype: str) -> str:
@@ -515,18 +514,44 @@ class SecureZoneTemplateProcessPage(BasePage):
             return 0
         return modals.last.locator("tbody tr:visible:has(input[type='checkbox'])").count()
 
+    def _wait_l2_count(self, target: int, timeout_ms: int = 4000) -> int:
+        """L2 visible 행 수가 target 이 될 때까지 폴링(재렌더 지연 대비, 실측 2026-07-08).
+        도달 못 하면 마지막 관측값 반환."""
+        import time as _t
+        deadline = _t.monotonic() + timeout_ms / 1000
+        cur = self.l2_item_count()
+        while cur != target and _t.monotonic() < deadline:
+            self.page.wait_for_timeout(200)
+            cur = self.l2_item_count()
+        return cur
+
     def l2_remove_item(self, index: int = 0) -> str:
         """L2 현재 탭 행 제거(-) — 확인 '선택한 항목을 삭제 하시겠습니까?' (실측 2026-07-08)."""
         row = self.page.locator(
             f"{self.SEL_L2_MODAL} tbody tr:visible:has(input[type='checkbox'])").nth(index)
+        before = self.l2_item_count()
         row.locator("input[type='checkbox']").first.evaluate("el => el.click()")
         self.page.locator(self.SEL_L2_DEL_ITEM).first.evaluate("el => el.click()")
-        msg = ""
-        if self.is_confirm_modal_visible():
-            msg = self.get_modal_message()
+        msg = self._confirm_and_dismiss_all()
+        self._wait_l2_count(max(before - 1, 0))   # 재렌더 대기
+        return msg
+
+    def _confirm_and_dismiss_all(self) -> str:
+        """확인 모달(삭제 확인 + 후속 결과 알림) 순차 dismiss — 첫 메시지 반환."""
+        first = ""
+        for i in range(3):
+            if not self.is_confirm_modal_visible():
+                break
+            try:
+                m = self.get_modal_message()
+            except Exception:
+                m = ""
+            if i == 0:
+                first = m
             self.click_attached(self.SEL_CONFIRM_BTN)
             self.wait_for_modal_closed()
-        return msg
+            self.page.wait_for_timeout(300)
+        return first
 
     # ── 복사 / 검색 / 필터 ──────────────────────────────────────────
     def copy_template(self, name: str) -> str:

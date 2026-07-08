@@ -162,14 +162,17 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
         cnt_after = page.l2_item_count()
         f2 = self._shot("multi_l2",
                         highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody").first,
-                        caption=f"2. 추가 → L2 총 {cnt_after}건 (경고={msg3!r})")
-        multi_ok = (len(picked3) == 3) and ("외" in shown) and (msg3 == "") and (cnt_after >= 2)
-        self._add("pass" if multi_ok else "warn",
+                        caption=f"2. 추가 → L2 총 {cnt_after}건 (안내={msg3!r})")
+        # ★중복 생략 안내('이미 등록되어 생략')는 정상 — 이미 등록된 것 재선택 시 스킵. 카운트로만 판정.
+        skip_dup = ("생략" in msg3) or ("이미 등록" in msg3)
+        multi_ok = (len(picked3) == 3) and ("외" in shown) and (cnt_after >= 2)
+        self._add("pass" if multi_ok else "fail",
                   "sc3c — 다중 프로세스 등록(한 번에 N개) → L2 반영",
-                  f"입력: {len(picked3)}개 선택({shown!r}) + 추가 / 결과: 경고={msg3!r}, "
-                  f"L2 총 {cnt_after}건", sc=3,
+                  f"입력: {len(picked3)}개 선택({shown!r}) + 추가 / 결과: L2 총 {cnt_after}건"
+                  + (f" (중복 생략 안내='{msg3}' — 정상 동작)" if skip_dup else f" (안내={msg3!r})"), sc=3,
                   screenshots=[f1, f2],
-                  repro="1. L2 + → picker 여러 개 체크\n2. 확인 → 'N개 외' 표시\n3. 추가 → L2 다건 등록")
+                  repro="1. L2 + → picker 여러 개 체크\n2. 확인 → 'N개 외' 표시\n"
+                        "3. 추가 → L2 다건 등록(이미 등록분 있으면 생략 안내=정상)")
         page.l2_bulk_remove()   # 정리(전체 제거)
         page.close_l2_modal()
 
