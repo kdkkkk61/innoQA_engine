@@ -58,27 +58,30 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
 
     # ── sc3b: 동명 중복 스코프 (같은 타입 vs 다른 타입) ─────────────
     def test_scenario3b_duplicate_scope(self, logged_in_page, settings):
-        """probe(2026-07-08) 관찰: 동명 템플릿 공존 — 중복 검사가 타입 스코프인지 분리 검증."""
+        """★핵심=같은 타입 동명 차단(부여가 타입별). 판정 순간(차단 알림/공존 목록)을
+        빨간 표시와 함께 캡처 — pass 여도 첨부(차단 증거를 눈으로 확인)."""
         print("\n━━ [프로세스] sc3b: 동명 중복 스코프 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
-        # 기준 템플릿(허용) — 잔존 동명 정리 후 생성
-        self._ckpt()
-
-        def _base_tpl():
-            page.navigate_to_clean()
-            while self._DUP in page.get_template_names():
-                page.delete_template(self._DUP)
-                page.navigate_to()
-            page.create_template(self._DUP, "ALLOW_PROCESS")
+        page.navigate_to_clean()
+        while self._DUP in page.get_template_names():
+            page.delete_template(self._DUP)
             page.navigate_to()
-        self._act(f"기준 '{self._DUP}'(허용) 생성", _base_tpl)
+        page.create_template(self._DUP, "ALLOW_PROCESS")
+        page.navigate_to()
 
-        # ① 같은 타입 동명 재생성 → 차단 기대
-        self._act("같은 타입(허용) 동명 재생성 시도",
-                  lambda: (page.open_add_modal(),
-                           page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", self._DUP)))
-        msg_same = page.submit_and_message()
+        NAME = f"{page.SEL_MODAL} {page.SEL_NAME}"
+
+        # ① 같은 타입 동명 재생성 → 차단 알림 순간 캡처(빨간 표시=이름 필드)
+        page.open_add_modal()
+        page.fill(NAME, self._DUP)
+        f1 = self._shot("dup_same_input",
+                        highlight=page.page.locator(NAME).first,
+                        caption="1. 같은 타입(허용)에 동일 이름 입력")
+        msg_same = page.submit_and_wait_alert()
+        f2 = self._shot("dup_same_alert",
+                        caption=f"2. 저장 시도 → 차단 알림: {msg_same!r}")
+        page.dismiss_alert()
         page._close_modal_if_open()
         blocked_same = "이미 등록" in msg_same
         self._add("pass" if blocked_same else "warn",
@@ -86,31 +89,38 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   f"입력: 허용 타입 동명 재생성 / 결과: 경고={msg_same!r} "
                   + ("(차단 정상)" if blocked_same else
                      "[차단 안 됨 — 같은 타입 내 동명 허용, 템플릿 부여 시 구분 불가]"), sc=3,
+                  screenshots=[f1, f2],
                   merge_key=(None if blocked_same
                              else "szproc_dup::same_type::warn::no_dup_check"),
                   repro="1. 허용 타입 템플릿 생성\n2. 같은 이름+같은 타입 재생성\n"
                         "3. '이미 등록된 이름' 차단되어야 — 부여 UI 가 타입별이라 동명이면 혼란")
 
         # ② 다른 타입 동명 생성 → 공존 여부 (13:03 실측: '저장 하였습니다' 공존)
-        self._act("다른 타입(거부) 동명 생성 시도",
-                  lambda: (page.navigate_to(), page.open_add_modal(),
-                           page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", self._DUP),
-                           page.select_type("DENY_PROCESS")))
+        page.navigate_to()
+        page.open_add_modal()
+        page.fill(NAME, self._DUP)
+        page.select_type("DENY_PROCESS")
         msg_diff = page.submit_and_message()
         page._close_modal_if_open()
         page.navigate_to()
+        page.search(self._DUP)   # 공존 2행이 목록에 보이도록 필터
         count = page.get_template_names().count(self._DUP)
         coexist = count >= 2
+        f3 = self._shot("dup_cross_list",
+                        highlight=page.page.locator("table tbody").first,
+                        caption=f"다른 타입 동명 생성 후 목록 — '{self._DUP}' {count}개 공존")
         self._add("warn" if coexist else "pass",
                   "sc3b — 다른 타입 동일 이름 공존 (정상 범주 · 경고 가치)",
                   f"입력: 거부 타입 동명 생성 / 결과: 경고={msg_diff!r}, 동명 {count}개 "
                   + ("[타입 다르면 공존 허용 — 이름 중복 검사가 타입 스코프. 동작상 정상이나 "
                      "부여 시 타입별 목록에 동명이 나올 수 있어 경고 가치]"
                      if coexist else "(전역 차단 — 공존 안 됨)"), sc=3,
+                  screenshots=[f3],
                   merge_key=("szproc_dup::cross_type::warn::type_scoped_name_check"
                              if coexist else None),
                   repro="1. 허용 타입으로 만든 이름 그대로\n2. 거부 타입 선택 후 저장\n"
                         "3. 동명 2개 공존(타입 스코프 — 정상이나 경고 가치)")
+        page.search("")   # 검색 리셋
         # 정리 — 동명 잔존은 후속 이름 매칭을 오염시키므로 즉시 제거(재실행 가드 성격)
         while self._DUP in page.get_template_names():
             page.delete_template(self._DUP)
