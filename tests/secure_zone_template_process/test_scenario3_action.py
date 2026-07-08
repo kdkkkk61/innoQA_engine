@@ -8,6 +8,7 @@ sc3a 타입별 생성 4종 / sc3b 동명 중복 스코프(같은 타입 차단·
 sc3c 등록(단일+다중, checkbox) / sc3d 인라인 옵션 토글(재시작) / sc3e 태그 등록 / sc3f 제거(개별+일괄)
 sc3g 다중 중복 처리(부분/전체) / sc3h 이름(clamp·특수문자) / sc3i 설명(특수문자·장문)
 sc3j ★미선택 필수 경고 4타입 전수 / sc3k ★등록+옵션 4타입 전수 / sc3l 설명 3000자 오버플로 4타입
+sc3m ★저장값 roundtrip(예외처리 옵션·설명 설정→저장→재오픈 일치 — 특수폴더 sc3k 미러)
 ※ 등록 picker=checkbox plain click(실측). L3 타입별 모달 별개 → 타입 종속 검증은 4타입 전수.
 ※ seed 연계는 sc6. sc2=속성(maxlength 존재·초기값), sc3=실제 동작.
 """
@@ -422,3 +423,50 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             page.close_l3_modal(ttype)
             page.l2_bulk_remove()
             page.close_l2_modal()
+
+    # ── sc3m: ★저장값 roundtrip — 예외처리 옵션·설명 (설정→저장→재오픈 일치) ──
+    def test_scenario3m_saved_value_roundtrip(self, logged_in_page, settings):
+        """사용자 질문: 설정한 옵션이 일치하게 오는지. 특수폴더 sc3k(저장값 roundtrip) 미러.
+        예외처리(옵션 최다)로 비기본값 설정(시큐어=차단/반출=허용/재시작 ON/설명) → 추가 →
+        이름 링크 재오픈 → 로드값 일치 검증. 불일치=저장/로드 손실 결함."""
+        print("\n━━ [프로세스] sc3m: 저장값 roundtrip(예외처리 옵션·설명) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3m"
+        page.navigate_to_clean()
+        page.ensure_template(tpl, "EXCEPT_PROCESS")
+        page.open_l2_modal(tpl)
+        page.open_l3_add("EXCEPT_PROCESS")
+        page.l3_register("EXCEPT_PROCESS", count=1)
+        scope = page.l3_scope("EXCEPT_PROCESS")
+        # 비기본값 설정 (변경 적용 검증) — 시큐어=차단 / 반출=허용 / 재시작 ON / 설명
+        scope.locator("input[name='isSecureDriveWrite']#BLOCK").first.evaluate("el => el.click()")
+        scope.locator("input[name='isTakeoutDriveWrite']#ALLOW").first.evaluate("el => el.click()")
+        rst = scope.locator("input#isProcessRestart").first
+        if not rst.is_checked():
+            rst.evaluate("el => el.click()")
+        page.fill(f"div#{page.L3_MAP['EXCEPT_PROCESS']}.in {page.SEL_L3_DESC}", "rt_except_desc")
+        page.page.wait_for_timeout(200)
+        page.l3_add_message("EXCEPT_PROCESS")   # 저장(커밋)
+
+        # 이름 링크 재오픈 → 로드값 대조
+        page.l2_open_item_edit(0)
+        sc2 = page.l3_scope("EXCEPT_PROCESS")
+        loaded = {
+            "시큐어드라이브=차단": sc2.locator("input[name='isSecureDriveWrite']#BLOCK").first.is_checked(),
+            "반출드라이브=허용":   sc2.locator("input[name='isTakeoutDriveWrite']#ALLOW").first.is_checked(),
+            "재시작 ON":           sc2.locator("input#isProcessRestart").first.is_checked(),
+            "설명":               sc2.locator(page.SEL_L3_DESC).first.input_value() == "rt_except_desc",
+        }
+        page.close_l3_modal("EXCEPT_PROCESS")
+        ok = all(loaded.values())
+        self._add("pass" if ok else "warn",
+                  "sc3m — 예외처리 저장값 roundtrip(옵션·설명 설정→재오픈 일치)",
+                  f"입력: 시큐어=차단/반출=허용/재시작 ON/설명 저장 후 재오픈 / 결과: {loaded} 전부일치={ok}"
+                  + ("" if ok else " [★설정값이 재오픈 시 손실/불일치 — 저장 또는 로드 결함]"), sc=3,
+                  highlight=page.l2_rows()[0] if page.l2_rows() else None,
+                  merge_key=(None if ok else "szproc_roundtrip::except_options::warn::value_lost"),
+                  repro="1. 예외처리 L3 — 드라이브 권한 비기본값+재시작+설명 설정\n2. 추가(저장)\n"
+                        "3. 이름 링크로 재오픈 → 설정값 그대로 로드되는지")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
