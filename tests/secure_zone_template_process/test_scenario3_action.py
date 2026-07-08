@@ -5,8 +5,9 @@
 L2/L3 등록 흐름(3c~)은 크롬 실측(picker=checkbox·L3 자동닫힘·카운트 갱신) 반영 후 다음 단계.
 
 sc3a — 타입별 생성 4종 전수 → 리스트 등장 + 타입 컬럼 표시 (radio 반영 검증 포함)
-sc3b — 동명 중복 스코프: 같은 타입 재생성(차단 기대) vs 다른 타입 동명(13:03 실측: 공존 허용
-       — 이름 중복 검사가 타입 스코프. probe 관찰 재확인 대상)
+sc3b — 동명 중복 스코프. ★핵심 = 같은 타입 내 동명 차단 여부(템플릿 부여가 타입별로 나오므로
+       같은 타입에 동명이면 구분 불가 = 중요). 부수 = 다른 타입 동명 공존(타입 스코프 — 동작상
+       정상이나 부여 목록에 동명이 나올 수 있어 경고 가치). 복사 충돌 등은 후속 단계.
 [L2/L3 등록 구간 — 크롬 실측(13:14) 반영: picker=checkbox(multi/tag_multi)·L3 자동닫힘·카운트 갱신]
 sc3c — ★개별 프로세스 등록: 날짜본 seed([AUTO_<MMDD>]_cm_proc — 운용 프로세스 sc6 산출) 우선
        검색·선택(연계 소비) → 커밋 → L2 반영 + 리스트 카운트
@@ -81,12 +82,14 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
         page._close_modal_if_open()
         blocked_same = "이미 등록" in msg_same
         self._add("pass" if blocked_same else "warn",
-                  "sc3b — 같은 타입 동명 재생성 → 차단",
-                  f"입력: 허용+동명 / 결과: 경고={msg_same!r}"
-                  + ("" if blocked_same else " [차단 안 됨 — 같은 타입도 동명 허용]"), sc=3,
+                  "sc3b — ★같은 타입 동일 이름 차단 (핵심 검증)",
+                  f"입력: 허용 타입 동명 재생성 / 결과: 경고={msg_same!r} "
+                  + ("(차단 정상)" if blocked_same else
+                     "[차단 안 됨 — 같은 타입 내 동명 허용, 템플릿 부여 시 구분 불가]"), sc=3,
                   merge_key=(None if blocked_same
                              else "szproc_dup::same_type::warn::no_dup_check"),
-                  repro="1. 허용 타입 템플릿 생성\n2. 같은 이름+같은 타입 재생성\n3. 차단 여부")
+                  repro="1. 허용 타입 템플릿 생성\n2. 같은 이름+같은 타입 재생성\n"
+                        "3. '이미 등록된 이름' 차단되어야 — 부여 UI 가 타입별이라 동명이면 혼란")
 
         # ② 다른 타입 동명 생성 → 공존 여부 (13:03 실측: '저장 하였습니다' 공존)
         self._act("다른 타입(거부) 동명 생성 시도",
@@ -99,14 +102,15 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
         count = page.get_template_names().count(self._DUP)
         coexist = count >= 2
         self._add("warn" if coexist else "pass",
-                  "sc3b — 다른 타입 동명 생성 → 공존 여부(스코프 실측)",
-                  f"입력: 거부+동명 / 결과: 경고={msg_diff!r}, 동명 {count}개 "
-                  + ("[동명 공존 — 이름 중복 검사가 타입 스코프(전역 아님), probe 관찰 재현]"
+                  "sc3b — 다른 타입 동일 이름 공존 (정상 범주 · 경고 가치)",
+                  f"입력: 거부 타입 동명 생성 / 결과: 경고={msg_diff!r}, 동명 {count}개 "
+                  + ("[타입 다르면 공존 허용 — 이름 중복 검사가 타입 스코프. 동작상 정상이나 "
+                     "부여 시 타입별 목록에 동명이 나올 수 있어 경고 가치]"
                      if coexist else "(전역 차단 — 공존 안 됨)"), sc=3,
                   merge_key=("szproc_dup::cross_type::warn::type_scoped_name_check"
                              if coexist else None),
-                  repro="1. 허용 타입으로 생성한 이름 그대로\n2. 거부 타입 선택 후 저장\n"
-                        "3. 동명 2개 공존하는지(리스트 확인)")
+                  repro="1. 허용 타입으로 만든 이름 그대로\n2. 거부 타입 선택 후 저장\n"
+                        "3. 동명 2개 공존(타입 스코프 — 정상이나 경고 가치)")
         # 정리 — 동명 잔존은 후속 이름 매칭을 오염시키므로 즉시 제거(재실행 가드 성격)
         while self._DUP in page.get_template_names():
             page.delete_template(self._DUP)
