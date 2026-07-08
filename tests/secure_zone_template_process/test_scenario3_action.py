@@ -388,28 +388,27 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
         for ttype in page.TYPES:
             ko = page.TYPE_KO[ttype]
             tpl = f"[AUTO]_sz_proc_3j_{ttype.split('_')[0].lower()}"
-            page.navigate_to_clean()
-            page.ensure_template(tpl, ttype)
-            page.open_l2_modal(tpl)
-            page.open_l3_add(ttype)
-            # 프로세스 미선택 상태로 '추가' → 알림 순간 캡처(dismiss 전)
-            alert_up = page.l3_click_add_wait(ttype)
-            msg = page.get_modal_message() if alert_up else ""
+            # ★행위 저널 — warn(거부 무반응) 검출 시 이 블록을 자동 재생·캡션 캡처(손코딩 _shot 아님)
+            self._ckpt()
+            self._act(f"{ko} 템플릿 → 프로세스 추가/제거 → + → L3",
+                      lambda tpl=tpl, ttype=ttype: (
+                          page.navigate_to_clean(), page.ensure_template(tpl, ttype),
+                          page.open_l2_modal(tpl), page.open_l3_add(ttype)))
+            self._act("프로세스 미선택 상태로 '추가' → 필수 경고 기대",
+                      lambda ttype=ttype: page.l3_click_add_wait(ttype))
+            msg = page.get_modal_message() if page.is_confirm_modal_visible() else ""
             warned = ("선택" in msg) or ("프로세스를" in msg)
             results[ko] = {"msg": msg, "warned": warned}
-            f = self._shot(f"req_{ttype.split('_')[0].lower()}",
-                           caption=f"{ko}: 미선택 추가 → {'경고: '+repr(msg) if warned else '무반응(경고 없음)'}")
-            page.dismiss_alert()
             self._add("pass" if warned else "warn",
                       f"sc3j — {ko}: 미선택 추가 → 필수 경고",
                       f"입력: 프로세스 미선택 + 추가 / 결과: 경고={msg!r} "
                       + ("(정상 — 필수 경고)" if warned
                          else "[★필수 경고 누락 — 다른 타입은 경고 뜨는데 이 타입만 무반응]"), sc=3,
-                      screenshots=[f],
                       merge_key=(None if warned
                                  else f"szproc_required_missing::{ttype}::warn::no_required_alert"),
                       repro=f"1. {ko} 템플릿 L2 → + → L3\n2. 프로세스 미선택 상태로 추가\n"
                             "3. '프로세스를 선택해 주세요' 경고 떠야 정상(타입별 상이 주의)")
+            page.dismiss_alert()
             page.close_l3_modal(ttype)
             page.close_l2_modal()
         # (요약 카드 제거 — 타입별 4개 카드가 실제 판정. 요약은 중복 서술이라 미생성.)
@@ -458,23 +457,21 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
         for ttype in page.TYPES:
             ko = page.TYPE_KO[ttype]
             tpl = f"[AUTO]_sz_proc_3l_{ttype.split('_')[0].lower()}"
-            page.navigate_to_clean()
-            page.ensure_template(tpl, ttype)
-            page.open_l2_modal(tpl)
-            page.open_l3_add(ttype)
-            page.l3_register(ttype, count=1)   # 프로세스 선택(필수 충족)
             desc_sel = f"div#{page.L3_MAP[ttype]}.in {page.SEL_L3_DESC}"
-            page.fill(desc_sel, "가" * 3000)
-            f1 = self._shot(f"desc_ovf_{ttype.split('_')[0].lower()}_input",
-                            highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC).first,
-                            caption=f"1. {ko} 설명 3000자 입력(클라 제한 없음)")
+            # ★행위 저널 — raw 서버오류(warn) 검출 시 이 블록 자동 재생(입력→추가→오류 캡션 시퀀스)
+            self._ckpt()
+            self._act(f"{ko} 템플릿 → + → L3 → 프로세스 선택",
+                      lambda tpl=tpl, ttype=ttype: (
+                          page.navigate_to_clean(), page.ensure_template(tpl, ttype),
+                          page.open_l2_modal(tpl), page.open_l3_add(ttype),
+                          page.l3_register(ttype, count=1)))
+            self._act("설명 3000자 입력",
+                      lambda desc_sel=desc_sel: page.fill(desc_sel, "가" * 3000),
+                      shot_target=page.l3_scope(ttype).locator(page.SEL_L3_DESC).first)
             before = page.l2_item_count()
-            alert_up = page.l3_click_add_wait(ttype)   # 추가 → 알림 대기(dismiss 안 함)
-            msg = page.get_modal_message() if alert_up else ""
-            f2 = self._shot(f"desc_ovf_{ttype.split('_')[0].lower()}_result",
-                            caption=f"2. 추가 → {'서버 처리 알림: '+repr(msg) if alert_up else '알림 없이 커밋'}")
-            page.dismiss_alert()
-            page.close_l3_modal(ttype)   # 커밋 성공 시 자동닫힘 — 방어(L3만)
+            self._act("추가 → 서버 처리(알림/커밋)",
+                      lambda ttype=ttype: page.l3_click_add_wait(ttype))
+            msg = page.get_modal_message() if page.is_confirm_modal_visible() else ""
             after = page.l2_item_count()
             committed = after == before + 1
             raw_err = ("서버" in msg and "오류" in msg)
@@ -486,8 +483,9 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                       + ("[raw 서버 오류 — 클라 길이 가드 부재]" if raw_err
                          else "(길이 가드 안내)" if guard
                          else "(제한 없이 커밋)"), sc=3,
-                      screenshots=[f1, f2],
                       merge_key=(f"szproc_desc_ovf::{ttype}::warn::raw_server_error" if raw_err else None),
                       repro=f"1. {ko} L3 프로세스 선택 + 설명 3000자\n2. 추가\n3. 서버 처리 결과 확인")
+            page.dismiss_alert()
+            page.close_l3_modal(ttype)
             page.l2_bulk_remove()
             page.close_l2_modal()
