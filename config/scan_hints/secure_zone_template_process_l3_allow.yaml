@@ -1,0 +1,19 @@
+# 시큐어존 템플릿 — 프로세스 L3 '허용 프로세스 추가/수정' sc0 전용 스키마.
+# 수집: Chrome 직접조작 (2026-07-08). 공통: 프로세스 선택(button#szProcessBtn — 스캔 대상 아님,
+# 버튼)/description/status. 타입 전용 옵션은 타입별로 다름 (L3_MAP — 페이지 하드매핑 참조).
+# 타입 전용 옵션: isProcessRestart
+page_id: "secure_zone_template_process_l3_allow"
+modal_id: "addModifySecureZoneAllowProcess"
+scan_mode: "list_page"
+detect_hidden: false
+
+text_inputs:
+  - {selector: "textarea#description", label: "설명"}
+radio_groups:
+  - name: "항목 상태"
+    options:
+      - {selector: "input#CREATE", label: "활성"}
+      - {selector: "input#DELETE", label: "비활성"}
+
+plain_checkboxes:
+  - {selector: "input#isProcessRestart", label: "프로세스 재시작"}

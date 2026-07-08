@@ -1,0 +1,58 @@
+# 시큐어존 템플릿 — 프로세스 탭 (PROCESS) : 방식 B (list_page + sc0 UIScanner)
+# 1단계(껍데기) ADD 모달 스캔. L3 타입종속 4종은 별도 yaml(…_process_l3_*.yaml).
+# 수집: Chrome 직접조작 (2026-07-08, 192.168.13.141 — probe 4타입 실측)
+
+page_id: "secure_zone_template_process"
+modal_id: "addModifySecureZoneProcessTemplate"
+scan_mode: "list_page"
+detect_hidden: false
+
+modal_trigger:
+  add:    "button#addItemBtn"
+  modify: "button#modifyItemBtn"
+list_toolbar:
+  add:             "템플릿 추가 (button#addItemBtn)"
+  modify:          "수정 (button#modifyItemBtn)"
+  proc_add_del:    "프로세스 추가/제거 (button#processAddDeleteBtn) — 프로세스 탭 전용 2단계 진입"
+  copy:            "복사"
+  remove:          "삭제"
+filters:
+  type:   "전체 / 허용·거부·예외처리·실행차단 프로세스 (szTemplateType) — ★타입 컬럼 있어 변별 검증 가능"
+  status: "상태 / 활성 / 비활성"
+  search: "input#searchText (템플릿 이름 — ★이름 컬럼 = td[1], td[0]=용도)"
+
+# ── 1단계 모달 "시큐어존 프로세스 템플릿 추가/수정" ──
+stage1_fields:
+  - {selector: "input#templateName", label: "템플릿 이름", required: true, order: 10}
+  - selector: "input#ALLOW_PROCESS | input#DENY_PROCESS | input#EXCEPT_PROCESS | input#BLOCK_PROCESS"
+    label:    "프로세스 타입 (szTemplateType radio 4종)"
+    values:   "ALLOW(허용, 기본) / DENY(거부) / EXCEPT(예외처리) / BLOCK(실행차단)"
+  - selector: "input#CREATE | input#DELETE"
+    label:    "상태 (status radio)"
+    values:   "CREATE(활성, 기본) / DELETE(비활성)"
+
+# ── UIScanner sc0 스키마 ──
+text_inputs:
+  - {selector: "input#templateName", label: "템플릿 이름"}
+radio_groups:
+  - name: "szTemplateType(타입)"
+    options:
+      - {selector: "input#ALLOW_PROCESS",  label: "허용 프로세스"}
+      - {selector: "input#DENY_PROCESS",   label: "거부 프로세스"}
+      - {selector: "input#EXCEPT_PROCESS", label: "예외처리 프로세스"}
+      - {selector: "input#BLOCK_PROCESS",  label: "실행차단 프로세스"}
+  - name: "status(상태)"
+    options:
+      - {selector: "input#CREATE", label: "활성"}
+      - {selector: "input#DELETE", label: "비활성"}
+
+# ── 2단계 흐름 ──
+stage2_flow:
+  open: "행 선택(tActive) → button#processAddDeleteBtn"
+  l2_modal: "addDeleteSecureZoneProcess '프로세스 추가/제거' — 내부 탭 [개별 프로세스]/[태그] + addItemBtn(+)/removeItemBtn(-)"
+  l3_by_type: "★명명 불일치 하드매핑 — ALLOW→addModifySecureZoneAllowProcess / DENY→addModifySecureZoneDenyProcess / EXCEPT→addModifyExceptProcess / BLOCK→addModifyBlockExecuteProcess"
+  picker: "button#szProcessBtn → globalProcessList 공용 picker (태그 탭에선 라벨 '태그 선택', 같은 L3 재사용)"
+
+scenario_focus:
+  sc1: "툴바·컬럼(타입 컬럼 존재)·1단계 필드 + ★타입별 L3 매핑(id·옵션 하드매핑 대조)"
+  sc3: "타입별 생성 흐름(4종) + 이름 중복(동일 타입/타입 다르게 분리 — probe 관찰: 동명 공존) + 필터 변별(4타입) + EXCEPT 옵션 저장"

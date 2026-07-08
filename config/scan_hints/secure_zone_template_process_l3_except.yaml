@@ -1,0 +1,26 @@
+# 시큐어존 템플릿 — 프로세스 L3 '예외처리 프로세스 추가/수정' sc0 전용 스키마.
+# 수집: Chrome 직접조작 (2026-07-08). 공통: 프로세스 선택(button#szProcessBtn — 스캔 대상 아님,
+# 버튼)/description/status. 타입 전용 옵션은 타입별로 다름 (L3_MAP — 페이지 하드매핑 참조).
+# 타입 전용 옵션: isProcessRestart + 드라이브 권한 radio 2그룹
+page_id: "secure_zone_template_process_l3_except"
+modal_id: "addModifyExceptProcess"
+scan_mode: "list_page"
+detect_hidden: false
+
+text_inputs:
+  - {selector: "textarea#description", label: "설명"}
+radio_groups:
+  - name: "항목 상태"
+    options:
+      - {selector: "input#CREATE", label: "활성"}
+      - {selector: "input#DELETE", label: "비활성"}
+  - name: "드라이브 권한(허용/차단 — id 중복 쌍)"
+    options:
+      - {selector: "input#ALLOW", label: "허용(시큐어/반출 공용 id)"}
+      - {selector: "input#BLOCK", label: "차단(시큐어/반출 공용 id)"}
+
+plain_checkboxes:
+  - {selector: "input#isProcessRestart", label: "프로세스 재시작"}
+# ★isSecureDriveWrite/isTakeoutDriveWrite radio 는 id(#ALLOW/#BLOCK)가 두 name 그룹에 중복 —
+#   id 기준 diff 엔 한 쌍만 등재(존재 감지용). 그룹별 동작 검증은 sc2/sc3 수동(name 조합 셀렉터).
+radio_groups_extra_doc: "isSecureDriveWrite(허용/차단) + isTakeoutDriveWrite(허용/차단)"

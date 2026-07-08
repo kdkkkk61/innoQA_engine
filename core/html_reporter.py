@@ -48,6 +48,11 @@ _PAGE_LABELS: dict[str, str] = {
     "secure_zone_template_manage_folder": "템플릿(특수폴더)",
     "secure_zone_template_sync_folder":   "템플릿(폴더동기화)",
     "secure_zone_template_sync_folder_content": "템플릿(폴더동기화 내용)",
+    "secure_zone_template_process":   "템플릿(프로세스)",
+    "secure_zone_template_process_l3_allow":  "템플릿(프로세스 L3 허용)",
+    "secure_zone_template_process_l3_deny":   "템플릿(프로세스 L3 거부)",
+    "secure_zone_template_process_l3_except": "템플릿(프로세스 L3 예외처리)",
+    "secure_zone_template_process_l3_block":  "템플릿(프로세스 L3 실행차단)",
 }
 
 # ── 시나리오 번호 → 표시 라벨 (extra["scenario"] 태깅 기준) ────────
