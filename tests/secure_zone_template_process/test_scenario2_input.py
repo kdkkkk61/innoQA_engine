@@ -138,3 +138,61 @@ class TestSecureZoneTemplateProcessScenario2Input(SecureZoneTemplateProcessBase)
                   "sc2d — 1단계 타입 전환 시 필드 구성 불변(gating 없음)",
                   f"결과: 타입별 노출 입력 수={counts} (전부 동일={same} — 타입 종속은 L3)", sc=2,
                   repro="1. 1단계 모달 타입 radio 4종 전환\n2. 필드 구성 변화 없는지")
+
+    # ══ sc2e: 자유입력 요소 — templateName 특수문자 + clamp(실타이핑) ══
+    def test_scenario2e_templatename_freetext(self, logged_in_page, settings):
+        """1단계 이름(자유입력) 요소별: 특수문자 허용 + maxlength 30 clamp(실타이핑 60→30 실측)."""
+        print("\n━━ [프로세스] sc2e: templateName 특수문자/clamp ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        self._ensure_session_cleanup(page)
+        # 특수문자 이름 생성 허용 여부
+        sp = "[AUTO]_sz_proc_sp<>!@#"
+        if sp in page.get_template_names():
+            page.delete_template(sp); page.navigate_to()
+        msg = page.create_template(sp)
+        page.navigate_to()
+        created = sp in page.get_template_names()
+        self._add("pass" if created else "warn",
+                  "sc2e — 이름 특수문자 입력(생성 허용 여부)",
+                  f"입력: '{sp}' / 결과: 경고={msg!r}, 생성={created} (실측: 특수문자 허용, 형식 검사 없음)", sc=2,
+                  repro="1. 이름에 특수문자(<>!@#)\n2. 확인\n3. 허용/차단")
+        # clamp: 실타이핑 60자 → 수용 길이
+        page.open_add_modal()
+        accepted = page.type_real(f"{page.SEL_MODAL} {page.SEL_NAME}", "a" * 60)
+        page._close_modal_if_open()
+        self._add("pass" if accepted == 30 else "warn",
+                  "sc2e — 이름 실타이핑 60자 → clamp 30",
+                  f"입력: 60자 타이핑 / 결과: 수용={accepted}자 (maxlength=30 클라 가드)", sc=2,
+                  repro="1. 이름에 60자 타이핑\n2. 실제 수용 길이 확인")
+
+    # ══ sc2f: 자유입력 요소 — L3 설명 특수문자 + 장문 수용(재읽기) ══
+    def test_scenario2f_l3_description_freetext(self, logged_in_page, settings):
+        """L3 설명(자유입력, maxlength=None 서버측) 요소별: 특수문자 + 장문(500자) 수용 재읽기.
+        저장 시 서버 처리(길이 초과 등)는 sc3/sc4 수집 — 여기선 입력 수용만."""
+        print("\n━━ [프로세스] sc2f: L3 설명 특수문자/장문 수용 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_sc2f"
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+        page.open_l3_add("ALLOW_PROCESS")
+        scope = page.l3_scope("ALLOW_PROCESS")
+        desc_sel = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
+        ml = scope.locator(page.SEL_L3_DESC).first.get_attribute("maxlength")
+        # 특수문자 재읽기
+        sp = "설명<>&!@# 특수"
+        page.fill(desc_sel, sp)
+        sp_back = scope.locator(page.SEL_L3_DESC).first.input_value()
+        self._add("pass" if sp_back == sp else "warn",
+                  "sc2f — L3 설명 특수문자 수용(재읽기)",
+                  f"입력: {sp!r} / 재읽기: {sp_back!r}, maxlength={ml!r}(서버측)", sc=2)
+        # 장문 500자 수용 (안전 크기 — 3000 은 렌더 부하로 sc3 수집)
+        page.fill(desc_sel, "가" * 500)
+        long_back = len(scope.locator(page.SEL_L3_DESC).first.input_value())
+        self._add("pass" if long_back == 500 else "warn",
+                  "sc2f — L3 설명 장문 500자 수용(클라 제한 없음)",
+                  f"입력: 500자 / 재읽기: {long_back}자 (maxlength=None — 서버 측 처리)", sc=2,
+                  repro="1. L3 설명에 500자\n2. 재읽기 길이 = 500(클라 제한 없음)")
+        page.close_l3_modal("ALLOW_PROCESS")
+        page.close_l2_modal()
