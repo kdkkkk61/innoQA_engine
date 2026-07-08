@@ -401,45 +401,86 @@ class SecureZoneTemplateProcessPage(BasePage):
     SEED_PROC = re.compile(r"\[AUTO_\d{4,8}\]_cm_proc")
     SEED_TAG  = re.compile(r"\[AUTO_\d{4,8}\]_cm_tag")
 
-    def l3_register(self, ttype: str, *, tag: bool = False,
-                    name_pattern=None, search_term: str = None) -> str:
+    def l3_register(self, ttype: str, *, tag: bool = False, count: int = 1,
+                    name_pattern=None, search_term: str = None) -> list[str]:
         """L3 picker 열기 → (검색) → 대상 행 체크박스 **plain JS click** → 확인 → L3 복귀.
-        반환: 선택된 이름('' = 대상 없음, picker 닫고 반환).
+        반환: 선택된 이름 리스트([] = 대상 없음, picker 닫고 반환).
         ★실측(2026-07-08): 이 picker 는 check(force) 로 ng-model 미동기 → plain click 필수.
-        - name_pattern=None: 첫 데이터 행 선택(기본 등록 검증용).
-        - name_pattern=정규식: 매칭 첫 행(seed 연계 — [AUTO_<date>]_cm_proc 등). 없으면 '' (skip 판단).
-        - tag=True: 태그 checkbox(selectProcessTag), 아니면 selectProcess."""
+        checkbox 방식이라 **다중 선택 가능**(count>=2 면 앞에서부터 count 개 체크 → N개 일괄 등록).
+        - name_pattern=None: 첫 데이터 행부터 count 개(기본 등록 검증).
+        - name_pattern=정규식: 매칭 행만(seed 연계). 없으면 [] (skip 판단).
+        - tag=True: 태그 checkbox(selectProcessTag)."""
         cb_name = "selectProcessTag" if tag else "selectProcess"
         self.l3_scope(ttype).locator(self.SEL_L3_PICK).first.evaluate("el => el.click()")
         self.picker.wait_open()
         if search_term:
             self.picker.search(search_term)
-        picked = ""
+        picked = []
         for row in self.page.locator("div#globalProcessList tbody tr").all():
+            if len(picked) >= count:
+                break
             cb = row.locator(f"input[type='checkbox'][name='{cb_name}']")
             if cb.count() == 0:
                 continue
             txt = row.inner_text().strip()
             if not txt or "없습니다" in txt:
                 continue
-            # 이름 = 행에서 [ 로 시작하거나 공백 아닌 첫 토큰 (로깅/매칭용)
             cells = [c.strip() for c in row.locator("td").all_inner_texts() if c.strip()]
             nm = next((c for c in cells if c and not c[0].isdigit()), cells[0] if cells else txt)
-            if name_pattern is not None and not name_pattern.search(nm.replace("\n", " ").strip()):
+            nm = nm.replace("\n", " ").strip()
+            if name_pattern is not None and not name_pattern.search(nm):
                 continue
             cb.first.evaluate("el => { if (!el.checked) el.click(); }")   # plain click (동기 확인됨)
-            picked = nm.replace("\n", " ").strip()
-            break
+            picked.append(nm)
         if not picked:
             try:
                 self.picker.cancel()
                 self.picker.wait_closed()
             except Exception:
                 pass
-            return ""
+            return []
         self.picker.confirm()
         self.picker.wait_closed()
-        return self.l3_selected_name(ttype) or picked
+        return picked
+
+    # ── L2 등록 행 인라인 조작 (실측 2026-07-08) ──────────────────────
+    def l2_rows(self):
+        """L2 현재 탭의 visible 데이터 행 locator 리스트."""
+        return [r for r in self.page.locator(
+            f"{self.SEL_L2_MODAL} tbody tr:visible").all()
+            if r.locator("input[type='checkbox']").count() > 0
+            and "없습니다" not in (r.inner_text() or "")]
+
+    def l2_option_on(self, index: int = 0) -> bool:
+        """L2 행 옵션 버튼(processTypeBtn)이 on 상태인가 (재시작/드라이브권한 토글)."""
+        btn = self.l2_rows()[index].locator("td").nth(3).locator("button").first
+        cls = btn.get_attribute("class") or ""
+        return " on" in f" {cls} "
+
+    def l2_toggle_option(self, index: int = 0) -> bool:
+        """L2 행 옵션 버튼 클릭 → 토글 후 on 여부 반환 (인라인 즉시 반영, 실측)."""
+        btn = self.l2_rows()[index].locator("td").nth(3).locator("button").first
+        btn.evaluate("el => el.click()")
+        self.page.wait_for_timeout(300)
+        return self.l2_option_on(index)
+
+    def l2_open_item_edit(self, index: int = 0) -> None:
+        """L2 행 프로세스명 링크 클릭 → 해당 타입 L3 편집 모달 진입(로드값)."""
+        self.l2_rows()[index].locator("td").nth(1).locator("a").first.evaluate("el => el.click()")
+        self.page.wait_for_timeout(700)
+
+    def l2_bulk_remove(self) -> str:
+        """L2 헤더 전체선택 → removeItemBtn → 일괄 제거. 확인 메시지 반환."""
+        hdr = self.page.locator(f"{self.SEL_L2_MODAL} thead input[type='checkbox']").first
+        hdr.evaluate("el => { if (!el.checked) el.click(); }")
+        self.page.wait_for_timeout(300)
+        self.page.locator(self.SEL_L2_DEL_ITEM).first.evaluate("el => el.click()")
+        msg = ""
+        if self.is_confirm_modal_visible():
+            msg = self.get_modal_message()
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+        return msg
 
     def l3_add_message(self, ttype: str) -> str:
         """L3 '추가' 클릭 → 경고 메시지 반환+dismiss(''=커밋).

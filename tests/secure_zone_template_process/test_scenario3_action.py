@@ -128,70 +128,135 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             page.delete_template(self._DUP)
             page.navigate_to()
 
-    # ── sc3c: 개별 프로세스 등록 (기본 동작 — 첫 행) ────────────────
-    def test_scenario3c_process_register(self, logged_in_page, settings):
-        """★기본 등록이 되는가(핵심). 첫 행 프로세스 선택 → 추가 → L2 반영 + 리스트 카운트.
-        seed 연계와 분리(엉킴이 13:03 오독 유발) — 여기선 '등록 자체' 만 검증."""
-        print("\n━━ [프로세스] sc3c: 개별 프로세스 등록(기본) ━━━")
+
+    # ── sc3c: 개별 프로세스 등록 — 단일 + 다중 (checkbox picker) ─────
+    def test_scenario3c_register_single_multi(self, logged_in_page, settings):
+        """★등록 동작. picker 는 checkbox(라디오 아님) → 다중 선택 한 번에 N개 등록 가능(실측).
+        단일 1건 + 다중 3건 → L2 반영 + '등록된 프로세스' 카운트."""
+        print("\n━━ [프로세스] sc3c: 개별 프로세스 등록(단일+다중) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         tpl = "[AUTO]_sz_proc_3c"
         page.navigate_to_clean()
         page.ensure_template(tpl)
+
+        # 단일 등록
         page.open_l2_modal(tpl)
         page.open_l3_add("ALLOW_PROCESS")
-        picked = page.l3_register("ALLOW_PROCESS")   # 첫 행, plain click
-        shown = page.l3_selected_name("ALLOW_PROCESS")
-        f1 = self._shot("proc_reg_selected",
-                        highlight=page.l3_scope("ALLOW_PROCESS").locator("span#szProcessName").first,
-                        caption=f"1. 프로세스 선택 → 표시={shown!r}")
-        msg = page.l3_add_message("ALLOW_PROCESS")
-        cnt = page.l2_item_count()
-        f2 = self._shot("proc_reg_l2",
-                        highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody").first,
-                        caption=f"2. 추가 → L2 목록 {cnt}건 (경고={msg!r})")
-        ok = bool(picked) and (msg == "") and (cnt >= 1)
-        self._add("pass" if ok else "fail",
-                  "sc3c — 개별 프로세스 등록 → L2 반영",
-                  f"입력: 첫 행 {shown!r} 선택 + 추가 / 결과: 경고={msg!r}, L2 등록 {cnt}건", sc=3,
-                  screenshots=[f1, f2],
-                  repro="1. L2 '+' → L3\n2. 프로세스 선택(체크)\n3. 추가 → 알림 없이 L2 목록 반영")
-        page.close_l2_modal()
-        list_cnt = ""
-        try:
-            list_cnt = page._row_locator(tpl).locator("td").nth(3).inner_text().strip()
-        except Exception:
-            pass
-        self._add("pass" if list_cnt.startswith("1/") else "warn",
-                  "sc3c — 리스트 '프로세스/태그 카운트' 갱신",
-                  f"결과: {list_cnt!r} (기대 1/N — L2 닫으면 갱신)", sc=3)
+        picked1 = page.l3_register("ALLOW_PROCESS", count=1)
+        msg1 = page.l3_add_message("ALLOW_PROCESS")
+        cnt1 = page.l2_item_count()
+        self._add("pass" if (len(picked1) == 1 and msg1 == "" and cnt1 == 1) else "fail",
+                  "sc3c — 단일 프로세스 등록 → L2 1건",
+                  f"입력: {picked1} 선택+추가 / 결과: 경고={msg1!r}, L2={cnt1}건", sc=3,
+                  repro="1. L2 + → picker 1개 체크\n2. 확인 → 추가\n3. L2 1행")
 
-    # ── sc3d: 태그 등록 (기본 동작 — 첫 태그) ───────────────────────
-    def test_scenario3d_tag_register(self, logged_in_page, settings):
-        """★기본 태그 등록. L2 태그 탭 → 첫 태그 선택 → 추가 → 태그 탭 반영 + 카운트."""
-        print("\n━━ [프로세스] sc3d: 태그 등록(기본) ━━━")
+        # 다중 등록 (앞에서부터 3개 — 이미 등록된 것과 겹치면 제품이 스킵/중복처리하는지도 관찰)
+        page.open_l3_add("ALLOW_PROCESS")
+        picked3 = page.l3_register("ALLOW_PROCESS", count=3)
+        shown = page.l3_selected_name("ALLOW_PROCESS")
+        f1 = self._shot("multi_selected",
+                        highlight=page.l3_scope("ALLOW_PROCESS").locator("span#szProcessName").first,
+                        caption=f"1. picker 다중 선택 → L3 표시: {shown!r}")
+        msg3 = page.l3_add_message("ALLOW_PROCESS")
+        cnt_after = page.l2_item_count()
+        f2 = self._shot("multi_l2",
+                        highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody").first,
+                        caption=f"2. 추가 → L2 총 {cnt_after}건 (경고={msg3!r})")
+        multi_ok = (len(picked3) == 3) and ("외" in shown) and (msg3 == "") and (cnt_after >= 2)
+        self._add("pass" if multi_ok else "warn",
+                  "sc3c — 다중 프로세스 등록(한 번에 N개) → L2 반영",
+                  f"입력: {len(picked3)}개 선택({shown!r}) + 추가 / 결과: 경고={msg3!r}, "
+                  f"L2 총 {cnt_after}건", sc=3,
+                  screenshots=[f1, f2],
+                  repro="1. L2 + → picker 여러 개 체크\n2. 확인 → 'N개 외' 표시\n3. 추가 → L2 다건 등록")
+        page.l2_bulk_remove()   # 정리(전체 제거)
+        page.close_l2_modal()
+
+    # ── sc3d: 인라인 옵션 토글 (허용=재시작) ────────────────────────
+    def test_scenario3d_inline_option_toggle(self, logged_in_page, settings):
+        """★등록 행의 옵션 버튼(허용=재시작)을 L2 목록에서 인라인 토글 → 즉시 반영(실측:
+        편집 재오픈 시 restart 반영). 등록만 하고 옵션 안 건드리던 허술함 보강."""
+        print("\n━━ [프로세스] sc3d: 인라인 옵션 토글(허용 재시작) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         tpl = "[AUTO]_sz_proc_3d"
         page.navigate_to_clean()
         page.ensure_template(tpl)
         page.open_l2_modal(tpl)
+        page.open_l3_add("ALLOW_PROCESS")
+        page.l3_register("ALLOW_PROCESS", count=1)
+        page.l3_add_message("ALLOW_PROCESS")   # 등록(재시작 기본 off)
+
+        before = page.l2_option_on(0)
+        after = page.l2_toggle_option(0)
+        f1 = self._shot("opt_toggled",
+                        highlight=page.l2_rows()[0].locator("td").nth(3).locator("button").first,
+                        caption=f"옵션(재시작) 토글: {before} → {after}")
+        # 편집 재오픈으로 실제 반영 확인
+        page.l2_open_item_edit(0)
+        restart_loaded = page.l3_scope("ALLOW_PROCESS").locator("input#isProcessRestart").first.is_checked()
+        page.close_l3_modal("ALLOW_PROCESS")
+        ok = (before != after) and (restart_loaded == after)
+        self._add("pass" if ok else "warn",
+                  "sc3d — L2 인라인 옵션(재시작) 토글 → 편집 로드값 반영",
+                  f"입력: 옵션 버튼 클릭 / 결과: 표시 {before}→{after}, 편집 로드 restart={restart_loaded}", sc=3,
+                  screenshots=[f1],
+                  repro="1. 프로세스 등록\n2. L2 행 옵션 버튼 클릭(재시작 토글)\n3. 이름 링크 편집 → restart 반영 확인")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc3e: 태그 등록 (첫 태그) ───────────────────────────────────
+    def test_scenario3e_tag_register(self, logged_in_page, settings):
+        print("\n━━ [프로세스] sc3e: 태그 등록(기본) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3e"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
         page.switch_l2_tab("태그")
         page.open_l3_add("ALLOW_PROCESS")
-        picked = page.l3_register("ALLOW_PROCESS", tag=True)   # 첫 태그, plain click
+        picked = page.l3_register("ALLOW_PROCESS", tag=True, count=1)
         shown = page.l3_selected_name("ALLOW_PROCESS")
-        f1 = self._shot("tag_reg_selected",
-                        highlight=page.l3_scope("ALLOW_PROCESS").locator("span#szProcessName").first,
-                        caption=f"1. 태그 선택 → 표시={shown!r}")
         msg = page.l3_add_message("ALLOW_PROCESS")
         cnt = page.l2_item_count()
-        f2 = self._shot("tag_reg_l2",
-                        highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody").first,
-                        caption=f"2. 추가 → 태그 탭 {cnt}건 (경고={msg!r})")
         ok = bool(picked) and (msg == "") and (cnt >= 1)
         self._add("pass" if ok else "fail",
-                  "sc3d — 태그 등록 → L2 태그 탭 반영",
-                  f"입력: 첫 태그 {shown!r} 선택 + 추가 / 결과: 경고={msg!r}, 태그 탭 등록 {cnt}건", sc=3,
-                  screenshots=[f1, f2],
+                  "sc3e — 태그 등록 → L2 태그 탭 반영",
+                  f"입력: 태그 {shown!r} 선택+추가 / 결과: 경고={msg!r}, 태그 탭 {cnt}건", sc=3,
                   repro="1. L2 태그 탭 → + → L3\n2. 태그 선택(체크)\n3. 추가 → 태그 탭 반영")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc3f: 제거 — 개별 1건 + 헤더 전체선택 일괄 ──────────────────
+    def test_scenario3f_remove_single_bulk(self, logged_in_page, settings):
+        """등록 후 제거 2방식: 개별 행 체크 제거 / 헤더 전체선택 일괄 제거(실측 확인 '삭제 하시겠습니까')."""
+        print("\n━━ [프로세스] sc3f: 제거(개별 + 일괄) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3f"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+        page.open_l3_add("ALLOW_PROCESS")
+        page.l3_register("ALLOW_PROCESS", count=3)   # 3건 등록
+        page.l3_add_message("ALLOW_PROCESS")
+        start = page.l2_item_count()
+
+        # 개별 제거 1건
+        msg1 = page.l2_remove_item(0)
+        mid = page.l2_item_count()
+        self._add("pass" if ("삭제 하시겠습니까" in msg1 and mid == start - 1) else "fail",
+                  "sc3f — 개별 행 제거 → -1",
+                  f"입력: 1행 체크+제거 / 결과: 확인={msg1!r}, {start}→{mid}건", sc=3,
+                  repro="1. 등록 3건\n2. 1행 체크 + - 버튼\n3. 삭제 확인 → 1건 감소")
+
+        # 헤더 전체선택 일괄 제거
+        msg2 = page.l2_bulk_remove()
+        end = page.l2_item_count()
+        self._add("pass" if end == 0 else "fail",
+                  "sc3f — 헤더 전체선택 → 일괄 제거 → 0건",
+                  f"입력: 전체선택 + 제거 / 결과: 확인={msg2!r}, {mid}→{end}건", sc=3,
+                  repro="1. 헤더 체크(전체선택)\n2. - 버튼\n3. 전부 제거")
         page.close_l2_modal()
