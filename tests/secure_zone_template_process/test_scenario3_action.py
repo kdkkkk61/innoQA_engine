@@ -410,11 +410,38 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                             "3. '프로세스를 선택해 주세요' 경고 떠야 정상(타입별 상이 주의)")
             page.close_l3_modal(ttype)
             page.close_l2_modal()
-        # 요약(전수 대조 — 타입 간 불일치 부각)
-        warned_types = [k for k, v in results.items() if v["warned"]]
-        consistent = len(set(v["warned"] for v in results.values())) == 1
-        self._add("pass" if consistent else "warn",
-                  "sc3j — 필수 경고 타입 간 일관성",
-                  f"결과: 경고 있는 타입={warned_types} / 전체={list(results)} "
-                  + ("(4타입 일관)" if consistent
-                     else "[타입 간 불일치 — 일부 타입만 필수 경고, 나머지 누락(제품 검증 불균일)]"), sc=3)
+        # (요약 카드 제거 — 타입별 4개 카드가 실제 판정. 요약은 중복 서술이라 미생성.)
+
+    # ── sc3k: ★타입별 등록 + 옵션 표시 전수 (허용에만 넣던 것 → 4타입) ──
+    def test_scenario3k_register_option_by_type(self, logged_in_page, settings):
+        """★사용자 지적: 등록을 허용에만 해봄. 4타입 각각 등록 → L2 옵션 셀이 타입별로 다른지 전수.
+        실측(2026-07-08): 허용=재시작 / 예외=시큐어드라이브+반출드라이브+재시작 / 거부·차단=옵션 없음."""
+        print("\n━━ [프로세스] sc3k: 타입별 등록+옵션 표시 전수 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        for ttype in page.TYPES:
+            ko = page.TYPE_KO[ttype]
+            tpl = f"[AUTO]_sz_proc_3k_{ttype.split('_')[0].lower()}"
+            expect = page.L2_OPTION_BTNS[ttype]
+            page.navigate_to_clean()
+            page.ensure_template(tpl, ttype)
+            page.open_l2_modal(tpl)
+            page.open_l3_add(ttype)
+            picked = page.l3_register(ttype, count=1)   # 첫 행 등록
+            msg = page.l3_add_message(ttype)
+            cnt = page.l2_item_count()
+            opts = page.l2_option_buttons(0) if cnt >= 1 else []
+            f = self._shot(f"reg_opt_{ttype.split('_')[0].lower()}",
+                           highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody").first,
+                           caption=f"{ko}: 등록 {cnt}건 / 옵션 버튼={opts}")
+            reg_ok = bool(picked) and (msg == "") and (cnt == 1)
+            opt_ok = set(opts) == set(expect)
+            self._add("pass" if (reg_ok and opt_ok) else "fail",
+                      f"sc3k — {ko}: 등록 + 옵션 표시(타입 전용)",
+                      f"입력: {ko} 템플릿에 프로세스 1건 등록 / 결과: 등록={cnt}건, "
+                      f"옵션 버튼={opts} (기대 {expect}) 일치={opt_ok}", sc=3,
+                      screenshots=[f],
+                      repro=f"1. {ko} 템플릿 L2 → + → 프로세스 선택 → 추가\n"
+                            f"2. L2 행 옵션 셀 = {expect or '없음'}(타입 전용) 확인")
+            page.l2_bulk_remove()
+            page.close_l2_modal()

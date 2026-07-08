@@ -94,6 +94,13 @@ class SecureZoneTemplateProcessPage(BasePage):
                            "반출드라이브 쓰기(차단)": "input[name='isTakeoutDriveWrite']#BLOCK"},
         "BLOCK_PROCESS":  {},
     }
+    # 타입별 L2 등록행 옵션 셀 버튼(실측 2026-07-08) — 옵션이 타입마다 다르게 나옴
+    L2_OPTION_BTNS = {
+        "ALLOW_PROCESS":  ["processRestartBtn"],
+        "DENY_PROCESS":   [],
+        "EXCEPT_PROCESS": ["driveAccessBtn", "driveWriteBtn", "processRestartBtn"],
+        "BLOCK_PROCESS":  [],
+    }
     SEL_L3_ANY = ", ".join(f"div#{mid}.in" for mid in L3_MAP.values())
     SEL_L3_DESC = "textarea#description"
     SEL_L3_PICK = "button#szProcessBtn"   # '프로세스 선택' / 태그 탭 '태그 선택'
@@ -450,6 +457,17 @@ class SecureZoneTemplateProcessPage(BasePage):
             f"{self.SEL_L2_MODAL} tbody tr:visible").all()
             if r.locator("input[type='checkbox']").count() > 0
             and "없습니다" not in (r.inner_text() or "")]
+
+    def l2_option_buttons(self, index: int = 0) -> list[str]:
+        """L2 행 옵션 셀(td[3])의 버튼 종류(class 첫 토큰) 리스트 — 타입별 옵션 대조용.
+        예: 허용=['processRestartBtn'] / 예외=['driveAccessBtn','driveWriteBtn','processRestartBtn']."""
+        cell = self.l2_rows()[index].locator("td").nth(3)
+        out = []
+        for b in cell.locator("button").all():
+            cls = (b.get_attribute("class") or "").split()
+            if cls:
+                out.append(cls[0])
+        return out
 
     def l2_option_on(self, index: int = 0) -> bool:
         """L2 행 옵션 버튼(processTypeBtn)이 on 상태인가 (재시작/드라이브권한 토글)."""
