@@ -445,3 +445,38 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                             f"2. L2 행 옵션 셀 = {expect or '없음'}(타입 전용) 확인")
             page.l2_bulk_remove()
             page.close_l2_modal()
+
+    # ── sc3l: ★설명 오버플로 3000자 — 4타입 전수(수집) ─────────────
+    def test_scenario3l_description_overflow_by_type(self, logged_in_page, settings):
+        """사용자 지적: 설명 3000자 오류가 허용/거부/예외/차단 다 뜨는지. L3 모달 별개라 전수 수집.
+        설명 maxlength=None(서버측) — 저장 시 서버 처리(정상/길이초과/오류)를 타입별 관찰(추정 금지)."""
+        print("\n━━ [프로세스] sc3l: 설명 3000자 오버플로 4타입 전수 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        for ttype in page.TYPES:
+            ko = page.TYPE_KO[ttype]
+            tpl = f"[AUTO]_sz_proc_3l_{ttype.split('_')[0].lower()}"
+            page.navigate_to_clean()
+            page.ensure_template(tpl, ttype)
+            page.open_l2_modal(tpl)
+            page.open_l3_add(ttype)
+            page.l3_register(ttype, count=1)   # 프로세스 선택(필수 충족)
+            desc_sel = f"div#{page.L3_MAP[ttype]}.in {page.SEL_L3_DESC}"
+            page.fill(desc_sel, "가" * 3000)
+            before = page.l2_item_count()
+            msg = page.l3_add_message(ttype)   # 추가 → 서버 처리
+            after = page.l2_item_count()
+            committed = after == before + 1
+            raw_err = ("서버" in msg and "오류" in msg)
+            guard = ("자" in msg or "길이" in msg or "초과" in msg) and not raw_err
+            st = "warn" if raw_err else "pass"
+            self._add(st,
+                      f"sc3l — {ko}: 설명 3000자 저장 → 서버 처리(수집)",
+                      f"입력: 설명 3000자 + 추가 / 결과: 경고={msg!r}, 커밋={committed} "
+                      + ("[raw 서버 오류 — 클라 길이 가드 부재]" if raw_err
+                         else "(길이 가드 안내)" if guard
+                         else "(제한 없이 커밋)"), sc=3,
+                      merge_key=(f"szproc_desc_ovf::{ttype}::warn::raw_server_error" if raw_err else None),
+                      repro=f"1. {ko} L3 프로세스 선택 + 설명 3000자\n2. 추가\n3. 서버 처리 결과 확인")
+            page.l2_bulk_remove()
+            page.close_l2_modal()
