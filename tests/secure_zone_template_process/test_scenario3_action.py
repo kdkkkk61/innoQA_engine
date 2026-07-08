@@ -9,6 +9,7 @@ sc3c 등록(단일+다중, checkbox) / sc3d 인라인 옵션 토글(재시작) /
 sc3g 다중 중복 처리(부분/전체) / sc3h 이름(clamp·특수문자) / sc3i 설명(특수문자·장문)
 sc3j ★미선택 필수 경고 4타입 전수 / sc3k ★등록+옵션 4타입 전수 / sc3l 설명 3000자 오버플로 4타입
 sc3m ★저장값 roundtrip(예외처리 옵션·설명 설정→저장→재오픈 일치 — 특수폴더 sc3k 미러)
+sc3n ★여러 프로세스 등록·활용(서로 다른 3개 등록→각 이름 검증→행별 옵션 개별 적용→1개 부분 제거)
 ※ 등록 picker=checkbox plain click(실측). L3 타입별 모달 별개 → 타입 종속 검증은 4타입 전수.
 ※ seed 연계는 sc6. sc2=속성(maxlength 존재·초기값), sc3=실제 동작.
 """
@@ -468,5 +469,60 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   merge_key=(None if ok else "szproc_roundtrip::except_options::warn::value_lost"),
                   repro="1. 예외처리 L3 — 드라이브 권한 비기본값+재시작+설명 설정\n2. 추가(저장)\n"
                         "3. 이름 링크로 재오픈 → 설정값 그대로 로드되는지")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc3n: ★여러 프로세스 등록해서 활용 (카운트 아닌 개별 검증) ──────
+    def test_scenario3n_multi_register_operate(self, logged_in_page, settings):
+        """사용자 지시(2026-07-09): '여러 프로세스 등록해서 무언가 하는' 시나리오.
+        카운트만이 아니라 — 서로 다른 3개 등록 → 각 이름 그대로 반영 → 행별 다른 옵션
+        (L2 인라인 재시작 0행만 ON) 개별 적용 → 1개만 부분 제거 → 나머지 유지 확인."""
+        print("\n━━ [프로세스] sc3n: 여러 프로세스 등록·활용 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3n"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)   # ALLOW (재시작 옵션 보유 타입)
+        page.open_l2_modal(tpl)
+        page.open_l3_add("ALLOW_PROCESS")
+        picked = page.l3_register("ALLOW_PROCESS", count=3)   # 서로 다른 3개(picker 앞 3행)
+        page.l3_add_message("ALLOW_PROCESS")
+
+        # ① 등록 개수 + 각 이름 그대로 반영 (카운트만 아님)
+        names = [r.locator("td").nth(1).inner_text().strip() for r in page.l2_rows()]
+        each_ok = len(picked) == 3 and all(
+            any(p in n or n in p for n in names) for p in picked)
+        cnt = page.l2_item_count()
+        self._add("pass" if (cnt == 3 and each_ok) else "fail",
+                  "sc3n — 서로 다른 프로세스 3개 등록 → 각 이름 그대로 반영",
+                  f"입력: {picked} 등록 / 결과: L2 {cnt}행, 이름={names}, 전수일치={each_ok}", sc=3,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  repro="1. L2 + → picker 서로 다른 3개 체크\n2. 추가\n"
+                        "3. L2 3행 각 이름이 선택한 프로세스와 일치")
+
+        # ② 행별 다른 옵션 개별 적용 — 0행 재시작 ON, 1행 미변경(OFF) 유지
+        on0 = page.l2_toggle_option(0)     # 0행 토글 → ON 기대
+        off1 = page.l2_option_on(1)        # 1행 미변경 → OFF 기대
+        per_row_ok = on0 and not off1
+        self._add("pass" if per_row_ok else "warn",
+                  "sc3n — 등록된 여러 행에 서로 다른 옵션 개별 적용(0행만 재시작 ON)",
+                  f"결과: 0행 재시작={on0}(ON 기대), 1행 재시작={off1}(OFF 기대), 독립={per_row_ok}"
+                  + ("" if per_row_ok else " [행별 옵션이 독립 적용 안 됨 — 한 토글이 타 행에 전파/미반영]"),
+                  sc=3, highlight=page.l2_rows()[0].locator("td").nth(3),
+                  merge_key=(None if per_row_ok else "szproc_multi::per_row_option::warn::not_independent"),
+                  repro="1. 3행 등록 상태\n2. 0행 옵션(재시작) 클릭\n3. 0행만 ON, 1행 OFF 유지")
+
+        # ③ 여러 등록 중 1개만 부분 제거 → 나머지 유지 (지운 것만 사라짐)
+        target = page.l2_rows()[1].locator("td").nth(1).inner_text().strip()
+        page.l2_remove_item(1)
+        remain = [r.locator("td").nth(1).inner_text().strip() for r in page.l2_rows()]
+        removed_ok = page.l2_item_count() == 2 and not any(
+            (target in r or r in target) for r in remain)
+        self._add("pass" if removed_ok else "fail",
+                  "sc3n — 여러 등록 중 1개만 부분 제거 → 나머지 유지",
+                  f"제거 대상={target!r} / 결과: 남은 {page.l2_item_count()}행={remain}, 대상제거={removed_ok}",
+                  sc=3, highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  repro="1. 3행 중 1행 체크(-) 제거\n2. 2행 남고 지운 프로세스만 사라졌는지")
+
         page.l2_bulk_remove()
         page.close_l2_modal()
