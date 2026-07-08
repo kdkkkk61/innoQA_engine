@@ -4,15 +4,17 @@
 단계별로 확장 — 이번 단계는 **1단계 모달만 쓰는 검증**(L2/L3 미진입 = 검증된 안전 구간).
 L2/L3 등록 흐름(3c~)은 크롬 실측(picker=checkbox·L3 자동닫힘·카운트 갱신) 반영 후 다음 단계.
 
+sc3 = 순수 '동작' 검증 (표준 + 제어스위트 아날로그 대조). 등록은 picker 첫 행 선택 —
+제어스위트 sc3 도 select_first_and_confirm(첫 행). ★seed 소비·연계는 sc3 아님 = sc6 책임
+(운용 프로세스/태그 sc6 산출물 [AUTO_<date>]_cm_* 소비하여 chain 구성). sc3 에서 끌어오지 않는다.
+
 sc3a — 타입별 생성 4종 전수 → 리스트 등장 + 타입 컬럼 표시 (radio 반영 검증 포함)
-sc3b — 동명 중복 스코프. ★핵심 = 같은 타입 내 동명 차단 여부(템플릿 부여가 타입별로 나오므로
-       같은 타입에 동명이면 구분 불가 = 중요). 부수 = 다른 타입 동명 공존(타입 스코프 — 동작상
-       정상이나 부여 목록에 동명이 나올 수 있어 경고 가치). 복사 충돌 등은 후속 단계.
-[L2/L3 등록 구간 — 크롬 실측(13:14) 반영: picker=checkbox(multi/tag_multi)·L3 자동닫힘·카운트 갱신]
-sc3c — ★개별 프로세스 등록: 날짜본 seed([AUTO_<MMDD>]_cm_proc — 운용 프로세스 sc6 산출) 우선
-       검색·선택(연계 소비) → 커밋 → L2 반영 + 리스트 카운트
-sc3d — ★태그 등록: 날짜본 태그([AUTO_<MMDD>]_cm_tag — 태그 sc6 산출) 동일 패턴
-※ seed 선택 규칙(사용자 2026-07-08): picker 에서 [AUTO_ 검색 → 정확 일치. 무조건 첫 행 금지.
+sc3b — 동명 중복 스코프. ★핵심 = 같은 타입 내 동명 차단 여부(부여가 타입별 → 같은 타입 동명 혼란).
+       부수 = 다른 타입 동명 공존(타입 스코프 — 정상이나 경고 가치).
+[L2/L3 등록 구간 — 크롬 실측(13:14/14:03) 반영: picker=checkbox plain click·L3 자동닫힘·카운트 갱신]
+sc3c — 개별 프로세스 등록(기본, 첫 행) → L2 반영 + 리스트 카운트
+sc3d — 태그 등록(기본, 첫 태그) → 태그 탭 반영
+※ 등록 picker 선택 = 첫 행(동작 검증). 날짜본 seed 연계는 sc6 에서(빌드 예정).
 """
 import time
 
@@ -192,43 +194,4 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   f"입력: 첫 태그 {shown!r} 선택 + 추가 / 결과: 경고={msg!r}, 태그 탭 등록 {cnt}건", sc=3,
                   screenshots=[f1, f2],
                   repro="1. L2 태그 탭 → + → L3\n2. 태그 선택(체크)\n3. 추가 → 태그 탭 반영")
-        page.close_l2_modal()
-
-    # ── sc3e: ★sc6 연계 — 날짜본 프로세스 seed 소비 (운용 프로세스 sc6) ──
-    def test_scenario3e_seed_link(self, logged_in_page, settings):
-        """picker 에서 [AUTO_ 검색 → [AUTO_<date>]_cm_proc 날짜본 정확 매칭 선택 → 등록.
-        ★seed 없으면 skip('운용 프로세스 sc6 선행 필요') — BUG 아님(연계 선행 조건)."""
-        print("\n━━ [프로세스] sc3e: sc6 연계 프로세스 seed 소비 ━━━")
-        page = self._new_page(logged_in_page, settings)
-        page.navigate_to()
-        tpl = "[AUTO]_sz_proc_3e"
-        page.navigate_to_clean()
-        page.ensure_template(tpl)
-        page.open_l2_modal(tpl)
-        page.open_l3_add("ALLOW_PROCESS")
-        picked = page.l3_register("ALLOW_PROCESS", name_pattern=page.SEED_PROC,
-                                  search_term="[AUTO_")
-        if not picked:
-            self._add("skip",
-                      "sc3e — 연계: 운용 프로세스 sc6 날짜본 seed 소비 [선행 필요]",
-                      "결과: picker 에 [AUTO_<date>]_cm_proc 없음 — 운용 프로세스 sc6 미실행. "
-                      "chain 검증 스킵(제품 이상 아님).", sc=3,
-                      repro="1. 운용 프로세스 sc6 로 [AUTO_<날짜>]_cm_proc 생성\n"
-                            "2. 프로세스 탭 L3 picker 에서 [AUTO_ 검색 → 그 seed 선택")
-            page.close_l3_modal("ALLOW_PROCESS")
-            page.close_l2_modal()
-            return
-        shown = page.l3_selected_name("ALLOW_PROCESS")
-        f1 = self._shot("seed_selected",
-                        highlight=page.l3_scope("ALLOW_PROCESS").locator("span#szProcessName").first,
-                        caption=f"1. 연계 seed 선택 → {shown!r}")
-        msg = page.l3_add_message("ALLOW_PROCESS")
-        cnt = page.l2_item_count()
-        ok = (msg == "") and (cnt >= 1)
-        self._add("pass" if ok else "fail",
-                  "sc3e — 연계: 운용 프로세스 sc6 날짜본 seed 등록",
-                  f"입력: seed {shown!r}(운용 프로세스 sc6 산출) 선택 + 추가 / "
-                  f"결과: 경고={msg!r}, L2 등록 {cnt}건", sc=3,
-                  screenshots=[f1],
-                  repro="1. L3 '프로세스 선택' → [AUTO_ 검색\n2. 날짜본 seed 정확 일치 선택\n3. 추가 → 등록")
         page.close_l2_modal()
