@@ -375,3 +375,46 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   repro="1. L3 설명 500자\n2. 재읽기 500(클라 제한 없음)")
         page.close_l3_modal("ALLOW_PROCESS")
         page.close_l2_modal()
+
+    # ── sc3j: ★필수(미선택) 경고 — 4타입 전수 sweep ─────────────────
+    def test_scenario3j_required_sweep_by_type(self, logged_in_page, settings):
+        """★L3 모달은 타입마다 별개 → 미선택 추가 시 필수 경고를 4타입 전수 검증
+        (사용자 통찰: 생김새 같아도 다른 모달이라 다른 결과). 실측(2026-07-08):
+        허용/예외/차단='프로세스를 선택해 주세요' / 거부=경고 없음(silent) → 거부 필수 검증 누락 결함."""
+        print("\n━━ [프로세스] sc3j: 필수(미선택) 경고 4타입 전수 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        results = {}
+        for ttype in page.TYPES:
+            ko = page.TYPE_KO[ttype]
+            tpl = f"[AUTO]_sz_proc_3j_{ttype.split('_')[0].lower()}"
+            page.navigate_to_clean()
+            page.ensure_template(tpl, ttype)
+            page.open_l2_modal(tpl)
+            page.open_l3_add(ttype)
+            # 프로세스 미선택 상태로 '추가'
+            msg = page.l3_add_message(ttype)   # 경고 있으면 dismiss 후 반환, 없으면 ''
+            warned = ("선택" in msg) or ("프로세스를" in msg)
+            results[ko] = {"msg": msg, "warned": warned}
+            f = self._shot(f"req_{ttype.split('_')[0].lower()}",
+                           caption=f"{ko}: 미선택 추가 → 경고={msg!r} (경고 유무={warned})")
+            self._add("pass" if warned else "warn",
+                      f"sc3j — {ko}: 미선택 추가 → 필수 경고",
+                      f"입력: 프로세스 미선택 + 추가 / 결과: 경고={msg!r} "
+                      + ("(정상 — 필수 경고)" if warned
+                         else "[★필수 경고 누락 — 다른 타입은 경고 뜨는데 이 타입만 무반응]"), sc=3,
+                      screenshots=[f],
+                      merge_key=(None if warned
+                                 else f"szproc_required_missing::{ttype}::warn::no_required_alert"),
+                      repro=f"1. {ko} 템플릿 L2 → + → L3\n2. 프로세스 미선택 상태로 추가\n"
+                            "3. '프로세스를 선택해 주세요' 경고 떠야 정상(타입별 상이 주의)")
+            page.close_l3_modal(ttype)
+            page.close_l2_modal()
+        # 요약(전수 대조 — 타입 간 불일치 부각)
+        warned_types = [k for k, v in results.items() if v["warned"]]
+        consistent = len(set(v["warned"] for v in results.values())) == 1
+        self._add("pass" if consistent else "warn",
+                  "sc3j — 필수 경고 타입 간 일관성",
+                  f"결과: 경고 있는 타입={warned_types} / 전체={list(results)} "
+                  + ("(4타입 일관)" if consistent
+                     else "[타입 간 불일치 — 일부 타입만 필수 경고, 나머지 누락(제품 검증 불균일)]"), sc=3)
