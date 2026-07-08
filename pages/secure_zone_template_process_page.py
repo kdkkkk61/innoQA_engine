@@ -4,6 +4,10 @@
 타입종속 4중 모달 — 4탭 중 구조 최복잡. 폴더동기화 페이지 미러 + 타입 하드매핑.
 yaml: config/scan_hints/secure_zone_template_process*.yaml
 
+[용어 — 모달 중첩 깊이]
+- L1(1단계): 템플릿 추가/수정(이름·타입·상태) / L2(2단계): 프로세스 추가/제거(개별·태그 탭·등록목록)
+  / L3(3단계): 타입별 편집(허용/거부/예외/차단 — picker·옵션·설명). L3 만 타입종속.
+
 [구조 — Chrome 직접조작 실측 2026-07-08, 192.168.13.141 (probe 4타입 생성→확인→삭제)]
 - 리스트: 용도/템플릿 이름/프로세스 타입/프로세스·태그 카운트/상태/등록일/수정일
   ★이름 컬럼 = td[1] (td[0]=용도) — sync(td[0]=이름)와 다름.
@@ -416,14 +420,21 @@ class SecureZoneTemplateProcessPage(BasePage):
         checkbox 방식이라 **다중 선택 가능**(count>=2 면 앞에서부터 count 개 체크 → N개 일괄 등록).
         - name_pattern=None: 첫 데이터 행부터 count 개(기본 등록 검증).
         - name_pattern=정규식: 매칭 행만(seed 연계). 없으면 [] (skip 판단).
-        - tag=True: 태그 checkbox(selectProcessTag)."""
+        - tag=True: 태그 checkbox(selectProcessTag).
+        ★★버그 수정(2026-07-09 Chrome 실측): 4탭 템플릿 페이지는 picker 를 열면
+        `div#globalProcessList` 가 **DOM 에 2개** 존재한다(비활성 탭 잔존 wrapper + 활성 picker).
+        예전 `div#globalProcessList tbody tr`(무스코프)는 DOM 순서상 **숨은 복사본**의
+        체크박스를 클릭 → ng-model 미반영 → confirm 이 '선택된 항목 없음' → 프로세스가
+        조용히 0건 등록되던 원인. **활성(보이는) picker 로 스코프**하고, 클릭 후 실제 checked
+        수를 검증해 silent no-op 을 즉시 실패로 드러낸다."""
         cb_name = "selectProcessTag" if tag else "selectProcess"
         self.l3_scope(ttype).locator(self.SEL_L3_PICK).first.evaluate("el => el.click()")
         self.picker.wait_open()
         if search_term:
             self.picker.search(search_term)
+        pick = self.page.locator("div#globalProcessList:visible")   # ★ 활성 picker 만 (숨은 복사본 배제)
         picked = []
-        for row in self.page.locator("div#globalProcessList tbody tr").all():
+        for row in pick.locator("tbody tr").all():
             if len(picked) >= count:
                 break
             cb = row.locator(f"input[type='checkbox'][name='{cb_name}']")
@@ -446,6 +457,12 @@ class SecureZoneTemplateProcessPage(BasePage):
             except Exception:
                 pass
             return []
+        # ★ 선택 실반영 검증 — 숨은 복사본 클릭 등으로 model 미갱신되면 여기서 즉시 실패
+        checked = pick.locator(f"input[type='checkbox'][name='{cb_name}']:checked").count()
+        if checked < len(picked):
+            raise RuntimeError(
+                f"프로세스 picker 선택 미반영 — 요청 {len(picked)}개 클릭했으나 실제 checked {checked}개"
+                " (활성 picker 스코프/ng-model 동기 실패)")
         self.picker.confirm()
         self.picker.wait_closed()
         return picked

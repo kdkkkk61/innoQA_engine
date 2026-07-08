@@ -2492,3 +2492,16 @@ sc5a 에는 재오픈 행 셀=O 검증(재오픈 렌더 계층) 별도 추가.)
 상태: [RESOLVED] (재실행 검증 대기)
 
 상태: [RESOLVED] (재실행 검증 대기)
+
+---
+
+## 프로세스 L3 picker — `div#globalProcessList` 이중 존재 → 숨은 복사본 클릭으로 프로세스 0건 등록 — 2026-07-09
+
+- **증상(사용자 지적)**: 프로세스 템플릿들이 전부 프로세스/태그 카운트 **0/0**(태그 1건만 잔존) — "테스트가 프로세스를 등록하지 않고 진행하는 것 아니냐".
+- **Chrome 실측 진단**: picker(`div#globalProcessList`)를 열면 **DOM 에 컨테이너가 2개** 존재. 4탭 템플릿 페이지(시큐어드라이브/프로세스/특수폴더/폴더동기화)에서 비활성 탭 잔존 wrapper + 활성 picker 공존. 무스코프 셀렉터 `div#globalProcessList tbody tr` 는 **DOM 순서상 숨은 복사본**(w=0)의 체크박스를 `el.click()` → 활성 picker 의 ng-model 미갱신 → 확인 시 '선택된 항목이 없습니다' → 프로세스가 **조용히 0건** 등록. (제품은 정상 — 활성 picker 체크박스 수동 클릭 시 등록·영속 확인, 등록된 프로세스 1건.)
+- **왜 조용했나**: 실패한 confirm 이 picker 를 닫지 않아 다음 open 때 잔존 복사본이 쌓이는 dirty 상태 유발 → 간헐/연쇄 실패. 카운트만 보면 cleanup(등록→bulk_remove) 정상 결과와 구분 안 됨.
+- **수정**: `l3_register` 의 행 순회를 **활성(보이는) picker** 로 스코프 — `self.page.locator("div#globalProcessList:visible")` 하위 `tbody tr`. 클릭 후 실제 `:checked` 수 < 요청 수면 **RuntimeError** 로 즉시 실패(silent no-op → loud). 공용 `ProcessPicker`(control_suite 의존)는 미변경 — 단일 picker 페이지엔 `:visible`=동일 요소라 무영향, 다중 picker 페이지 전용 수정을 페이지 메서드에 국한.
+- **파일**: `pages/secure_zone_template_process_page.py` (`l3_register`)
+- **교훈**: 같은 id 컨테이너가 여러 탭에 공존하는 SPA 에선 picker 조작을 **`:visible` 로 활성 인스턴스에 스코프**하고, 선택 직후 **실반영(:checked) 검증**으로 숨은 복사본 클릭을 결함으로 드러낼 것.
+
+상태: [RESOLVED] (재실행 검증 대기 — 사용자 실행)
