@@ -390,14 +390,26 @@ class SecureZoneTemplateProcessPage(BasePage):
         except Exception:
             pass
 
-    def l3_pick_first(self, ttype: str, mode: str = "single") -> str:
-        """L3 '프로세스 선택'(태그 탭 '태그 선택') → 공용 picker 첫 행 선택+확인."""
+    def l3_pick_first(self, ttype: str, mode: str = "multi") -> str:
+        """L3 '프로세스 선택'(태그 탭 '태그 선택') → 공용 picker 첫 행 선택+확인.
+        ★실측(2026-07-08): 이 L3 의 picker 는 개별=checkbox(selectProcess → mode 'multi'),
+        태그=checkbox(selectProcessTag → mode 'tag_multi') — radio 모드(single/tag) 아님.
+        선택 반영 = span#szProcessName."""
         self.l3_scope(ttype).locator(self.SEL_L3_PICK).first.evaluate("el => el.click()")
         self.picker.wait_open()
         return self.picker.select_first_and_confirm(mode=mode)
 
+    def l3_selected_name(self, ttype: str) -> str:
+        """L3 에 표시된 선택 프로세스/태그명 (span#szProcessName)."""
+        try:
+            return self.l3_scope(ttype).locator("span#szProcessName").first.inner_text().strip()
+        except Exception:
+            return ""
+
     def l3_add_message(self, ttype: str) -> str:
-        """L3 '추가' 클릭 → 경고 메시지 반환+dismiss(''=커밋). 알림 캡처가 필요한 흐름은
+        """L3 '추가' 클릭 → 경고 메시지 반환+dismiss(''=커밋).
+        ★실측(2026-07-08): 커밋 성공 시 알림 없이 **L3 자동 닫힘** → L2 목록 반영.
+        차단(필수 미입력 등) 시 알림 뜨고 L3 유지. 알림 캡처가 필요한 흐름은
         테스트에서 클릭/대기/dismiss 를 분리(저널 행위)해서 사용."""
         with overlay_off(self.page):
             self.l3_scope(ttype).locator("button", has_text="추가").first.click(force=True)
@@ -410,18 +422,27 @@ class SecureZoneTemplateProcessPage(BasePage):
                 msg = ""
             self.click_attached(self.SEL_CONFIRM_BTN)
             self.wait_for_modal_closed()
+        else:
+            # 커밋 성공 경로 — L3 자동 닫힘 대기 (다음 조작이 stale L3 를 잡지 않게)
+            try:
+                self.page.locator(f"div#{self.L3_MAP[ttype]}.in").wait_for(
+                    state="detached", timeout=self._TIMEOUT_MODAL)
+            except Exception:
+                pass
         return msg
 
     def l2_item_count(self) -> int:
-        """L2 현재 탭의 등록 행 수(체크박스 있는 tr)."""
+        """L2 현재 탭의 등록 행 수 — 개별/태그 두 테이블이 DOM 공존(탭 전환)하므로
+        visible 행만 카운트 (실측 2026-07-08)."""
         modals = self.page.locator(self.SEL_L2_MODAL)
         if modals.count() == 0:
             return 0
-        return modals.last.locator("tbody tr:has(input[type='checkbox'])").count()
+        return modals.last.locator("tbody tr:visible:has(input[type='checkbox'])").count()
 
     def l2_remove_item(self, index: int = 0) -> str:
+        """L2 현재 탭 행 제거(-) — 확인 '선택한 항목을 삭제 하시겠습니까?' (실측 2026-07-08)."""
         row = self.page.locator(
-            f"{self.SEL_L2_MODAL} tbody tr:has(input[type='checkbox'])").nth(index)
+            f"{self.SEL_L2_MODAL} tbody tr:visible:has(input[type='checkbox'])").nth(index)
         row.locator("input[type='checkbox']").first.evaluate("el => el.click()")
         self.page.locator(self.SEL_L2_DEL_ITEM).first.evaluate("el => el.click()")
         msg = ""

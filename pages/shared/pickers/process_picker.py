@@ -22,7 +22,9 @@ from playwright.sync_api import Page
 from pages.shared._overlay import overlay_off
 
 
-PickerMode = Literal["single", "tag", "multi"]
+PickerMode = Literal["single", "tag", "multi", "tag_multi"]
+# tag_multi: 태그 checkbox(name=selectProcessTag) — 시큐어존 프로세스 L3 실측 2026-07-08
+#   (control_suite 태그=radio 와 달리 이 호출 컨텍스트에선 checkbox 로 렌더됨)
 
 
 class ProcessPicker:
@@ -37,6 +39,7 @@ class ProcessPicker:
     SEL_RADIO_PROCESS      = "div#globalProcessList input[type='radio'][name='selectProcess']"
     SEL_RADIO_TAG          = "div#globalProcessList input[type='radio'][name='selectProcessTag']"
     SEL_CHECKBOX_PROCESS   = "div#globalProcessList input[type='checkbox'][name='selectProcess']"
+    SEL_CHECKBOX_TAG       = "div#globalProcessList input[type='checkbox'][name='selectProcessTag']"
 
     SEL_CONFIRM_BTN        = "div#globalProcessList .btn.btn-primary"
     SEL_CLOSE_BTN          = "div#globalProcessList .close"
@@ -112,12 +115,13 @@ class ProcessPicker:
         single/tag(라디오) 는 click 이 토글 아님 → 종전대로 JS click 유지.
         """
         sel = {
-            "single": self.SEL_RADIO_PROCESS,
-            "tag":    self.SEL_RADIO_TAG,
-            "multi":  self.SEL_CHECKBOX_PROCESS,
+            "single":    self.SEL_RADIO_PROCESS,
+            "tag":       self.SEL_RADIO_TAG,
+            "multi":     self.SEL_CHECKBOX_PROCESS,
+            "tag_multi": self.SEL_CHECKBOX_TAG,
         }[mode]
         loc = self.page.locator(sel).first
-        if mode == "multi":
+        if mode in ("multi", "tag_multi"):
             try:
                 loc.check(force=True)
             except Exception:
@@ -145,12 +149,13 @@ class ProcessPicker:
               (yaml :287 cross_instance_ADD_flow — 동일 프로세스 재선택 시 silent 거부).
         """
         sel = {
-            "single": self.SEL_RADIO_PROCESS,
-            "tag":    self.SEL_RADIO_TAG,
-            "multi":  self.SEL_CHECKBOX_PROCESS,
+            "single":    self.SEL_RADIO_PROCESS,
+            "tag":       self.SEL_RADIO_TAG,
+            "multi":     self.SEL_CHECKBOX_PROCESS,
+            "tag_multi": self.SEL_CHECKBOX_TAG,
         }[mode]
         loc = self.page.locator(sel).nth(idx)
-        if mode == "multi":
+        if mode in ("multi", "tag_multi"):
             try:
                 loc.check(force=True)
             except Exception:
