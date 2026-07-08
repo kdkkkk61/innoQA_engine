@@ -524,14 +524,6 @@ class SecureZoneTemplateProcessPage(BasePage):
                 pass
         return msg
 
-    def l3_click_add_wait(self, ttype: str) -> bool:
-        """L3 '추가' 클릭 → 알림/닫힘 대기(★dismiss 안 함 — 알림 순간 캡처용).
-        알림이 떠 있으면 True(차단/서버오류), 없으면 False(커밋 성공, L3 닫힘).
-        캡처 후 dismiss_alert() + (필요시)close_l3_modal() 호출."""
-        with overlay_off(self.page):
-            self.l3_scope(ttype).locator("button", has_text="추가").first.click(force=True)
-        self.page.wait_for_timeout(700)
-        return self.is_confirm_modal_visible()
 
     def l2_item_count(self) -> int:
         """L2 현재 탭의 등록 행 수 — 개별/태그 두 테이블이 DOM 공존(탭 전환)하므로
@@ -697,22 +689,7 @@ class SecureZoneTemplateProcessPage(BasePage):
             self.wait_for(self.SEL_ADD_BTN)
         return msg
 
-    def submit_and_wait_alert(self) -> str:
-        """저장 클릭 → 알림 대기 → 메시지 반환(★dismiss 안 함 — 알림 뜬 순간 캡처용).
-        차단 알림('이미 등록된 이름' 등)이 그대로 떠 있으므로 캡처 후 dismiss_alert() 호출."""
-        self._click_save()
-        self.page.wait_for_timeout(600)
-        if self.is_confirm_modal_visible():
-            try:
-                return self.get_modal_message()
-            except Exception:
-                return ""
-        return ""
 
-    def dismiss_alert(self) -> None:
-        if self.is_confirm_modal_visible():
-            self.click_attached(self.SEL_CONFIRM_BTN)
-            self.wait_for_modal_closed()
 
     def _close_all_modals(self) -> None:
         for _ in range(6):

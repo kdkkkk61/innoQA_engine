@@ -65,14 +65,10 @@ class ActionJournalMixin:
         return frames
 
     def _journal_frames_for_issue(self, status: str, screenshots):
-        """_add 훅 — 캡처는 '카드가 이슈(warn/fail)일 때만' 붙는다(사용자 원칙 2026-07-08).
-        - pass/skip: 캡처 없음 → None (테스트가 screenshots= 를 넘겼어도 버림. pass 는 캡처 안 함).
-        - warn/fail + 큐레이션(수동) 캡처 있음: 그대로 사용.
-        - warn/fail + 큐레이션 없음 + 저널 블록 활성: 블록 자동 재생 프레임.
-        재생은 블록당 1회, 프레임은 블록 내 카드 공유."""
-        if status not in ("fail", "warn"):
-            return None   # ★pass/skip 카드엔 캡처 미부착 (전역 강제)
-        if screenshots or not getattr(self, "_journal", None):
+        """_add 훅 — warn/fail + 큐레이션 캡처 없음 + 블록 활성이면 저널 재생 프레임 반환.
+        아니면 screenshots 원본 그대로. 재생은 블록당 1회, 프레임은 블록 내 카드 공유."""
+        if not (status in ("fail", "warn") and not screenshots
+                and getattr(self, "_journal", None)):
             return screenshots
         if not getattr(self, "_journal_replayed", True):
             self._journal_replayed = True
