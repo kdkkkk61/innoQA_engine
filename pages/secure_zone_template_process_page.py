@@ -390,15 +390,6 @@ class SecureZoneTemplateProcessPage(BasePage):
         except Exception:
             pass
 
-    def l3_pick_first(self, ttype: str, mode: str = "multi") -> str:
-        """L3 '프로세스 선택'(태그 탭 '태그 선택') → 공용 picker 첫 행 선택+확인.
-        ★실측(2026-07-08): 이 L3 의 picker 는 개별=checkbox(selectProcess → mode 'multi'),
-        태그=checkbox(selectProcessTag → mode 'tag_multi') — radio 모드(single/tag) 아님.
-        선택 반영 = span#szProcessName."""
-        self.l3_scope(ttype).locator(self.SEL_L3_PICK).first.evaluate("el => el.click()")
-        self.picker.wait_open()
-        return self.picker.select_first_and_confirm(mode=mode)
-
     def l3_selected_name(self, ttype: str) -> str:
         """L3 에 표시된 선택 프로세스/태그명 (span#szProcessName)."""
         try:
@@ -406,27 +397,49 @@ class SecureZoneTemplateProcessPage(BasePage):
         except Exception:
             return ""
 
-    def l3_pick_seed(self, ttype: str, mode: str, candidates: list[str],
-                     search_term: str = "[AUTO_") -> str:
-        """★날짜본 seed 우선 선택(사용자 규칙 2026-07-08): picker 에서 [AUTO_ 검색해
-        후보(다른 페이지 sc6 산출물 — 운용 프로세스/태그 날짜본)를 **정확 일치**로 선택.
-        전부 실패 시 picker 닫고 '' 반환 — 무조건 첫 행 fallback 금지(호출측이 판단)."""
+    # seed 매칭 — 운용 프로세스/태그 sc6 산출물([AUTO_<date>]_cm_proc/_cm_tag, 날짜 무관 최신)
+    SEED_PROC = re.compile(r"\[AUTO_\d{4,8}\]_cm_proc")
+    SEED_TAG  = re.compile(r"\[AUTO_\d{4,8}\]_cm_tag")
+
+    def l3_register(self, ttype: str, *, tag: bool = False,
+                    name_pattern=None, search_term: str = None) -> str:
+        """L3 picker 열기 → (검색) → 대상 행 체크박스 **plain JS click** → 확인 → L3 복귀.
+        반환: 선택된 이름('' = 대상 없음, picker 닫고 반환).
+        ★실측(2026-07-08): 이 picker 는 check(force) 로 ng-model 미동기 → plain click 필수.
+        - name_pattern=None: 첫 데이터 행 선택(기본 등록 검증용).
+        - name_pattern=정규식: 매칭 첫 행(seed 연계 — [AUTO_<date>]_cm_proc 등). 없으면 '' (skip 판단).
+        - tag=True: 태그 checkbox(selectProcessTag), 아니면 selectProcess."""
+        cb_name = "selectProcessTag" if tag else "selectProcess"
         self.l3_scope(ttype).locator(self.SEL_L3_PICK).first.evaluate("el => el.click()")
         self.picker.wait_open()
-        for cand in candidates:
-            try:
-                picked = self.picker.select_by_name(cand, mode, search_term=search_term)
-                self.picker.confirm()
-                self.picker.wait_closed()
-                return picked
-            except Exception:
+        if search_term:
+            self.picker.search(search_term)
+        picked = ""
+        for row in self.page.locator("div#globalProcessList tbody tr").all():
+            cb = row.locator(f"input[type='checkbox'][name='{cb_name}']")
+            if cb.count() == 0:
                 continue
-        try:
-            self.picker.cancel()
-            self.picker.wait_closed()
-        except Exception:
-            pass
-        return ""
+            txt = row.inner_text().strip()
+            if not txt or "없습니다" in txt:
+                continue
+            # 이름 = 행에서 [ 로 시작하거나 공백 아닌 첫 토큰 (로깅/매칭용)
+            cells = [c.strip() for c in row.locator("td").all_inner_texts() if c.strip()]
+            nm = next((c for c in cells if c and not c[0].isdigit()), cells[0] if cells else txt)
+            if name_pattern is not None and not name_pattern.search(nm.replace("\n", " ").strip()):
+                continue
+            cb.first.evaluate("el => { if (!el.checked) el.click(); }")   # plain click (동기 확인됨)
+            picked = nm.replace("\n", " ").strip()
+            break
+        if not picked:
+            try:
+                self.picker.cancel()
+                self.picker.wait_closed()
+            except Exception:
+                pass
+            return ""
+        self.picker.confirm()
+        self.picker.wait_closed()
+        return self.l3_selected_name(ttype) or picked
 
     def l3_add_message(self, ttype: str) -> str:
         """L3 '추가' 클릭 → 경고 메시지 반환+dismiss(''=커밋).

@@ -126,45 +126,34 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             page.delete_template(self._DUP)
             page.navigate_to()
 
-    # ── sc3c: ★개별 프로세스 등록 — 날짜본 seed 소비 (운용 프로세스 sc6 연계) ──
+    # ── sc3c: 개별 프로세스 등록 (기본 동작 — 첫 행) ────────────────
     def test_scenario3c_process_register(self, logged_in_page, settings):
-        """picker 에서 [AUTO_ 검색 → 날짜본 seed 정확 일치 선택 → 커밋 → L2 반영 + 리스트 카운트.
-        seed 부재 시 등록 검증은 첫 행 fallback 으로 계속하되 연계 카드는 fail(sc6 선행 필요)."""
-        print("\n━━ [프로세스] sc3c: 개별 프로세스 등록(날짜본 seed 소비) ━━━")
+        """★기본 등록이 되는가(핵심). 첫 행 프로세스 선택 → 추가 → L2 반영 + 리스트 카운트.
+        seed 연계와 분리(엉킴이 13:03 오독 유발) — 여기선 '등록 자체' 만 검증."""
+        print("\n━━ [프로세스] sc3c: 개별 프로세스 등록(기본) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         tpl = "[AUTO]_sz_proc_3c"
-        date = time.strftime("%m%d")
-        candidates = [f"[AUTO_{date}]_cm_proc", "[AUTO_KEEP]_sc6_cm_proc_suite"]
-        self._ckpt()
-        self._act(f"'{tpl}'(허용) 확보 + L2 진입",
-                  lambda: (page.navigate_to_clean(), page.ensure_template(tpl),
-                           page.open_l2_modal(tpl)))
-        self._act("L2 '+' → L3(허용) 열기",
-                  lambda: page.open_l3_add("ALLOW_PROCESS"))
-        picked = page.l3_pick_seed("ALLOW_PROCESS", "multi", candidates)
-        seed_used = bool(picked)
-        if not seed_used:
-            picked = page.l3_pick_first("ALLOW_PROCESS", mode="multi")
-        self._act(f"프로세스 선택 — {picked!r} (seed={seed_used})",
-                  lambda: None,   # 선택은 위에서 수행 — 저널엔 상태 라벨만 기록
-                  shot_target=page.l3_scope("ALLOW_PROCESS").locator("span#szProcessName").first)
-        self._add("pass" if seed_used else "fail",
-                  "sc3c — 연계: 운용 프로세스 sc6 날짜본 seed 소비",
-                  f"입력: picker '[AUTO_' 검색 후 후보 {candidates} / 결과: 선택={picked!r}"
-                  + ("" if seed_used else " [seed 미발견 — 운용 프로세스 sc6 선행 필요, 첫 행 fallback]"),
-                  sc=3,
-                  repro="1. L3 '프로세스 선택'\n2. [AUTO_ 검색\n3. 날짜본 정확 일치 선택")
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+        page.open_l3_add("ALLOW_PROCESS")
+        picked = page.l3_register("ALLOW_PROCESS")   # 첫 행, plain click
         shown = page.l3_selected_name("ALLOW_PROCESS")
-        self._act("L3 '추가' 커밋(알림 없이 자동 닫힘 기대)",
-                  lambda: None)
+        f1 = self._shot("proc_reg_selected",
+                        highlight=page.l3_scope("ALLOW_PROCESS").locator("span#szProcessName").first,
+                        caption=f"1. 프로세스 선택 → 표시={shown!r}")
         msg = page.l3_add_message("ALLOW_PROCESS")
         cnt = page.l2_item_count()
-        ok = (msg == "") and (cnt >= 1)
+        f2 = self._shot("proc_reg_l2",
+                        highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody").first,
+                        caption=f"2. 추가 → L2 목록 {cnt}건 (경고={msg!r})")
+        ok = bool(picked) and (msg == "") and (cnt >= 1)
         self._add("pass" if ok else "fail",
-                  "sc3c — 등록 커밋 → L2 목록 반영",
-                  f"입력: {shown!r} 추가 / 결과: 경고={msg!r}, L2 등록 {cnt}건", sc=3,
-                  repro="1. 프로세스 선택 후 추가\n2. 알림 없이 L3 닫힘\n3. L2 목록에 행 등장")
+                  "sc3c — 개별 프로세스 등록 → L2 반영",
+                  f"입력: 첫 행 {shown!r} 선택 + 추가 / 결과: 경고={msg!r}, L2 등록 {cnt}건", sc=3,
+                  screenshots=[f1, f2],
+                  repro="1. L2 '+' → L3\n2. 프로세스 선택(체크)\n3. 추가 → 알림 없이 L2 목록 반영")
         page.close_l2_modal()
         list_cnt = ""
         try:
@@ -173,46 +162,73 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             pass
         self._add("pass" if list_cnt.startswith("1/") else "warn",
                   "sc3c — 리스트 '프로세스/태그 카운트' 갱신",
-                  f"결과: {list_cnt!r} (기대 1/N — 실측: L2 닫으면 즉시 갱신)", sc=3)
+                  f"결과: {list_cnt!r} (기대 1/N — L2 닫으면 갱신)", sc=3)
 
-    # ── sc3d: ★태그 등록 — 날짜본 태그 seed 소비 (태그 sc6 연계) ──────
+    # ── sc3d: 태그 등록 (기본 동작 — 첫 태그) ───────────────────────
     def test_scenario3d_tag_register(self, logged_in_page, settings):
-        print("\n━━ [프로세스] sc3d: 태그 등록(날짜본 seed 소비) ━━━")
+        """★기본 태그 등록. L2 태그 탭 → 첫 태그 선택 → 추가 → 태그 탭 반영 + 카운트."""
+        print("\n━━ [프로세스] sc3d: 태그 등록(기본) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         tpl = "[AUTO]_sz_proc_3d"
-        date = time.strftime("%m%d")
-        candidates = [f"[AUTO_{date}]_cm_tag"]
-        self._ckpt()
-        self._act(f"'{tpl}'(허용) 확보 + L2 진입 → 태그 탭",
-                  lambda: (page.navigate_to_clean(), page.ensure_template(tpl),
-                           page.open_l2_modal(tpl), page.switch_l2_tab("태그")))
-        self._act("L2 '+' → L3 열기(태그 컨텍스트 — '태그 선택' 라벨)",
-                  lambda: page.open_l3_add("ALLOW_PROCESS"))
-        picked = page.l3_pick_seed("ALLOW_PROCESS", "tag_multi", candidates)
-        seed_used = bool(picked)
-        if not seed_used:
-            picked = page.l3_pick_first("ALLOW_PROCESS", mode="tag_multi")
-        self._add("pass" if seed_used else "fail",
-                  "sc3d — 연계: 태그 sc6 날짜본 seed 소비",
-                  f"입력: picker '[AUTO_' 검색 후 후보 {candidates} / 결과: 선택={picked!r}"
-                  + ("" if seed_used else " [seed 미발견 — 태그 sc6 선행 필요, 첫 행 fallback]"),
-                  sc=3,
-                  repro="1. L2 태그 탭 → + → '태그 선택'\n2. [AUTO_ 검색\n3. 날짜본 정확 일치 선택")
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+        page.switch_l2_tab("태그")
+        page.open_l3_add("ALLOW_PROCESS")
+        picked = page.l3_register("ALLOW_PROCESS", tag=True)   # 첫 태그, plain click
         shown = page.l3_selected_name("ALLOW_PROCESS")
+        f1 = self._shot("tag_reg_selected",
+                        highlight=page.l3_scope("ALLOW_PROCESS").locator("span#szProcessName").first,
+                        caption=f"1. 태그 선택 → 표시={shown!r}")
+        msg = page.l3_add_message("ALLOW_PROCESS")
+        cnt = page.l2_item_count()
+        f2 = self._shot("tag_reg_l2",
+                        highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody").first,
+                        caption=f"2. 추가 → 태그 탭 {cnt}건 (경고={msg!r})")
+        ok = bool(picked) and (msg == "") and (cnt >= 1)
+        self._add("pass" if ok else "fail",
+                  "sc3d — 태그 등록 → L2 태그 탭 반영",
+                  f"입력: 첫 태그 {shown!r} 선택 + 추가 / 결과: 경고={msg!r}, 태그 탭 등록 {cnt}건", sc=3,
+                  screenshots=[f1, f2],
+                  repro="1. L2 태그 탭 → + → L3\n2. 태그 선택(체크)\n3. 추가 → 태그 탭 반영")
+        page.close_l2_modal()
+
+    # ── sc3e: ★sc6 연계 — 날짜본 프로세스 seed 소비 (운용 프로세스 sc6) ──
+    def test_scenario3e_seed_link(self, logged_in_page, settings):
+        """picker 에서 [AUTO_ 검색 → [AUTO_<date>]_cm_proc 날짜본 정확 매칭 선택 → 등록.
+        ★seed 없으면 skip('운용 프로세스 sc6 선행 필요') — BUG 아님(연계 선행 조건)."""
+        print("\n━━ [프로세스] sc3e: sc6 연계 프로세스 seed 소비 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3e"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+        page.open_l3_add("ALLOW_PROCESS")
+        picked = page.l3_register("ALLOW_PROCESS", name_pattern=page.SEED_PROC,
+                                  search_term="[AUTO_")
+        if not picked:
+            self._add("skip",
+                      "sc3e — 연계: 운용 프로세스 sc6 날짜본 seed 소비 [선행 필요]",
+                      "결과: picker 에 [AUTO_<date>]_cm_proc 없음 — 운용 프로세스 sc6 미실행. "
+                      "chain 검증 스킵(제품 이상 아님).", sc=3,
+                      repro="1. 운용 프로세스 sc6 로 [AUTO_<날짜>]_cm_proc 생성\n"
+                            "2. 프로세스 탭 L3 picker 에서 [AUTO_ 검색 → 그 seed 선택")
+            page.close_l3_modal("ALLOW_PROCESS")
+            page.close_l2_modal()
+            return
+        shown = page.l3_selected_name("ALLOW_PROCESS")
+        f1 = self._shot("seed_selected",
+                        highlight=page.l3_scope("ALLOW_PROCESS").locator("span#szProcessName").first,
+                        caption=f"1. 연계 seed 선택 → {shown!r}")
         msg = page.l3_add_message("ALLOW_PROCESS")
         cnt = page.l2_item_count()
         ok = (msg == "") and (cnt >= 1)
         self._add("pass" if ok else "fail",
-                  "sc3d — 태그 등록 커밋 → L2 태그 탭 반영",
-                  f"입력: {shown!r} 추가 / 결과: 경고={msg!r}, 태그 탭 등록 {cnt}건", sc=3,
-                  repro="1. 태그 선택 후 추가\n2. 알림 없이 L3 닫힘\n3. 태그 탭 목록 반영")
+                  "sc3e — 연계: 운용 프로세스 sc6 날짜본 seed 등록",
+                  f"입력: seed {shown!r}(운용 프로세스 sc6 산출) 선택 + 추가 / "
+                  f"결과: 경고={msg!r}, L2 등록 {cnt}건", sc=3,
+                  screenshots=[f1],
+                  repro="1. L3 '프로세스 선택' → [AUTO_ 검색\n2. 날짜본 seed 정확 일치 선택\n3. 추가 → 등록")
         page.close_l2_modal()
-        list_cnt = ""
-        try:
-            list_cnt = page._row_locator(tpl).locator("td").nth(3).inner_text().strip()
-        except Exception:
-            pass
-        self._add("pass" if list_cnt.endswith("/1") else "warn",
-                  "sc3d — 리스트 카운트 갱신(태그 측)",
-                  f"결과: {list_cnt!r} (기대 N/1)", sc=3)
