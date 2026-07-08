@@ -406,6 +406,28 @@ class SecureZoneTemplateProcessPage(BasePage):
         except Exception:
             return ""
 
+    def l3_pick_seed(self, ttype: str, mode: str, candidates: list[str],
+                     search_term: str = "[AUTO_") -> str:
+        """★날짜본 seed 우선 선택(사용자 규칙 2026-07-08): picker 에서 [AUTO_ 검색해
+        후보(다른 페이지 sc6 산출물 — 운용 프로세스/태그 날짜본)를 **정확 일치**로 선택.
+        전부 실패 시 picker 닫고 '' 반환 — 무조건 첫 행 fallback 금지(호출측이 판단)."""
+        self.l3_scope(ttype).locator(self.SEL_L3_PICK).first.evaluate("el => el.click()")
+        self.picker.wait_open()
+        for cand in candidates:
+            try:
+                picked = self.picker.select_by_name(cand, mode, search_term=search_term)
+                self.picker.confirm()
+                self.picker.wait_closed()
+                return picked
+            except Exception:
+                continue
+        try:
+            self.picker.cancel()
+            self.picker.wait_closed()
+        except Exception:
+            pass
+        return ""
+
     def l3_add_message(self, ttype: str) -> str:
         """L3 '추가' 클릭 → 경고 메시지 반환+dismiss(''=커밋).
         ★실측(2026-07-08): 커밋 성공 시 알림 없이 **L3 자동 닫힘** → L2 목록 반영.

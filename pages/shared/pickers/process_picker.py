@@ -168,6 +168,46 @@ class ProcessPicker:
         self._click_hidden(loc)
 
     # ── 표준 흐름 헬퍼 ──────────────────────────────────────────────
+    # ── 검색 + 이름 선택 (날짜본 seed 소비용 — 2026-07-08) ──────────
+    SEL_SEARCH_INPUT = "div#globalProcessList input#searchText"
+    SEL_SEARCH_BTN2  = "div#globalProcessList button#searchBtn, div#globalProcessList .fa-search"
+
+    def search(self, term: str) -> None:
+        """picker 내 검색 — ng-model 갱신 + Enter + 검색버튼 (AngularJS 호환, 태그 페이지
+        select_process_by_name 검증 패턴 일반화)."""
+        inp = self.page.locator(self.SEL_SEARCH_INPUT)
+        if inp.count() == 0:
+            return
+        inp.first.evaluate(
+            "(el, v) => { el.value = v;"
+            " el.dispatchEvent(new Event('input',{bubbles:true}));"
+            " el.dispatchEvent(new Event('change',{bubbles:true})); }", term)
+        try:
+            inp.first.press("Enter")
+        except Exception:
+            pass
+        try:
+            btn = self.page.locator(self.SEL_SEARCH_BTN2)
+            if btn.count() > 0:
+                btn.first.evaluate("el => (el.closest('button,a') || el).click()")
+        except Exception:
+            pass
+        self.page.wait_for_timeout(800)
+
+    def select_by_name(self, name: str, mode: PickerMode,
+                       search_term: str = "[AUTO") -> str:
+        """검색 후 이름(두 번째 셀) **정확 일치** 행 선택 — fallback 금지(오선택 방지).
+        미발견 시 raise — 호출측이 후보 순회/skip 판단. 확인(confirm)은 호출측 책임."""
+        self.wait_open()
+        self.search(search_term)
+        rows = self.page.locator(self.SEL_ROW).all()
+        for i, row in enumerate(rows):
+            tds = row.locator("td").all()
+            if len(tds) >= 2 and tds[1].inner_text().strip() == name:
+                self.select_nth(i, mode)
+                return name
+        raise Exception(f"picker 검색 결과에 {name!r} 없음 (검색어 {search_term!r})")
+
     def select_first_and_confirm(self, mode: PickerMode) -> str:
         """첫 행 선택 + 확인 → 선택된 행 텍스트 반환."""
         self.wait_open()
