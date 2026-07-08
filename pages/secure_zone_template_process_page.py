@@ -524,6 +524,15 @@ class SecureZoneTemplateProcessPage(BasePage):
                 pass
         return msg
 
+    def l3_click_add_wait(self, ttype: str) -> bool:
+        """L3 '추가' 클릭 → 알림/닫힘 대기(★dismiss 안 함 — 알림 순간 캡처용).
+        알림이 떠 있으면 True(차단/서버오류), 없으면 False(커밋 성공, L3 닫힘).
+        캡처 후 dismiss_alert() + (필요시)close_l3_modal() 호출."""
+        with overlay_off(self.page):
+            self.l3_scope(ttype).locator("button", has_text="추가").first.click(force=True)
+        self.page.wait_for_timeout(700)
+        return self.is_confirm_modal_visible()
+
     def l2_item_count(self) -> int:
         """L2 현재 탭의 등록 행 수 — 개별/태그 두 테이블이 DOM 공존(탭 전환)하므로
         visible 행만 카운트 (실측 2026-07-08)."""
