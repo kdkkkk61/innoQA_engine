@@ -263,3 +263,55 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   f"입력: 전체선택 + 제거 / 결과: 확인={msg2!r}, {mid}→{end}건", sc=3,
                   repro="1. 헤더 체크(전체선택)\n2. - 버튼\n3. 전부 제거")
         page.close_l2_modal()
+
+    # ── sc3g: 다중 등록 중복 처리 — 부분 중복(겹치는 것만 생략) / 전체 중복 ──
+    def test_scenario3g_multi_dup_handling(self, logged_in_page, settings):
+        """★실측(2026-07-08): 이미 A 등록된 상태에서 A+B+C 다중 선택 추가 →
+        '<A>은 이미 등록되어 있어 생략' + 최종 3건(A유지 + B,C 신규). = 겹치는 것만 빠지고 나머진 등록.
+        전체 겹침(A,B 재선택)은 전부 생략 → 카운트 불변. 대량 등록 시 중복 처리 정확성 검증."""
+        print("\n━━ [프로세스] sc3g: 다중 등록 중복 처리(부분/전체) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3g"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+
+        # 기준: A(첫 행) 1건 등록
+        page.open_l3_add("ALLOW_PROCESS")
+        a = page.l3_register("ALLOW_PROCESS", count=1)
+        page.l3_add_message("ALLOW_PROCESS")
+        base = page.l2_item_count()
+
+        # 부분 중복: A+B+C(첫 3행, A 포함) 선택 → 겹치는 A만 생략, B·C 등록
+        page.open_l3_add("ALLOW_PROCESS")
+        picked3 = page.l3_register("ALLOW_PROCESS", count=3)
+        msg = page.l3_add_message("ALLOW_PROCESS")
+        page.close_l3_modal("ALLOW_PROCESS")   # 커밋 성공 시 자동닫힘 — 방어적(L3만, L2 유지)
+        partial = page.l2_item_count()
+        f1 = self._shot("partial_dup",
+                        highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody").first,
+                        caption=f"부분 중복: A+2개 선택 → 최종 {partial}건 (안내={msg!r})")
+        # A 하나만 생략(1건 유지)되고 나머지 2 신규 → base(1) → 3
+        skip_only_dup = (a and a[0].split()[0] in msg) and (partial == base + 2)
+        self._add("pass" if skip_only_dup else "warn",
+                  "sc3g — 부분 중복 다중 등록: 겹치는 것만 생략, 나머지 등록",
+                  f"입력: 기존 {base}건 + 겹침 포함 3개 선택 / 결과: 안내={msg!r}, 최종 {partial}건 "
+                  + ("(겹치는 1건만 생략, 2건 신규 — 정상)" if skip_only_dup
+                     else "[예상(base+2)과 다름 — 동작 확인 필요]"), sc=3,
+                  screenshots=[f1],
+                  repro="1. A 1건 등록\n2. A+B+C 다중 선택 후 추가\n3. A만 '생략' 안내, B·C 등록(전부 거부 아님)")
+
+        # 전체 중복: 이미 등록된 첫 2건(A,B) 재선택 → 전부 생략, 카운트 불변
+        page.open_l3_add("ALLOW_PROCESS")
+        page.l3_register("ALLOW_PROCESS", count=2)
+        msg2 = page.l3_add_message("ALLOW_PROCESS")
+        page.close_l3_modal("ALLOW_PROCESS")   # 커밋 성공 시 자동닫힘 — 방어적(L3만, L2 유지)
+        alldup = page.l2_item_count()
+        self._add("pass" if (("생략" in msg2 or "이미 등록" in msg2) and alldup == partial) else "warn",
+                  "sc3g — 전체 중복 다중 등록: 전부 생략, 카운트 불변",
+                  f"입력: 이미 등록된 2건 재선택 / 결과: 안내={msg2!r}, {partial}→{alldup}건 "
+                  + ("(전부 생략 — 정상)" if alldup == partial else "[카운트 변동 — 확인 필요]"), sc=3,
+                  repro="1. 등록된 것만 재선택 후 추가\n2. 전부 '생략', 카운트 변동 없음")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
