@@ -87,6 +87,40 @@ _add(status, label, detail, sc, highlight, repro, screenshot, merge_key)
 - 리포터는 `screenshots`(이전 시점) → `screenshot`(_add 시점) 시간순으로 표시, summary 에 '(N장)' 표기.
 - 적용 예: 특수폴더 sc5c(설명 비움·매핑 제거 warn 분기).
 
+## 5.1 행위 저널 — 자동 리턴 재생 (`_ckpt` / `_act`, `tests/shared_journal.py`)
+
+> `_replay_shots`(스텝 리스트를 손으로 명시)의 **자동판**. 흐름을 행위 단위로 기술만 하면
+> warn/fail 검출 시 그 블록을 자동 재실행하며 스텝별 캡처·캡션을 만든다. 지점마다 `_shot` 을
+> 손으로 심지 않는다(하드코딩 캡처 배제). 근거 코드: `tests/shared_journal.py ActionJournalMixin`,
+> 확립·검증: control_suite(커밋 747979a·dacd992)·폴더동기화. 사용자 설계 2026-07-07.
+
+**메커니즘**
+```
+_ckpt()                             # 블록 시작(재현 재생의 시작점)
+_act("행위 라벨", fn, shot_target)   # 행동 실행 + 저널 기록 (1차 실행은 캡처 0)
+...
+_add(status, ...)                    # warn/fail 이면 블록 자동 재실행 → "순번. 라벨" 캡션 캡처 첨부
+```
+- **pass 비용 0**: 1차 실행은 기록만, 캡처 없음. warn/fail 카드에서만 재생.
+- **캡션 = 행위 라벨**(테스트 코드가 곧 재현 문서). shot_target 넘기면 그 요소 빨간 crop.
+- 리포터 표기·시간순은 §5 와 동일(`screenshots` 로 첨부).
+
+**세 가지 규칙 (재발 방지 — TROUBLESHOOTING 2026-07-07)**
+1. **블록 첫 행위 = 상태 리셋**(navigate_to_clean 등) — 어떤 잔존 상태에서도 재실행 가능해야 함.
+2. **alert 상태 계약** — 재생 전 열려 있던 alert(본 흐름이 dismiss 할 것)는 보존, 재생이 새로 띄운 것만 정리.
+3. **프레임은 블록 자산** — 같은 블록의 여러 warn/fail 카드가 재실행 없이 같은 이미지 공유.
+
+**세 방식 선택 기준**
+
+| 방식 | 언제 |
+|---|---|
+| `_add(highlight=)` (§2) | **기본** — 단일 화면에서 이슈 보임. 대부분 여기. |
+| `_shot`+`screenshots=` (§5) | 두 화면 대조 / 부재 증거 등 큐레이션 2컷. |
+| `_ckpt`/`_act` 행위 저널 (§5.1) | **다단계 흐름을 자동 재생**하고 싶을 때(손코딩 _shot 없이). 단일 블록=단일 재현. |
+
+- ★한 테스트가 **서로 다른 카드 여럿**을 내면(예: 같은타입 차단 + 다른타입 공존) 저널(1블록=1재현)이 안 맞음 → 그런 다중-카드는 `highlight=`/`_shot` 사용.
+- 전역 적용: `ActionJournalMixin` 이 각 스위트 `_base` 에 상속(`_journal_frames_for_issue` 훅이 `_add` 에서 자동 호출) — control_suite·폴더동기화·프로세스 공통.
+
 ## 6. 검증된 사례 (2026-07-02, reports/screenshots 실물 확인)
 
 | 스크린샷 | 판정 |
