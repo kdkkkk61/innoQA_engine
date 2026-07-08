@@ -12,9 +12,12 @@ sc3a — 타입별 생성 4종 전수 → 리스트 등장 + 타입 컬럼 표�
 sc3b — 동명 중복 스코프. ★핵심 = 같은 타입 내 동명 차단 여부(부여가 타입별 → 같은 타입 동명 혼란).
        부수 = 다른 타입 동명 공존(타입 스코프 — 정상이나 경고 가치).
 [L2/L3 등록 구간 — 크롬 실측(13:14/14:03) 반영: picker=checkbox plain click·L3 자동닫힘·카운트 갱신]
-sc3c — 개별 프로세스 등록(기본, 첫 행) → L2 반영 + 리스트 카운트
-sc3d — 태그 등록(기본, 첫 태그) → 태그 탭 반영
-※ 등록 picker 선택 = 첫 행(동작 검증). 날짜본 seed 연계는 sc6 에서(빌드 예정).
+sc3c 등록(단일+다중) / sc3d 인라인 옵션 토글(재시작) / sc3e 태그 등록 / sc3f 제거(개별+일괄)
+sc3g 다중 등록 중복 처리(부분=겹치는 것만 생략 / 전체=전부 생략)
+[요소별(필드) — 표준상 clamp·특수문자·오버플로는 sc3(특수폴더 3i/3l/3s/3t 관례 대조)]
+sc3h templateName 직접입력(clamp 60→30 / 특수문자 생성) / sc3i L3 설명(특수문자 / 장문 수용)
+※ sc2=속성(maxlength 존재·초기값·별표), sc3=실제 입력 동작. 날짜본 seed 연계는 sc6.
+  (요소 테스트를 sc2 에 잘못 뒀던 것 → sc3 로 정렬, 사용자 지적 2026-07-08)
 """
 import time
 
@@ -314,4 +317,61 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   + ("(전부 생략 — 정상)" if alldup == partial else "[카운트 변동 — 확인 필요]"), sc=3,
                   repro="1. 등록된 것만 재선택 후 추가\n2. 전부 '생략', 카운트 변동 없음")
         page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc3h: templateName 직접입력 — clamp(60→30) + 특수문자 생성 ──
+    def test_scenario3h_templatename_input(self, logged_in_page, settings):
+        """요소별(1단계 이름 자유입력): 실타이핑 60→30 clamp + 특수문자 생성 허용(실측).
+        표준: clamp/특수문자는 sc3(실제 입력 동작). sc2 는 maxlength 속성만."""
+        print("\n━━ [프로세스] sc3h: templateName clamp/특수문자 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        # clamp
+        page.open_add_modal()
+        accepted = page.type_real(f"{page.SEL_MODAL} {page.SEL_NAME}", "a" * 60)
+        page._close_modal_if_open()
+        self._add("pass" if accepted == 30 else "warn",
+                  "sc3h — 이름 실타이핑 60자 → clamp 30",
+                  f"입력: 60자 타이핑 / 결과: 수용={accepted}자 (maxlength=30 클라 가드)", sc=3,
+                  repro="1. 이름 60자 타이핑\n2. 수용 길이 30 확인")
+        # 특수문자 생성
+        sp = "[AUTO]_sz_proc_sp<>!@#"
+        if sp in page.get_template_names():
+            page.delete_template(sp); page.navigate_to()
+        msg = page.create_template(sp)
+        page.navigate_to()
+        created = sp in page.get_template_names()
+        self._add("pass" if created else "warn",
+                  "sc3h — 이름 특수문자 생성(허용 여부)",
+                  f"입력: '{sp}' / 결과: 경고={msg!r}, 생성={created} (실측: 형식 검사 없음, 허용)", sc=3,
+                  repro="1. 이름에 특수문자(<>!@#)\n2. 확인\n3. 허용/차단")
+
+    # ── sc3i: L3 설명 직접입력 — 특수문자 + 장문 수용 ───────────────
+    def test_scenario3i_description_input(self, logged_in_page, settings):
+        """요소별(L3 설명 자유입력, maxlength=None 서버측): 특수문자 재읽기 + 장문 500자 수용.
+        3000자 실저장은 렌더 부하로 회피 — 클라 제한 없음(서버 처리) 확인까지."""
+        print("\n━━ [프로세스] sc3i: L3 설명 특수문자/장문 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3i"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+        page.open_l3_add("ALLOW_PROCESS")
+        scope = page.l3_scope("ALLOW_PROCESS")
+        desc_sel = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
+        ml = scope.locator(page.SEL_L3_DESC).first.get_attribute("maxlength")
+        sp = "설명<>&!@# 특수"
+        page.fill(desc_sel, sp)
+        sp_back = scope.locator(page.SEL_L3_DESC).first.input_value()
+        self._add("pass" if sp_back == sp else "warn",
+                  "sc3i — L3 설명 특수문자 수용(재읽기)",
+                  f"입력: {sp!r} / 재읽기: {sp_back!r}, maxlength={ml!r}(서버측)", sc=3)
+        page.fill(desc_sel, "가" * 500)
+        long_back = len(scope.locator(page.SEL_L3_DESC).first.input_value())
+        self._add("pass" if long_back == 500 else "warn",
+                  "sc3i — L3 설명 장문 500자 수용(클라 제한 없음)",
+                  f"입력: 500자 / 재읽기: {long_back}자 (maxlength=None — 서버 측 처리)", sc=3,
+                  repro="1. L3 설명 500자\n2. 재읽기 500(클라 제한 없음)")
+        page.close_l3_modal("ALLOW_PROCESS")
         page.close_l2_modal()
