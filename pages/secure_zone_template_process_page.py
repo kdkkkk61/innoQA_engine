@@ -432,7 +432,13 @@ class SecureZoneTemplateProcessPage(BasePage):
         self.picker.wait_open()
         if search_term:
             self.picker.search(search_term)
-        pick = self.page.locator("div#globalProcessList:visible")   # ★ 활성 picker 만 (숨은 복사본 배제)
+        # ★ 행 리스트 컨테이너는 모드별로 다름 (Chrome 실측 2026-07-09):
+        #   개별 프로세스 → 콘텐츠 div#globalProcessList(visible, w>0 — 모달 래퍼와 id 중복 존재)
+        #   태그        → div#processTagList (모달 래퍼는 globalProcessList 공용이나 리스트 div 는 별개.
+        #                 래퍼를 :visible 로 잡으면 w=0 이라 0행 → 태그 등록이 조용히 실패하던 원인)
+        #   confirm/검색/닫기(self.picker)는 globalProcessList 래퍼 공용이라 그대로 사용.
+        pick = self.page.locator("div#processTagList:visible" if tag
+                                 else "div#globalProcessList:visible")
         picked = []
         for row in pick.locator("tbody tr").all():
             if len(picked) >= count:

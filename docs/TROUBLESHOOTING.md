@@ -2505,3 +2505,15 @@ sc5a 에는 재오픈 행 셀=O 검증(재오픈 렌더 계층) 별도 추가.)
 - **교훈**: 같은 id 컨테이너가 여러 탭에 공존하는 SPA 에선 picker 조작을 **`:visible` 로 활성 인스턴스에 스코프**하고, 선택 직후 **실반영(:checked) 검증**으로 숨은 복사본 클릭을 결함으로 드러낼 것.
 
 상태: [RESOLVED] (재실행 검증 대기 — 사용자 실행)
+
+---
+
+## 프로세스 L3 태그 picker — 리스트 컨테이너가 `processTagList` (globalProcessList 아님) → 태그 등록 조용히 실패 — 2026-07-09
+
+- **증상(보고서 sc3e FAIL 카드)**: `태그 등록 → 경고='태그 선택해 주세요', 태그 탭 0건`, picked=`'태그 미선택'`(버튼 라벨) — 태그 행을 못 잡음. (프로세스 등록은 위 수정으로 정상.)
+- **Chrome 실측 진단**: 태그 picker 는 모달 래퍼 id 는 `div#globalProcessList`(재사용, 타이틀 "태그 선택")지만 **행 리스트 div 는 `div#processTagList`**(별개 id, `selectProcessTag` checkbox 20행). `l3_register` 가 태그일 때도 `div#globalProcessList:visible` 를 봤는데 그 래퍼는 w=0(리스트는 processTagList) → 0행 → picked=[] → 추가 시 필수 경고. 태그는 수정 전에도 계속 실패(globalProcessList 의 숨은 프로세스 행만 봐 selectProcessTag 0개). 메모리의 "태그=globalProcessList 재사용" 이 틀렸음.
+- **수정**: `l3_register` 행 컨테이너를 모드별 분기 — 태그=`div#processTagList:visible`, 프로세스=`div#globalProcessList:visible`. confirm/검색/닫기(self.picker)는 globalProcessList 래퍼 공용이라 그대로. 크롬 실측으로 태그 선택→confirm→L3 반영→추가→**등록된 태그 1건** 확인.
+- **파일**: `pages/secure_zone_template_process_page.py` (`l3_register`)
+- **교훈**: 같은 모달 래퍼(id)를 프로세스/태그가 공유해도 **내부 리스트 div 는 다를 수 있다**. picker 조작 전 '리스트가 실제로 어느 div 인지' 실측하고, 선택 직후 `:checked` 검증으로 컨테이너 오지정을 결함으로 드러낼 것.
+
+상태: [RESOLVED] (재실행 검증 대기 — 사용자 실행)
