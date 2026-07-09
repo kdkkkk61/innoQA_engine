@@ -10,9 +10,12 @@ sc3g 다중 중복 처리(부분/전체) / sc3h 이름(clamp·특수문자) / sc
 sc3j ★미선택 필수 경고 4타입 전수 / sc3k ★등록+옵션 4타입 전수 / sc3l 설명 3000자 오버플로 4타입
 sc3m ★저장값 roundtrip(예외처리 옵션·설명 설정→저장→재오픈 일치 — 특수폴더 sc3k 미러)
 sc3n ★여러 프로세스 등록·활용(서로 다른 3개 등록→각 이름 검증→행별 옵션 개별 적용→1개 부분 제거)
+sc3o ★검색 등록(picker 검색 필터 동작 — '[AUTO' seed 있으면 확인 + 'notepad' 무조건 존재로 안정 검증)
 ※ 등록 picker=checkbox plain click(실측). L3 타입별 모달 별개 → 타입 종속 검증은 4타입 전수.
 ※ seed 연계는 sc6. sc2=속성(maxlength 존재·초기값), sc3=실제 동작.
 """
+import re
+
 from pages.secure_zone_template_process_page import SecureZoneTemplateProcessPage
 from tests.secure_zone_template_process._base import SecureZoneTemplateProcessBase
 
@@ -524,5 +527,53 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   sc=3, highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
                   repro="1. 3행 중 1행 체크(-) 제거\n2. 2행 남고 지운 프로세스만 사라졌는지")
 
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc3o: ★검색 등록 — picker 검색 필터 동작 검증 ('[AUTO' seed / notepad) ──
+    def test_scenario3o_register_by_search(self, logged_in_page, settings):
+        """검색이 실제로 필터하고, 검색 결과에서 선택·등록되는지 (검색 기능 검증 = 생성 영역).
+        순서(사용자 지시 2026-07-09): ① '[AUTO' 검색 — 상위 seed 있으면 검색 동작 확인(있을 때만).
+        ② 'notepad' 검색 — 무조건 존재하는 프로세스라 검색 필터·등록 안정 확정.
+        picker 1253건이라 검색이 안 되면 대상이 1페이지(20행)에 없어 못 찾음 → fail 로 드러남."""
+        print("\n━━ [프로세스] sc3o: 검색 등록(필터 동작) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3o"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+
+        # ① '[AUTO' 검색 — seed 있으면 검색 동작 확인
+        page.open_l3_add("ALLOW_PROCESS")
+        auto = page.l3_register("ALLOW_PROCESS", search_term="[AUTO",
+                                name_pattern=re.compile(r"\[AUTO"))
+        if auto:
+            page.l3_add_message("ALLOW_PROCESS")
+            self._add("pass", "sc3o — '[AUTO' 검색 등록 (대량 목록에서 검색으로 정확 선택)",
+                      f"검색 '[AUTO' → {auto} 등록 (검색 필터 동작 확인)", sc=3,
+                      highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                      repro="1. picker '[AUTO' 검색\n2. 검색 결과에서 선택·추가\n3. 등록 확인")
+        else:
+            page.close_l3_modal("ALLOW_PROCESS")
+            self._add("skip", "sc3o — '[AUTO' 검색 (일치 항목 없음)",
+                      "상위 [AUTO_<date>]_cm_* seed 미존재 run → notepad 로 검색 검증 계속.", sc=3)
+
+        # ② 'notepad' 검색 — 무조건 존재(안정 검증)
+        page.open_l3_add("ALLOW_PROCESS")
+        npd = page.l3_register("ALLOW_PROCESS", search_term="notepad",
+                               name_pattern=re.compile(r"notepad", re.I))
+        if npd:
+            page.l3_add_message("ALLOW_PROCESS")
+        else:
+            page.close_l3_modal("ALLOW_PROCESS")
+        names = [r.locator("td").nth(1).inner_text().strip() for r in page.l2_rows()]
+        found = bool(npd) and any("notepad" in n.lower() for n in names)
+        self._add("pass" if found else "fail",
+                  "sc3o — 'notepad' 검색 등록 (검색 필터 확정)",
+                  f"검색 'notepad' → {npd} 등록 / L2 이름={names}, 검색등록={found}"
+                  + ("" if found else " [검색이 필터 못 함 — 대량 목록에서 notepad 미발견]"), sc=3,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  repro="1. picker 'notepad' 검색\n2. 검색 결과(notepad.exe) 선택·추가\n3. L2 등록 확인")
         page.l2_bulk_remove()
         page.close_l2_modal()
