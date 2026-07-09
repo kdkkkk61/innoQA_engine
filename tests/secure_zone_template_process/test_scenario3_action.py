@@ -11,6 +11,8 @@ sc3j ★미선택 필수 경고 4타입 전수 / sc3k ★등록+옵션 4타입 �
 sc3m ★저장값 roundtrip(예외처리 옵션·설명 설정→저장→재오픈 일치 — 특수폴더 sc3k 미러)
 sc3n ★여러 프로세스 등록·활용(서로 다른 3개 등록→각 이름 검증→행별 옵션 개별 적용→1개 부분 제거)
 sc3o ★검색 등록(picker 검색 필터 동작 — '[AUTO' seed 있으면 확인 + 'notepad' 무조건 존재로 안정 검증)
+sc3p 리스트 필터(타입 4종 변별 — sync sc3p 위임분 + 상태) / sc3q 복사(_copy·★딥카피·충돌)
+sc3r ★L2 등록항목 검색(실측 결함 2종: 정확 일치 미검색 + 빈 검색 복구 불가) / sc3s i18n sweep
 ※ 등록 picker=checkbox plain click(실측). L3 타입별 모달 별개 → 타입 종속 검증은 4타입 전수.
 ※ seed 연계는 sc6. sc2=속성(maxlength 존재·초기값), sc3=실제 동작.
 """
@@ -577,3 +579,174 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   repro="1. picker 'notepad' 검색\n2. 검색 결과(notepad.exe) 선택·추가\n3. L2 등록 확인")
         page.l2_bulk_remove()
         page.close_l2_modal()
+
+    # ── sc3p: 리스트 필터 (타입 4종 변별 + 상태) — sync sc3p 가 이 탭에 위임 ──
+    def test_scenario3p_list_filters(self, logged_in_page, settings):
+        """타입 필터 변별 — 타입 컬럼 있는 유일한 탭(sc1b 예고). 각 타입 선택 → 결과 전부
+        그 타입인지(uniq). 상태 필터(활성)도 반영 확인. 실측: filter_by(JS change+검색) 동작."""
+        print("\n━━ [프로세스] sc3p: 리스트 필터(타입/상태) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        # 4타입 존재 보장
+        for ttype in page.TYPES:
+            page.ensure_template(f"[AUTO]_sz_proc_3p_{ttype.split('_')[0].lower()}", ttype)
+
+        bad = {}
+        for ttype in page.TYPES:
+            ko = page.TYPE_KO[ttype]
+            page.filter_by(template_type=ko)
+            uniq = sorted(set(page.list_type_values()))
+            if uniq != [ko]:
+                bad[ko] = uniq
+        page.filter_by(template_type="전체")
+        self._add("pass" if not bad else "fail",
+                  "sc3p — 타입 필터 4종 변별 (결과 전부 해당 타입)",
+                  f"입력: 타입 필터 4종 각각 선택+검색 / 결과: "
+                  + ("4종 모두 해당 타입만 표시" if not bad else f"불일치={bad}"), sc=3,
+                  highlight=page.page.locator("table tbody"),
+                  repro="1. 타입 드롭다운 선택\n2. 검색\n3. 타입 컬럼 전부 해당 타입인지 (4종 반복)")
+
+        page.filter_by(status="활성")
+        status_vals = page.page.locator("table tbody").first.evaluate(
+            "tb => [...tb.querySelectorAll('tr')]"
+            ".map(r => (r.cells && r.cells.length > 4) ? r.cells[4].innerText.trim() : '')"
+            ".filter(t => t)")
+        status_ok = bool(status_vals) and all(v == "활성" for v in status_vals)
+        page.filter_by(status="상태")   # 리셋
+        self._add("pass" if status_ok else "fail",
+                  "sc3p — 상태 필터(활성) → 결과 반영",
+                  f"입력: 상태=활성 + 검색 / 결과: {len(status_vals)}행, 전부 활성={status_ok}", sc=3,
+                  highlight=page.page.locator("table tbody"),
+                  repro="1. 상태 드롭다운=활성\n2. 검색\n3. 상태 컬럼 전부 활성")
+
+    # ── sc3q: 템플릿 복사 — _copy 생성 + ★L2 내용(카운트) 복제 + 충돌 ──
+    def test_scenario3q_copy(self, logged_in_page, settings):
+        """실측(2026-07-09): 복사 → '<이름>_copy', 프로세스/태그 카운트까지 딥카피(1/1→1/1).
+        analog: sync sc3f/sc3m. 충돌(재복사 시 동명 _copy 중복)도 동일 클래스 확인."""
+        print("\n━━ [프로세스] sc3q: 템플릿 복사(+카운트 복제/충돌) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3q"
+        copy_name = tpl + "_copy"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        # 내용 1건 등록(카운트 복제 검증용)
+        page.open_l2_modal(tpl)
+        if page.l2_item_count() == 0:
+            page.open_l3_add("ALLOW_PROCESS")
+            page.l3_register("ALLOW_PROCESS", count=1)
+            page.l3_add_message("ALLOW_PROCESS")
+        page.close_l2_modal()
+        while copy_name in page.get_template_names():
+            page.delete_template(copy_name)
+            page.navigate_to()
+
+        page.copy_template(tpl)
+        page.navigate_to()
+        copied = copy_name in page.get_template_names()
+        n_copy = -1
+        if copied:
+            page.open_l2_modal(copy_name)
+            n_copy = page.l2_item_count()
+            page.close_l2_modal()
+        deep_ok = copied and n_copy >= 1
+        self._add("pass" if deep_ok else "fail",
+                  "sc3q — 복사 → '_copy' 생성 + ★등록 프로세스까지 복제",
+                  f"입력: 내용 1건 템플릿 복사 / 결과: {copy_name!r} 존재={copied}, "
+                  f"복사본 등록={n_copy}건 (원본 딥카피={deep_ok})", sc=3,
+                  highlight=(page._row_locator(copy_name) if copied else None),
+                  repro="1. 프로세스 1건 등록된 템플릿 체크\n2. 복사 → 확인\n"
+                        "3. _copy 등장 + 카운트 동일(내용 복제)")
+
+        # 충돌: _copy 존재 상태 재복사 → 동명 중복?
+        page.copy_template(tpl)
+        page.navigate_to()
+        page.search(copy_name)
+        dup_cnt = page.get_template_names().count(copy_name)
+        page.search("")
+        dup = dup_cnt > 1
+        self._add("warn" if dup else "pass",
+                  "sc3q — 복사 충돌(_copy 존재 시 재복사)",
+                  f"입력: '{copy_name}' 존재 상태 재복사 / 결과: 동명 {dup_cnt}개 "
+                  + ("(중복 생성 — 복사는 중복 검사 안 함, 타 탭 동일 결함 클래스)" if dup
+                     else "(중복 차단됨)"), sc=3,
+                  highlight=page.page.locator("table tbody"),
+                  merge_key=("szproc_copy_dup::copy::warn::no_dup_check" if dup else None),
+                  repro="1. _copy 존재 상태\n2. 원본 재복사\n3. 같은 이름 중복 생기는지")
+        page.navigate_to()
+        while copy_name in page.get_template_names():
+            page.delete_template(copy_name)
+            page.navigate_to()
+
+    # ── sc3r: ★L2 등록항목 검색 — 실측 결함 2종(일치 미검색 + 리셋 불가) ──
+    def test_scenario3r_l2_item_search(self, logged_in_page, settings):
+        """실측(2026-07-09 Chrome): L2 '프로세스명' 검색이 ①등록된 항목을 전체 이름
+        정확 일치로도 못 찾고(0건) ②한번 검색하면 빈 검색으로도 목록 복구 안 됨(재오픈 필요).
+        기대 동작 기준으로 카드화 — 등록 이름 검색=1건, 빈 검색=전체 복귀."""
+        print("\n━━ [프로세스] sc3r: L2 등록항목 검색(결함 실측 카드) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3r"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+        page.open_l3_add("ALLOW_PROCESS")
+        picked = page.l3_register("ALLOW_PROCESS", count=1)
+        page.l3_add_message("ALLOW_PROCESS")
+        target = picked[0] if picked else ""
+        total = page.l2_item_count()
+
+        # ① 등록된 이름 정확 검색 → 1건이어야 정상
+        page.l2_search(target)
+        hit = page.l2_item_count()
+        self._add("pass" if hit >= 1 else "warn",
+                  "sc3r — L2 검색: 등록된 프로세스명 정확 검색 → 검색됨",
+                  f"입력: 등록 {total}건 중 {target!r} 정확 검색 / 결과: {hit}건 "
+                  + ("" if hit >= 1 else "[★등록된 항목을 전체 이름 일치로도 못 찾음 — 검색 미매칭 결함]"),
+                  sc=3, highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  merge_key=(None if hit >= 1 else "szproc_l2_search::match::warn::no_hit"),
+                  repro=f"1. 프로세스 등록\n2. L2 검색창에 등록된 이름({target}) 입력\n"
+                        "3. 검색 → 해당 행 1건 표시되어야")
+
+        # ② 빈 검색 → 전체 복귀되어야 정상
+        page.l2_search("")
+        back = page.l2_item_count()
+        self._add("pass" if back == total else "warn",
+                  "sc3r — L2 검색: 빈 검색 → 전체 목록 복귀",
+                  f"입력: 검색 후 빈 검색 재실행 / 결과: {back}건(기대 {total}건) "
+                  + ("" if back == total else "[★검색 후 목록이 복구 안 됨 — 모달 재오픈 전까지 빈 상태 고착, "
+                     "헤더 카운트와 불일치]"), sc=3,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  merge_key=(None if back == total else "szproc_l2_search::reset::warn::stuck_empty"),
+                  repro="1. L2 검색 실행(임의어)\n2. 검색어 지우고 재검색\n3. 전체 목록 복귀되어야")
+        page.close_l2_modal()
+        # 재오픈(복구 경로) 후 정리
+        page.open_l2_modal(tpl)
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc3s: 검증 메시지 i18n 키 노출 전수 (카테고리 sweep) ────────────
+    def test_scenario3s_i18n_sweep(self, logged_in_page, settings):
+        """생성 검증 메시지 전수 — raw i18n 키(COLUMN.NAME 류) 노출 없는지 sweep (analog sync sc3o)."""
+        print("\n━━ [프로세스] sc3s: 검증 메시지 i18n 전수 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        _KEY = re.compile(r"[A-Z]{2,}[._][A-Z_.]{2,}")
+        msgs = {}
+        page.open_add_modal()
+        msgs["1단계 이름 빈값"] = page.submit_and_message()
+        page._close_modal_if_open()
+        tpl = "[AUTO]_sz_proc_3s"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+        page.open_l3_add("ALLOW_PROCESS")
+        msgs["L3 프로세스 미선택"] = page.l3_add_message("ALLOW_PROCESS")
+        page.close_l3_modal("ALLOW_PROCESS")
+        page.close_l2_modal()
+        leaks = {k: v for k, v in msgs.items() if _KEY.search(v or "")}
+        self._add("warn" if leaks else "pass",
+                  "sc3s — 검증 메시지 i18n 키 노출 전수",
+                  f"입력: 생성 검증 메시지 수집 / 결과: {msgs} / 키 누출={leaks or '없음'}", sc=3,
+                  merge_key=("szproc_i18n::messages::warn::key_leak" if leaks else None),
+                  repro="1. 생성 검증 경고 유발(이름 빈값/프로세스 미선택)\n2. raw i18n 키 노출 없는지")

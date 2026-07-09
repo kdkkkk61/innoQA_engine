@@ -540,6 +540,16 @@ class SecureZoneTemplateProcessPage(BasePage):
         self._wait_l2_count(0)   # 재렌더 대기 — 너무 빨리 읽어 stale 되던 문제(2026-07-08)
         return msg
 
+    def l2_search(self, term: str) -> None:
+        """L2 등록항목 검색(input#searchText '프로세스명' + button#searchBtn) — 실클릭.
+        ★실측(2026-07-09): 검색 실행은 되나 등록 항목을 못 찾는 제품 결함 관찰(sc3r 카드화)."""
+        inp = self.page.locator(f"{self.SEL_L2_MODAL} input#searchText:visible").first
+        inp.fill(term)
+        with overlay_off(self.page):
+            self.page.locator(f"{self.SEL_L2_MODAL} button#searchBtn:visible").first.click(
+                force=True)
+        self.page.wait_for_timeout(800)
+
     def l3_add_message(self, ttype: str) -> str:
         """L3 '추가' 클릭 → 경고 메시지 반환+dismiss(''=커밋).
         ★실측(2026-07-08): 커밋 성공 시 알림 없이 **L3 자동 닫힘** → L2 목록 반영.
