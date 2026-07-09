@@ -431,7 +431,7 @@ class SecureZoneTemplateProcessPage(BasePage):
         self.l3_scope(ttype).locator(self.SEL_L3_PICK).first.evaluate("el => el.click()")
         self.picker.wait_open()
         if search_term:
-            self.picker.search(search_term)
+            self._picker_search(search_term)
         # ★ 행 리스트 컨테이너는 모드별로 다름 (Chrome 실측 2026-07-09):
         #   개별 프로세스 → 콘텐츠 div#globalProcessList(visible, w>0 — 모달 래퍼와 id 중복 존재)
         #   태그        → div#processTagList (모달 래퍼는 globalProcessList 공용이나 리스트 div 는 별개.
@@ -472,6 +472,22 @@ class SecureZoneTemplateProcessPage(BasePage):
         self.picker.confirm()
         self.picker.wait_closed()
         return picked
+
+    # picker 내부 검색 버튼 (Chrome 실측 2026-07-09) — 프로세스/태그 공용 button#searchBtn.
+    # 내부 아이콘만 다름: 프로세스 i#searchProcessBtn / 태그 i#searchProcessTagBtn.
+    SEL_PICKER_SEARCH_INPUT = "div#globalProcessList.in input#searchText:visible"
+    SEL_PICKER_SEARCH_BTN   = "div#globalProcessList.in button#searchBtn:visible"
+
+    def _picker_search(self, term: str) -> None:
+        """picker 내부 검색 — 활성(.in) 래퍼 검색창 fill + 검색버튼 **Playwright 실클릭**.
+        ★버그 수정(Chrome 실측 2026-07-09): 검색 버튼은 **실제 마우스 클릭에만** AngularJS 검색이
+        트리거됨 — JS el.click()(evaluate) 은 무반응. 공용 ProcessPicker.search 가 evaluate click 을
+        써서 검색이 안 먹던 원인(sc6 seed 소비 실패). 여기선 locator.click()(실클릭) 사용.
+        seed 실재 확인: [AUTO_0703]_cm_proc / [AUTO_0706]_cm_tag (search_term='[AUTO' → 각 1건 필터)."""
+        self.page.locator(self.SEL_PICKER_SEARCH_INPUT).first.fill(term)
+        with overlay_off(self.page):
+            self.page.locator(self.SEL_PICKER_SEARCH_BTN).first.click(force=True)
+        self.page.wait_for_timeout(800)
 
     # ── L2 등록 행 인라인 조작 (실측 2026-07-08) ──────────────────────
     def l2_rows(self):

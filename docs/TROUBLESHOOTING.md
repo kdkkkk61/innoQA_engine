@@ -2517,3 +2517,16 @@ sc5a 에는 재오픈 행 셀=O 검증(재오픈 렌더 계층) 별도 추가.)
 - **교훈**: 같은 모달 래퍼(id)를 프로세스/태그가 공유해도 **내부 리스트 div 는 다를 수 있다**. picker 조작 전 '리스트가 실제로 어느 div 인지' 실측하고, 선택 직후 `:checked` 검증으로 컨테이너 오지정을 결함으로 드러낼 것.
 
 상태: [RESOLVED] (재실행 검증 대기 — 사용자 실행)
+
+---
+
+## 프로세스 picker 검색 — JS click 은 AngularJS 검색 미트리거 → 실클릭 필요 (sc6 seed 소비 선결) — 2026-07-09
+
+- **맥락**: `l3_register(search_term=...)`(sc6 seed 소비 경로)의 검색이 필터 안 됨. 공용 `ProcessPicker.search` 는 검색버튼을 `btn.evaluate("el.click()")`(JS click)로 누름.
+- **Chrome 실측**: 검색 버튼(`div#globalProcessList.in button#searchBtn`, 내부 아이콘 프로세스=`i#searchProcessBtn`/태그=`i#searchProcessTagBtn`)은 **실제 마우스 클릭에만** AngularJS 검색이 트리거됨 — JS `el.click()` 은 무반응(값만 채워지고 리스트 미필터). 실클릭 시 `search_term='[AUTO'` → 프로세스 `[AUTO_0703]_cm_proc` / 태그 `[AUTO_0706]_cm_tag` **각 1건 필터**(seed 실재 확인). 검색→선택→확인→L3 반영까지 크롬 end-to-end 확인.
+- **수정**: 프로세스 페이지에 로컬 `_picker_search(term)` 추가 — 활성 래퍼 검색창 `fill` + 검색버튼 **Playwright `locator.click()`(실클릭)**. `l3_register` 가 `self.picker.search` 대신 이걸 호출. 셀렉터 상수 저장(`SEL_PICKER_SEARCH_INPUT`/`SEL_PICKER_SEARCH_BTN`). 공용 ProcessPicker 미변경.
+- **파일**: `pages/secure_zone_template_process_page.py`
+- **주의**: 이 검색은 **sc6(seed 소비)에서만** 사용 — 현 sc3 테스트는 front rows 라 검색 미실행. 따라서 sc3 재실행으로는 검증 안 됨. **pytest 검증은 sc6 빌드 시** 실행됨.
+- **교훈**: AngularJS ng-click 핸들러는 JS `el.click()` 로 안 먹는 경우가 있다 → picker 검색 등은 Playwright 실클릭(`locator.click()`)으로.
+
+상태: [RESOLVED — 코드 수정·크롬 검증 완료 / pytest 검증은 sc6에서]
