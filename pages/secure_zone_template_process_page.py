@@ -542,7 +542,9 @@ class SecureZoneTemplateProcessPage(BasePage):
 
     def l2_search(self, term: str) -> None:
         """L2 등록항목 검색(input#searchText '프로세스명' + button#searchBtn) — 실클릭.
-        ★실측(2026-07-09): 검색 실행은 되나 등록 항목을 못 찾는 제품 결함 관찰(sc3r 카드화)."""
+        실측 정정(2026-07-09 run): fill(모델 동기)+실클릭이면 정확 일치 검색·빈 검색 복귀 정상.
+        (앞선 '못 찾음/고착' 관찰은 JS setter 가 ng-model 미반영이던 프로브 오류.)
+        부분 일치 지원 여부는 sc3r 이 수집."""
         inp = self.page.locator(f"{self.SEL_L2_MODAL} input#searchText:visible").first
         inp.fill(term)
         with overlay_off(self.page):

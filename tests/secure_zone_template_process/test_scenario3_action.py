@@ -12,7 +12,7 @@ sc3m ★저장값 roundtrip(예외처리 옵션·설명 설정→저장→재오
 sc3n ★여러 프로세스 등록·활용(서로 다른 3개 등록→각 이름 검증→행별 옵션 개별 적용→1개 부분 제거)
 sc3o ★검색 등록(picker 검색 필터 동작 — '[AUTO' seed 있으면 확인 + 'notepad' 무조건 존재로 안정 검증)
 sc3p 리스트 필터(타입 4종 변별 — sync sc3p 위임분 + 상태) / sc3q 복사(_copy·★딥카피·충돌)
-sc3r ★L2 등록항목 검색(실측 결함 2종: 정확 일치 미검색 + 빈 검색 복구 불가) / sc3s i18n sweep
+sc3r L2 등록항목 검색(정확·부분·빈검색 복귀 — 부분 일치 일관성 수집) / sc3s i18n sweep
 ※ 등록 picker=checkbox plain click(실측). L3 타입별 모달 별개 → 타입 종속 검증은 4타입 전수.
 ※ seed 연계는 sc6. sc2=속성(maxlength 존재·초기값), sc3=실제 동작.
 """
@@ -680,9 +680,9 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
 
     # ── sc3r: ★L2 등록항목 검색 — 실측 결함 2종(일치 미검색 + 리셋 불가) ──
     def test_scenario3r_l2_item_search(self, logged_in_page, settings):
-        """실측(2026-07-09 Chrome): L2 '프로세스명' 검색이 ①등록된 항목을 전체 이름
-        정확 일치로도 못 찾고(0건) ②한번 검색하면 빈 검색으로도 목록 복구 안 됨(재오픈 필요).
-        기대 동작 기준으로 카드화 — 등록 이름 검색=1건, 빈 검색=전체 복귀."""
+        """L2 '프로세스명' 검색 — 정확 일치·부분어·빈 검색 복귀. 실측 정정(2026-07-09):
+        fill(모델 동기)+실클릭이면 정확 검색·복귀 정상(앞선 결함 관찰은 JS setter 프로브 오류).
+        부분어는 실타이핑 관찰상 0건 의심 → 타 검색(부분 일치)과의 일관성으로 수집."""
         print("\n━━ [프로세스] sc3r: L2 등록항목 검색(결함 실측 카드) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
@@ -707,6 +707,19 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   merge_key=(None if hit >= 1 else "szproc_l2_search::match::warn::no_hit"),
                   repro=f"1. 프로세스 등록\n2. L2 검색창에 등록된 이름({target}) 입력\n"
                         "3. 검색 → 해당 행 1건 표시되어야")
+
+        # ①-b 부분 검색 — 타 검색(리스트/picker)은 전부 부분 일치 → 일관성 확인
+        page.l2_search(target[:6])
+        part = page.l2_item_count()
+        self._add("pass" if part >= 1 else "warn",
+                  "sc3r — L2 검색: 부분어 검색 (타 검색과 일관성)",
+                  f"입력: {target!r} 의 앞 6자 {target[:6]!r} 검색 / 결과: {part}건 "
+                  + ("" if part >= 1 else "[부분 일치 미지원(정확 일치만) — 리스트/picker 검색은 "
+                     "부분 일치라 불일치. 사용자는 파일명 일부로 검색 기대]"), sc=3,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  merge_key=(None if part >= 1 else "szproc_l2_search::partial::warn::exact_only"),
+                  repro=f"1. {target} 등록 상태\n2. L2 검색창에 이름 일부({target[:6]}) 입력\n"
+                        "3. 검색 → 부분 일치로 검색되어야(타 검색과 동일 UX)")
 
         # ② 빈 검색 → 전체 복귀되어야 정상
         page.l2_search("")
