@@ -376,7 +376,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             else:
                 verdict, note = "warn", "[조용한 미저장 — 경고 없이 설명 유실]"
             self._add(verdict,
-                      f"sc4i — {ko}: 설명 3000자 → 저장 처리"   # 라벨 본문 = sc3l 과 동일(미러 dedup),
+                      f"sc4i — {ko}: 설명 3000자 → 저장 처리",   # 라벨 본문 = sc3l 과 동일(미러 dedup)
                       f"입력: 3000자 + '수정' / 결과: 경고={msg!r}, 재오픈 저장={n}자 {note}",
                       sc=4,
                       highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC),

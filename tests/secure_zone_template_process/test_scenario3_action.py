@@ -419,7 +419,7 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             guard = ("자" in msg or "길이" in msg or "초과" in msg) and not raw_err
             st = "warn" if raw_err else "pass"
             self._add(st,
-                      f"sc3l — {ko}: 설명 3000자 → 저장 처리"   # 라벨 본문 = sc4i 와 동일(미러 dedup),
+                      f"sc3l — {ko}: 설명 3000자 → 저장 처리",   # 라벨 본문 = sc4i 와 동일(미러 dedup)
                       f"입력: 설명 3000자 + 추가 / 결과: 경고={msg!r}, 커밋={committed} "
                       + ("[raw 서버 오류 — 클라 길이 가드 부재]" if raw_err
                          else "(길이 가드 안내)" if guard else "(제한 없이 커밋)"), sc=3,
