@@ -270,11 +270,20 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.l3_add_message("ALLOW_PROCESS", button="수정")
         restored_on = self._wait_row_status(page, True)   # 재렌더 폴링
         ok = before_on and (not after_on) and reload_inactive and restored_on
-        self._add("pass" if ok else "fail",
+        # 3점 대조 분류(issue-card-rules §6): 저장(재오픈)은 정상인데 표시만 어긋나면
+        # '리스트 갱신 버그'(제품 표시 결함 warn) — 저장 자체가 틀리면 fail.
+        display_only = reload_inactive and before_on and after_on
+        st = "pass" if ok else ("warn" if display_only else "fail")
+        self._add(st,
                   "sc4g — 항목 상태 활성→비활성 '수정': L2 표시·재오픈 일치(+원복)",
                   f"결과: 이전 ON={before_on} → 비활성 후 ON={after_on}(기대 False), "
-                  f"재오픈 비활성 checked={reload_inactive}, 원복 후 ON={restored_on}", sc=4,
+                  f"재오픈 비활성 checked={reload_inactive}, 원복 후 ON={restored_on}"
+                  + (" [★저장은 정상(재오픈 비활성)인데 L2 행 상태 표시가 갱신 안 됨(4s 폴링) — "
+                     "리스트 갱신 버그. 옵션 셀은 즉시 갱신되는 것과 대조적]" if (not ok and display_only)
+                     else ""), sc=4,
                   highlight=page.l2_rows()[0].locator("td").nth(4) if page.l2_rows() else None,
+                  merge_key=("szproc_item_status::display::warn::list_not_refreshed"
+                             if (not ok and display_only) else None),
                   repro="1. 이름 링크 → L3 상태 비활성 → '수정'\n2. L2 행 상태 OFF 표시\n"
                         "3. 재오픈 비활성 checked\n4. 활성 원복")
         page.l2_bulk_remove()
