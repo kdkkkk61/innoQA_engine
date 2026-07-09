@@ -419,11 +419,11 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             guard = ("자" in msg or "길이" in msg or "초과" in msg) and not raw_err
             st = "warn" if raw_err else "pass"
             self._add(st,
-                      f"sc3l — {ko}: 설명 3000자 저장 → 서버 처리(수집)",
+                      f"sc3l — {ko}: 설명 3000자 → 저장 처리"   # 라벨 본문 = sc4i 와 동일(미러 dedup),
                       f"입력: 설명 3000자 + 추가 / 결과: 경고={msg!r}, 커밋={committed} "
                       + ("[raw 서버 오류 — 클라 길이 가드 부재]" if raw_err
                          else "(길이 가드 안내)" if guard else "(제한 없이 커밋)"), sc=3,
-                      merge_key=("szproc_desc_ovf::create::warn::raw_server_error" if raw_err else None),   # 타입 무관 — 같은 클래스 4장 → 카드 1장(카테고리 전수)
+                      merge_key=(f"szproc_desc_ovf::{ttype}" if raw_err else None),   # 요소(타입)별 카드 — sc4i(수정)와 세로 병합
                       repro=f"1. {ko} L3 프로세스 선택 + 설명 3000자\n2. 추가\n3. 서버 처리 결과 확인")
             page.dismiss_alert()
             # ★서버 오류 후 정상값 재시도(복구) — 실측(14:29 run 진단 DUMP): 오류 확인을

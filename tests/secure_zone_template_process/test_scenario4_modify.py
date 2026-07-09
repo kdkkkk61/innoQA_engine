@@ -362,24 +362,21 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             page.l2_open_item_edit(0)
             stored = page.l3_scope(ttype).locator(page.SEL_L3_DESC).first.input_value()
             n = len(stored)
-            # merge_key 는 타입 무관·증상별(카테고리 전수 — 같은 클래스 4장이면 카드 1장)
+            # merge_key = 요소(타입)별 — sc3l(생성)과 같은 키로 세로 병합(3↔4 한 카드,
+            #   결과가 다르면 리포터가 시나리오별 줄로 분리 표기)
+            mk = f"szproc_desc_ovf::{ttype}"
             if raw_err:
-                verdict, note, mk = ("warn",
-                    "[raw 서버 오류 — 생성(sc3l)과 동일 클래스, 수정 경로도 가드 부재]",
-                    "szproc_desc_ovf::modify::warn::raw_server_error")
+                verdict, note = "warn", "[raw 서버 오류 — 생성(sc3l)과 동일, 수정 경로도 가드 부재]"
             elif n == 3000:
-                verdict, note, mk = ("warn",
-                    "[★경로 불일치 — 생성(sc3l)은 3000자를 서버 오류로 차단하는데 수정 경로는 "
-                    "그대로 DB 저장. 수정이 생성 검증을 우회]",
-                    "szproc_desc_ovf::modify::warn::create_modify_mismatch")
+                verdict, note = ("warn",
+                    "[★경로 불일치 — 생성은 3000자를 서버 오류로 차단하는데 수정 경로는 "
+                    "그대로 DB 저장. 수정이 생성 검증을 우회]")
             elif 0 < n < 3000:
-                verdict, note, mk = ("warn", f"[조용한 절단 — 안내 없이 {n}자로 잘려 저장]",
-                    "szproc_desc_ovf::modify::warn::silent_truncation")
+                verdict, note = "warn", f"[조용한 절단 — 안내 없이 {n}자로 잘려 저장]"
             else:
-                verdict, note, mk = ("warn", "[조용한 미저장 — 경고 없이 설명 유실]",
-                    "szproc_desc_ovf::modify::warn::silent_loss")
+                verdict, note = "warn", "[조용한 미저장 — 경고 없이 설명 유실]"
             self._add(verdict,
-                      f"sc4i — {ko}: 수정 설명 3000자 → 실제 저장값 재오픈 대조",
+                      f"sc4i — {ko}: 설명 3000자 → 저장 처리"   # 라벨 본문 = sc3l 과 동일(미러 dedup),
                       f"입력: 3000자 + '수정' / 결과: 경고={msg!r}, 재오픈 저장={n}자 {note}",
                       sc=4,
                       highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC),

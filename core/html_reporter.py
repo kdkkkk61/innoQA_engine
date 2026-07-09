@@ -605,15 +605,15 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                     else:
                         merged_title = " · ".join(titles_g)
                 # ★결과 전수 표기: 첫 항목만 보여주고 나머지를 버리지 않는다.
+                #   머리는 시나리오 라벨(생성/수정 어디서 나온 결과인지 — 사용자 지시 2026-07-09).
                 if len(items_g) > 1:
                     dets_g = [(it.detail or "") for it in items_g]
                     if all(d == dets_g[0] for d in dets_g):
-                        merged_actual_note = (f" — {len(items_g)}건 동일 결과"
-                                              f"({'/'.join(dict.fromkeys(heads_g))})")
+                        merged_actual_note = f" — {len(items_g)}건 동일 결과"
                     else:
                         merged_actual_rows = [
-                            f"[{hd}] {_expected_vs_actual(it)[1]}"
-                            for hd, it in zip(heads_g, items_g)]
+                            f"[{_scenario_label(it, is_list, page_id)}] {_expected_vs_actual(it)[1]}"
+                            for it in items_g]
             steps      = _reproduce_steps(r)
             expected, actual = _expected_vs_actual(r)
             if merged_actual_rows:
