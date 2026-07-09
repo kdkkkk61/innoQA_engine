@@ -552,13 +552,14 @@ class SecureZoneTemplateProcessPage(BasePage):
                 force=True)
         self.page.wait_for_timeout(800)
 
-    def l3_add_message(self, ttype: str) -> str:
-        """L3 '추가' 클릭 → 경고 메시지 반환+dismiss(''=커밋).
-        ★실측(2026-07-08): 커밋 성공 시 알림 없이 **L3 자동 닫힘** → L2 목록 반영.
-        차단(필수 미입력 등) 시 알림 뜨고 L3 유지. 알림 캡처가 필요한 흐름은
-        테스트에서 클릭/대기/dismiss 를 분리(저널 행위)해서 사용."""
+    def l3_add_message(self, ttype: str, button: str = "추가") -> str:
+        """L3 커밋 버튼 클릭 → 경고 메시지 반환+dismiss(''=커밋).
+        button="추가"(신규 등록) / "수정"(이름 링크 편집 모달 — 실측 2026-07-08, L3 편집은
+        바꾼 뒤 '수정'까지 눌러야 커밋). ★실측: 커밋 성공 시 알림 없이 **L3 자동 닫힘** →
+        L2 목록 반영. 차단(필수 미입력 등) 시 알림 뜨고 L3 유지. 알림 캡처가 필요한
+        흐름은 테스트에서 클릭/대기/dismiss 를 분리(저널 행위)해서 사용."""
         with overlay_off(self.page):
-            self.l3_scope(ttype).locator("button", has_text="추가").first.click(force=True)
+            self.l3_scope(ttype).locator("button", has_text=button).first.click(force=True)
         self.page.wait_for_timeout(500)
         msg = ""
         if self.is_confirm_modal_visible():
