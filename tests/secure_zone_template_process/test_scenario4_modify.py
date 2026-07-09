@@ -197,7 +197,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         print("\n━━ [프로세스] sc4f: 항목 편집 로드→설명 수정→재오픈 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
-        tpl = "[AUTO]_sz_proc_4f"
+        tpl = self._TPL   # 공용 재사용 — 각 테스트가 끝에 항목 비움
         self._ensure_item(page, tpl)
         reg_name = page.l2_rows()[0].locator("td").nth(1).inner_text().strip()
 
@@ -230,7 +230,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         print("\n━━ [프로세스] sc4g: 항목 상태 활성→비활성 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
-        tpl = "[AUTO]_sz_proc_4g"
+        tpl = self._TPL   # 공용 재사용 — 각 테스트가 끝에 항목 비움
         self._ensure_item(page, tpl)
         before_on = self._row_item_status_on(page)
 
@@ -269,7 +269,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.navigate_to()
 
         # (a) 허용 — L3 편집에서 재시작 ON → '수정' → L2 인라인 표시 + 재오픈
-        tpl = "[AUTO]_sz_proc_4h"
+        tpl = self._TPL   # 공용 재사용 — 각 테스트가 끝에 항목 비움
         self._ensure_item(page, tpl)
         page.l2_open_item_edit(0)
         rst = page.l3_scope("ALLOW_PROCESS").locator("input#isProcessRestart").first
@@ -292,7 +292,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.close_l2_modal()
 
         # (b) 예외처리 — 수정 경로로 드라이브 권한 변경(시큐어=차단/반출=허용) → 재오픈 대조
-        tpl_ex = "[AUTO]_sz_proc_4h_ex"
+        tpl_ex = "[AUTO]_sz_proc_4_ex"   # 타입 radio 잠금 → 예외처리만 별도
         self._ensure_item(page, tpl_ex, "EXCEPT_PROCESS")
         page.l2_open_item_edit(0)
         sc = page.l3_scope("EXCEPT_PROCESS")
@@ -323,7 +323,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         print("\n━━ [프로세스] sc4i: 설명 3000자 오버플로(수정 컨텍스트) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
-        tpl = "[AUTO]_sz_proc_4i"
+        tpl = self._TPL   # 공용 재사용 — 각 테스트가 끝에 항목 비움
         self._ensure_item(page, tpl)
         page.l2_open_item_edit(0)
         page.fill(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}", "가" * 3000)
@@ -374,7 +374,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         print("\n━━ [프로세스] sc4k: 수정 세션 항목 제거 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
-        tpl = "[AUTO]_sz_proc_4k"
+        tpl = self._TPL   # 공용 재사용 — 각 테스트가 끝에 항목 비움
         self._ensure_item(page, tpl)
         page.l2_open_item_edit(0)
         page.fill(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}", "sc4k")
