@@ -2530,3 +2530,15 @@ sc5a 에는 재오픈 행 셀=O 검증(재오픈 렌더 계층) 별도 추가.)
 - **교훈**: AngularJS ng-click 핸들러는 JS `el.click()` 로 안 먹는 경우가 있다 → picker 검색 등은 Playwright 실클릭(`locator.click()`)으로.
 
 상태: [RESOLVED — 코드 수정·크롬 검증 완료 / pytest 검증은 sc6에서]
+
+---
+
+## 프로세스 sc4g 오탐 — L2 행 상태 셀은 input#status.checked 가 모델과 미바인딩 — 2026-07-09
+
+- **증상**: sc4g FAIL — "이전 ON=False(활성인데)/비활성 후 ON=True" 반전 관찰. 단 재오픈 L3 checked 는 정확(저장 정상) → 표시 읽기 문제.
+- **Chrome 실측**: 활성 항목 상태 셀 = `<label class="switch on"><input id="status" disabled checked=false>` — **시각 ON/OFF = label.switch 의 'on' 클래스**, 내부 input 은 checked 미바인딩(활성인데 false). input 을 읽으면 반전/무작위.
+- **수정**: `_row_item_status_on` 을 label.switch 클래스 판정으로 변경(옵션 버튼 `l2_option_on` 과 동일 패턴).
+- **파일**: `tests/secure_zone_template_process/test_scenario4_modify.py`
+- **교훈**: Bootstrap 스타일 switch 는 **컨테이너 클래스가 진실**, hidden input 의 checked 는 페이지마다 바인딩이 다르다 — 표시 검증은 시각 상태를 만드는 속성(class)으로.
+
+상태: [RESOLVED] (sc4g 재실행 검증 대기 — 사용자 실행)

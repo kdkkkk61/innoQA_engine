@@ -188,8 +188,12 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             page.l3_add_message(ttype)
 
     def _row_item_status_on(self, page, idx: int = 0) -> bool:
-        """L2 행 상태 셀(td[4], input#status disabled — 표시 전용) ON 여부."""
-        return page.l2_rows()[idx].locator("td").nth(4).locator("input").first.is_checked()
+        """L2 행 상태 셀(td[4]) ON 여부 — ★Chrome 실측(2026-07-09): 시각 상태는
+        label.switch 의 'on' 클래스. 내부 input#status 는 checked 가 모델과 미바인딩
+        (활성인데 checked=false)이라 신뢰 불가 — sc4g 첫 FAIL 원인."""
+        cls = page.l2_rows()[idx].locator("td").nth(4).locator(
+            "label.switch").first.get_attribute("class") or ""
+        return " on" in f" {cls} "
 
     # ── sc4f: 항목 편집 로드값 → 설명 수정 → '수정' 커밋 → 재오픈 반영 ──
     def test_scenario4f_item_load_update(self, logged_in_page, settings):
