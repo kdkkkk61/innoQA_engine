@@ -80,6 +80,11 @@ _add(status, label, detail, sc, highlight, repro, screenshot, merge_key)
   중간 상태가 스토리의 핵심 컷 (사용자 지시 2026-07-03).
 - **자동 _R 은 안전망** — fail 카드에 큐레이션 스텝 스토리(screenshots)가 이미 있으면 _R 을 돌리지
   않는다(판정 순간 재캡처는 중복). 큐레이션 없는 fail 에서만 발동.
+- **★_R 첨부 방식(사용자 지시 2026-07-09)**: 별도 '_R 스텝 캡처' 카드를 만들지 않는다 —
+  재실행 중 이슈(fail/warn) 지점을 만나면 **직전 이슈 이후의 스텝들을 그 이슈 티켓의
+  screenshots 로 직접 첨부**하고 프레임 리셋(a 티켓엔 a 스토리, b 티켓엔 b 스토리 —
+  여러 이슈를 한 카드에 묶지 않음). 원본 카드와 재실행 _add 호출 순서로 매칭.
+  근거 코드: `tests/secure_zone_template_process/_base.py` `_add` 리턴재생 분기.
 - 캡션 형식: "순번. [판정] 라벨" — 리포트에서 각 이미지 위에 표시(진행 흐름이 순서대로 읽히게).
 
 - `_shot(label, highlight=)` 은 **warn/fail 확정 후** 해당 화면을 다시 열어 호출 — pass 경로에서 불필요한 캡처(고아 파일) 금지.

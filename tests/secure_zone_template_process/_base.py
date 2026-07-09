@@ -78,7 +78,10 @@ class SecureZoneTemplateProcessBase(ActionJournalMixin):
         except Exception:
             pass
         yield
-        # ── 자동 리턴 재생(_R): 예기치 못한 fail 시 같은 테스트를 캡처 모드로 1회 재실행 ──
+        # ── 자동 리턴 재생(_R): 예기치 못한 fail 시 같은 테스트를 캡처 모드로 1회 재실행.
+        #    ★설계(사용자 지시 2026-07-09): 별도 '_R 스텝 캡처' 카드를 만들지 않는다 —
+        #    재실행 중 이슈(fail/warn) 지점을 만나면 '직전 이슈 이후의 스텝들'을 **그 이슈
+        #    티켓의 screenshots** 로 직접 첨부(a 티켓엔 a 스토리, b 티켓엔 b 스토리).
         try:
             _need_replay = any(
                 s.status == "fail" and not (s.extra or {}).get("screenshots")
@@ -86,6 +89,9 @@ class SecureZoneTemplateProcessBase(ActionJournalMixin):
             )
             if self._REPLAY_ON_FAIL and not self._replay_mode and _need_replay:
                 self._replay_mode = True
+                self._replay_frames = []
+                self._replay_idx = 0
+                self._orig_cards = list(self._srs)   # 원본 카드 — 재실행 _add 순서로 매칭
                 fn_name = getattr(request.node, "originalname", None) or request.node.name.split("[")[0]
                 fn = getattr(self, fn_name, None)
                 if fn is not None:
@@ -98,14 +104,7 @@ class SecureZoneTemplateProcessBase(ActionJournalMixin):
                     except Exception:
                         pass
                 self._replay_mode = False
-                if self._replay_frames:
-                    t, s = _r("warn", f"{fn_name.replace('test_', '')} — 리턴 재생(_R) 스텝 캡처",
-                              f"fail 발생으로 같은 흐름을 1회 재실행하며 검증 지점마다 캡처 "
-                              f"({len(self._replay_frames)}장, 최대 {self._REPLAY_MAX_FRAMES}).", sc=0)
-                    s.extra["screenshots"] = self._replay_frames[:self._REPLAY_MAX_FRAMES]
-                    s.extra["scenario"] = (self._srs[0].extra or {}).get("scenario", 0) if self._srs else 0
-                    self._lines.append(t)
-                    self._srs.append(s)
+                # 마지막 이슈 이후 남은 pass 스텝 프레임은 소속 이슈가 없음 — 버림
         except Exception:
             pass
         if self._srs and not getattr(self._request.node, "_scan_report", None):
@@ -139,14 +138,26 @@ class SecureZoneTemplateProcessBase(ActionJournalMixin):
     def _add(self, status: str, label: str, detail: str = "", sc: int = 0,
              highlight=None, repro=None, screenshot=True, merge_key: str = None,
              screenshots: list = None) -> None:
-        # 리턴 재생(_R) 모드: 카드 미생성, 검증 지점 화면만 수집
+        # 리턴 재생(_R) 모드: 카드 미생성 — 스텝 화면을 모아 '해당 이슈 티켓'에 직접 첨부.
         if getattr(self, "_replay_mode", False):
             if len(self._replay_frames) < self._REPLAY_MAX_FRAMES:
                 p = _ss(self._page, f"R_{label}", highlight=highlight)
                 if p:
                     icon = {"pass": "[OK]", "fail": "[FAIL]", "warn": "[WARN]", "skip": "[SKIP]"}.get(status, "?")
-                    self._replay_frames.append(
-                        {"path": p, "caption": f"R{len(self._replay_frames) + 1}. {icon} {label}"})
+                    self._replay_frames.append({"path": p, "caption": f"{icon} {label}"})
+            # 이슈 지점 도달 → 직전 이슈 이후의 스텝들 = 이 이슈의 스토리 → 원본 카드에 첨부
+            idx = getattr(self, "_replay_idx", 0)
+            self._replay_idx = idx + 1
+            if status in ("fail", "warn") and idx < len(getattr(self, "_orig_cards", [])):
+                card = self._orig_cards[idx]
+                if card.extra is None:
+                    card.extra = {}
+                if not card.extra.get("screenshots") and self._replay_frames:
+                    frames = self._replay_frames[:self._REPLAY_MAX_FRAMES]
+                    for i, f in enumerate(frames, 1):
+                        f["caption"] = f"{i}. {f['caption']}"
+                    card.extra["screenshots"] = frames
+                self._replay_frames = []
             return
         try:
             nm = self._request.node.name
