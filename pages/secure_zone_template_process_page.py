@@ -430,7 +430,7 @@ class SecureZoneTemplateProcessPage(BasePage):
         cb_name = "selectProcessTag" if tag else "selectProcess"
         self.l3_scope(ttype).locator(self.SEL_L3_PICK).first.evaluate("el => el.click()")
         self.picker.wait_open()
-        if search_term:
+        if search_term is not None:      # ""=검색 리셋(전체 목록) — fallback 등록용
             self._picker_search(search_term)
         # ★ 행 리스트 컨테이너는 모드별로 다름 (Chrome 실측 2026-07-09):
         #   개별 프로세스 → 콘텐츠 div#globalProcessList(visible, w>0 — 모달 래퍼와 id 중복 존재)
@@ -491,7 +491,9 @@ class SecureZoneTemplateProcessPage(BasePage):
 
     # ── L2 등록 행 인라인 조작 (실측 2026-07-08) ──────────────────────
     def l2_rows(self):
-        """L2 현재 탭의 visible 데이터 행 locator 리스트."""
+        """L2 현재 탭의 visible 데이터 행 locator 리스트.
+        ★컬럼 주의(실측 2026-07-09): 개별 프로세스 탭 이름=td[1] /
+        태그 탭은 '순위' 컬럼이 끼어 이름=td[2] (td[1]은 순위 숫자)."""
         return [r for r in self.page.locator(
             f"{self.SEL_L2_MODAL} tbody tr:visible").all()
             if r.locator("input[type='checkbox']").count() > 0
