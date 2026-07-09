@@ -200,6 +200,17 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             "label.switch").first.get_attribute("class") or ""
         return " on" in f" {cls} "
 
+    def _wait_row_status(self, page, want_on: bool, timeout_ms: int = 4000) -> bool:
+        """L2 행 상태 표시가 기대값이 될 때까지 폴링 — '수정' 커밋 후 목록 재렌더가
+        비동기(15:33 run sc4g 재실패: 커밋 직후 즉시 읽어 stale). 미도달 시 관측값 반환."""
+        import time as _t
+        deadline = _t.monotonic() + timeout_ms / 1000
+        cur = self._row_item_status_on(page)
+        while cur != want_on and _t.monotonic() < deadline:
+            page.page.wait_for_timeout(250)
+            cur = self._row_item_status_on(page)
+        return cur
+
     # ── sc4f: 항목 편집 로드값 → 설명 수정 → '수정' 커밋 → 재오픈 반영 ──
     def test_scenario4f_item_load_update(self, logged_in_page, settings):
         """L3 편집 계약(사용자 확인 2026-07-09): 바꾼 뒤 '수정'까지 눌러야 커밋."""
@@ -248,7 +259,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             "el => el.click()")
         page.page.wait_for_timeout(150)
         page.l3_add_message("ALLOW_PROCESS", button="수정")
-        after_on = self._row_item_status_on(page)
+        after_on = self._wait_row_status(page, False)   # 재렌더 폴링(stale 방지)
         page.l2_open_item_edit(0)
         reload_inactive = page.l3_scope("ALLOW_PROCESS").locator(
             "input#DELETE").first.is_checked()
@@ -257,7 +268,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             "el => el.click()")
         page.page.wait_for_timeout(150)
         page.l3_add_message("ALLOW_PROCESS", button="수정")
-        restored_on = self._row_item_status_on(page)
+        restored_on = self._wait_row_status(page, True)   # 재렌더 폴링
         ok = before_on and (not after_on) and reload_inactive and restored_on
         self._add("pass" if ok else "fail",
                   "sc4g — 항목 상태 활성→비활성 '수정': L2 표시·재오픈 일치(+원복)",

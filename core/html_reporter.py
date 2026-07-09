@@ -556,6 +556,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
         # 시나리오 배지는 join: "시나리오 3.06 · 4.13" (뒤 항목은 '시나리오 ' prefix 생략).
         merge_labels: dict[str, list[str]] = {}
         merge_titles: dict[str, list[str]] = {}
+        merge_items:  dict[str, list] = {}
         for r in bug_items:
             mk = (r.extra or {}).get("merge_key")
             if mk:
@@ -568,6 +569,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                 merge_titles.setdefault(mk, [])
                 if t not in merge_titles[mk]:
                     merge_titles[mk].append(t)
+                merge_items.setdefault(mk, []).append(r)
         merged_done: set = set()
         for r in bug_items:
             mk = (r.extra or {}).get("merge_key")
@@ -577,16 +579,47 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             badge, css = _STATUS_BADGE.get(r.status, ('?', ''))
             scenario   = _scenario_label(r, is_list, page_id)
             merged_title = None
+            merged_actual_note = ""
+            merged_actual_rows = None
             if mk:
                 merged_done.add(mk)
                 grp = merge_labels[mk]
                 if len(grp) > 1:
                     scenario = grp[0] + "".join(
                         " · " + re.sub(r"^시나리오\s*", "", g) for g in grp[1:])
-                if len(merge_titles[mk]) > 1:
-                    merged_title = " · ".join(merge_titles[mk])
+                titles_g = merge_titles[mk]
+                items_g  = merge_items.get(mk, [r])
+                # 항목별 변형 머리(예: "허용 프로세스") — "<변형>: <공통>" 라벨 패턴
+                heads_g = []
+                for it in items_g:
+                    t_i = _strip_scenario_prefix(it.label or "")
+                    sp = t_i.split(": ", 1)
+                    heads_g.append(sp[0] if len(sp) == 2 else t_i[:16])
+                if len(titles_g) > 1:
+                    # ★제목 압축(사용자 보고 2026-07-09): 동일 제목이 변형 머리만 다르면
+                    #   "공통 제목 — N건 전수(변형1/변형2/…)" 로. 아니면 종전 join.
+                    parts = [t.split(": ", 1) for t in titles_g]
+                    if all(len(p) == 2 for p in parts) and len({p[1] for p in parts}) == 1:
+                        merged_title = (f"{parts[0][1]} — {len(items_g)}건 전수"
+                                        f"({'/'.join(dict.fromkeys(heads_g))})")
+                    else:
+                        merged_title = " · ".join(titles_g)
+                # ★결과 전수 표기: 첫 항목만 보여주고 나머지를 버리지 않는다.
+                if len(items_g) > 1:
+                    dets_g = [(it.detail or "") for it in items_g]
+                    if all(d == dets_g[0] for d in dets_g):
+                        merged_actual_note = (f" — {len(items_g)}건 동일 결과"
+                                              f"({'/'.join(dict.fromkeys(heads_g))})")
+                    else:
+                        merged_actual_rows = [
+                            f"[{hd}] {_expected_vs_actual(it)[1]}"
+                            for hd, it in zip(heads_g, items_g)]
             steps      = _reproduce_steps(r)
             expected, actual = _expected_vs_actual(r)
+            if merged_actual_rows:
+                actual = "\n".join(merged_actual_rows)
+            elif merged_actual_note:
+                actual = actual + merged_actual_note
             # 심각도 + 아이콘 결정 — status + 라벨/시나리오의 🔴/🟡 의도 반영 (사용자 보고 2026-06-01)
             # 이전: status 만 — fail/error→높음/빨강 else 낮음/노랑
             # → sc4c 처럼 known_bug 로 warn 처리됐는데 라벨 🔴 (높음 의도) 인 경우 모순
@@ -648,7 +681,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
           <table class="defect-detail">
             <tr><th>재현 방법</th><td>{steps}</td></tr>
             <tr><th>입력 / 조건</th><td>{html.escape(expected)}</td></tr>
-            <tr><th>결과</th><td>{html.escape(actual)}</td></tr>
+            <tr><th>결과</th><td style="white-space:pre-line">{html.escape(actual)}</td></tr>
             {ss_html}
           </table>
         </div>""")
