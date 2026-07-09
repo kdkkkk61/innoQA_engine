@@ -494,26 +494,36 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         a, b = names[0], names[1]
 
         page.l2_open_item_edit(1)   # B 편집
-        page.l3_register("ALLOW_PROCESS", count=1,
-                         name_pattern=_re.compile(rf"^{_re.escape(a)}$"), search_term=a)
+        picked = page.l3_register("ALLOW_PROCESS", count=1,
+                                  name_pattern=_re.compile(rf"^{_re.escape(a)}$"), search_term=a)
         msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
         page.dismiss_alert()
         if page.page.locator(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in").count() > 0:
             page.close_l3_modal("ALLOW_PROCESS")
         after = [r.locator("td").nth(1).inner_text().strip() for r in page.l2_rows()]
-        dup = after.count(a) > 1
-        blocked = (not dup) and (a in after) and (b in after)   # 차단되어 원상 유지
-        self._add("warn" if dup else "pass",
-                  "sc4m — 재선택으로 중복 유발(B→A): 중복 차단/생략 여부",
-                  f"입력: {b!r} 편집 → 이미 등록된 {a!r} 로 재선택 '수정'({msg!r}) / "
-                  f"결과: {after} "
-                  + ("[★동일 프로세스 중복 행 생성 — 등록 경로(생략 안내)와 달리 변경 경로는 "
-                     "중복 검사 누락]" if dup else "(차단/생략 — 원상 유지)" if blocked
-                     else "(처리됨)"), sc=4,
-                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
-                  merge_key=("szproc_dup::reselect::warn::no_dup_check" if dup else None),
-                  repro=f"1. {a}, {b} 2건 등록\n2. {b} 편집 → {a} 로 재선택 → '수정'\n"
-                        "3. 중복 처리(차단/생략) 확인")
+        if not picked:
+            # 재선택 자체가 실패하면 '차단' 으로 오판하지 않는다(가짜 pass 방지 — 14:29 run 교훈)
+            self._add("warn",
+                      "sc4m — 재선택 중복 충돌 [검증 불가 — 편집 picker 재선택 실패]",
+                      f"입력: {b!r} 편집 → {a!r} 재선택 시도 / 결과: picker 선택 0건({msg!r}), "
+                      f"{after} — sc4l 과 동일 원인(편집 모달 picker), 메커니즘 실측 후 재검증",
+                      sc=4, highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                      merge_key="szproc_reselect::picker::warn::not_working",
+                      repro=f"1. {b} 편집 → '프로세스 선택'\n2. picker 에서 {a} 선택 시도\n3. 선택 반영 여부")
+        else:
+            dup = after.count(a) > 1
+            blocked = (not dup) and (a in after) and (b in after)   # 차단되어 원상 유지
+            self._add("warn" if dup else "pass",
+                      "sc4m — 재선택으로 중복 유발(B→A): 중복 차단/생략 여부",
+                      f"입력: {b!r} 편집 → 이미 등록된 {a!r} 로 재선택 '수정'({msg!r}) / "
+                      f"결과: {after} "
+                      + ("[★동일 프로세스 중복 행 생성 — 등록 경로(생략 안내)와 달리 변경 경로는 "
+                         "중복 검사 누락]" if dup else "(차단/생략 — 원상 유지)" if blocked
+                         else "(처리됨)"), sc=4,
+                      highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                      merge_key=("szproc_dup::reselect::warn::no_dup_check" if dup else None),
+                      repro=f"1. {a}, {b} 2건 등록\n2. {b} 편집 → {a} 로 재선택 → '수정'\n"
+                            "3. 중복 처리(차단/생략) 확인")
         page.l2_bulk_remove()
         page.close_l2_modal()
 

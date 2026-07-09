@@ -426,21 +426,28 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                       merge_key=(f"szproc_desc_ovf::{ttype}::warn::raw_server_error" if raw_err else None),
                       repro=f"1. {ko} L3 프로세스 선택 + 설명 3000자\n2. 추가\n3. 서버 처리 결과 확인")
             page.dismiss_alert()
-            # ★서버 오류 이후 같은 L3 에서 정상값 재시도 — 오류가 세션을 오염시키는지(복구 검증,
-            #   사용자 지적 2026-07-09: 오류 발생 후 값 바꿔 다시 시도하는 검증이 빠져 있었음)
+            # ★서버 오류 후 정상값 재시도(복구) — 실측(14:29 run 진단 DUMP): 오류 확인을
+            #   닫으면 앱이 L3+L2 모달 스택 **전체를 닫음**(open_modals=[]) → 같은 세션
+            #   재시도 불가, 재진입으로 재시도. (첫 구현이 L3 유지 가정으로 timeout — 교정)
             if raw_err:
+                page.navigate_to_clean()
+                page.open_l2_modal(tpl)
+                before2 = page.l2_item_count()
+                page.open_l3_add(ttype)
+                page.l3_register(ttype, count=1)
                 page.fill(desc_sel, "ovf_recover")
                 msg2 = page.l3_add_message(ttype)
                 cnt2 = page.l2_item_count()
-                recovered = (cnt2 == before + 1) and msg2 == ""
+                recovered = cnt2 == before2 + 1
                 self._add("pass" if recovered else "warn",
-                          f"sc3l — {ko}: 서버 오류 후 정상값 재시도 → 등록 복구",
-                          f"입력: 같은 L3 에서 설명 'ovf_recover' 로 재추가({msg2!r}) / "
-                          f"결과: {before}→{cnt2}건, 복구={recovered}"
-                          + ("" if recovered else " [오류 후 같은 세션에서 정상 등록 불가 — 상태 오염]"),
+                          f"sc3l — {ko}: 서버 오류 후 재진입 정상값 재시도 → 등록 복구",
+                          f"입력: 재진입 후 설명 'ovf_recover' 등록({msg2!r}) / "
+                          f"결과: {before2}→{cnt2}건, 복구={recovered}"
+                          + ("" if recovered else " [오류 후 정상 등록 불가 — 시스템 상태 오염]")
+                          + " (관찰: 서버 오류 확인 시 앱이 모달 스택 전체를 닫음)",
                           sc=3, highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
-                          repro=f"1. {ko} 설명 3000자 → 서버 오류\n2. 알림 닫고 같은 L3 에서 "
-                                "정상 설명으로 재추가\n3. 정상 등록되는지(오염 없음)")
+                          repro=f"1. {ko} 설명 3000자 → 서버 오류 → 확인(모달 전체 닫힘)\n"
+                                "2. 재진입 후 정상 설명으로 등록\n3. 정상 등록되는지")
             page.close_l3_modal(ttype)
             page.l2_bulk_remove()
             page.close_l2_modal()
