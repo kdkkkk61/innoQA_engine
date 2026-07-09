@@ -329,22 +329,60 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.navigate_to()
         tpl = self._TPL   # 공용 재사용 — 각 테스트가 끝에 항목 비움
         self._ensure_item(page, tpl)
+        DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
         page.l2_open_item_edit(0)
-        page.fill(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}", "가" * 3000)
+        page.fill(DESC, "가" * 3000)
         msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
         raw_err = "서버에서 오류" in (msg or "")
-        committed = msg == "" or "저장" in (msg or "")
         page.dismiss_alert()
+        if raw_err:
+            page.close_l3_modal("ALLOW_PROCESS")
+
+        # ★재오픈으로 실제 저장값 확인 — 메시지만 믿지 않는다(은폐 금지).
+        #   생성(sc3l)은 3000자에서 raw 서버 오류로 차단 → 수정이 통과라면 경로 불일치.
+        page.l2_open_item_edit(0)
+        stored = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
+        n = len(stored)
+        if raw_err:
+            verdict, note = ("warn",
+                "[raw 서버 오류 — 생성(sc3l)과 동일 클래스, 수정 경로도 클라 길이 가드 부재]")
+        elif n == 3000:
+            verdict, note = ("warn",
+                "[★경로 불일치 — 생성(sc3l)은 3000자를 서버 오류로 차단하는데 수정 경로는 "
+                "3000자가 그대로 DB 저장됨. 수정이 생성 검증을 우회]")
+        elif 0 < n < 3000:
+            verdict, note = ("warn", f"[조용한 절단 — 안내 없이 {n}자로 잘려 저장]")
+        else:
+            verdict, note = ("warn", "[조용한 미저장 — 경고 없이 커밋됐다는데 설명이 비어 있음]")
+        self._add(verdict,
+                  "sc4i — 수정에서 설명 3000자 → 실제 저장값 재오픈 대조",
+                  f"입력: 설명 3000자 + '수정' / 결과: 경고={msg!r}, 재오픈 저장 길이={n}자 {note}",
+                  sc=4,
+                  highlight=page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC),
+                  merge_key=("szproc_desc_ovf::ALLOW_PROCESS::warn::raw_server_error" if raw_err
+                             else "szproc_desc_ovf::modify_path::warn::create_modify_mismatch"),
+                  repro="1. 등록 항목 편집 → 설명 3000자 → '수정'\n"
+                        "2. 재오픈 → 실제 저장된 설명 길이 확인\n"
+                        "3. 생성 경로(서버 오류 차단)와 비교")
+
+        # ★경계 입력 이후 같은 항목 정상 재수정 — 오염/복구 검증(사용자 지적 2026-07-09)
+        page.fill(DESC, "sc4i_recover")
+        msg2 = page.l3_add_message("ALLOW_PROCESS", button="수정")
+        page.dismiss_alert()
+        if page.page.locator(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in").count() > 0:
+            page.close_l3_modal("ALLOW_PROCESS")
+        page.l2_open_item_edit(0)
+        after = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
         page.close_l3_modal("ALLOW_PROCESS")
-        self._add("warn" if raw_err else "pass",
-                  "sc4i — 수정에서 설명 3000자 → 서버 처리(수집)",
-                  f"입력: 설명 3000자 + '수정' / 결과: 경고={msg!r}, 커밋={committed} "
-                  + ("[raw 서버 오류 — 생성(sc3l)과 동일 클래스, 수정 경로도 클라 가드 부재]"
-                     if raw_err else "(길이 가드/정상 처리)"), sc=4,
+        recovered = after == "sc4i_recover"
+        self._add("pass" if recovered else "fail",
+                  "sc4i — 3000자 시도 이후 같은 항목 정상값 재수정 → 복구",
+                  f"입력: 설명 'sc4i_recover' 재수정({msg2!r}) / 재오픈={after[:40]!r}, "
+                  f"복구={recovered}"
+                  + ("" if recovered else " [경계 입력 후 항목이 정상 수정 불가 — 상태 오염]"), sc=4,
                   highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
-                  merge_key=("szproc_desc_ovf::ALLOW_PROCESS::warn::raw_server_error"
-                             if raw_err else None),
-                  repro="1. 항목 편집 → 설명 3000자\n2. '수정'\n3. 서버 처리 결과")
+                  repro="1. 3000자 시도 직후 같은 항목 재편집\n2. 정상 설명으로 '수정'\n"
+                        "3. 재오픈 → 정상 반영(오염 없음) 확인")
         page.l2_bulk_remove()
         page.close_l2_modal()
 
