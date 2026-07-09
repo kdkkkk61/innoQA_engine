@@ -10,7 +10,12 @@ sc4c 이름 비움 필수 경고+원본 유지 / sc4d rename 중복 차단 / sc4
 [L2/L3 — 항목 수정 (이름 링크 → L3 편집 → '수정' 버튼)]
 sc4f 로드값+설명 수정 재오픈 반영 / sc4g 항목 상태 활성↔비활성(L2 표시+재오픈, 원복)
 sc4h 옵션 수정 roundtrip(허용 재시작 L3→인라인 방향 + ★예외처리 드라이브 수정 경로)
-sc4i 설명 3000자 in modify(sc3l 동일 클래스 merge) / sc4j i18n sweep / sc4k 수정 세션 제거
+sc4i 설명 3000자 in modify ★4타입 전수 — 재오픈 실저장값 대조 + 복구 재수정(sc3l 대응)
+sc4j i18n sweep / sc4k 수정 세션 제거
+[sc3↔sc4 대응 — 생성에서 검증한 동작을 수정 경로에서 재검증 (사용자 지시 2026-07-09)]
+sc4l ★등록 프로세스 재선택 변경(sc3c 대응) / sc4m 재선택 중복 충돌(sc3g 대응)
+sc4n ★태그 항목 편집(sc3e 대응 — 이름 링크 td[2] 순위 시프트) / sc4o 설명 특수문자·500자(sc3i 대응)
+sc4p 다중 등록 중 1건만 수정 → 편집 격리(sc3n 대응)
 
 캡처: _add(highlight=) 기본(issue-screenshot-rules §2). pass=캡처 없음.
 """
@@ -322,69 +327,68 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.l2_bulk_remove()
         page.close_l2_modal()
 
-    # ── sc4i: 설명 3000자 오버플로 in modify (sc3l 과 같은 결함 클래스) ──
+    # ── sc4i: 설명 3000자 오버플로 in modify — ★4타입 전수 (sc3l 대응) ──
     def test_scenario4i_desc_overflow_in_modify(self, logged_in_page, settings):
-        print("\n━━ [프로세스] sc4i: 설명 3000자 오버플로(수정 컨텍스트) ━━━")
+        """수정 경로 3000자 — L3 편집 모달이 타입별 별개(sc3j 교훈)라 4타입 전수.
+        메시지만 믿지 않고 재오픈으로 실제 저장값 대조 + 이후 정상값 재수정(복구)."""
+        print("\n━━ [프로세스] sc4i: 설명 3000자(수정 경로) 4타입 전수 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
-        tpl = self._TPL   # 공용 재사용 — 각 테스트가 끝에 항목 비움
-        self._ensure_item(page, tpl)
-        DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
-        page.l2_open_item_edit(0)
-        page.fill(DESC, "가" * 3000)
-        msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
-        raw_err = "서버에서 오류" in (msg or "")
-        page.dismiss_alert()
-        if raw_err:
-            page.close_l3_modal("ALLOW_PROCESS")
+        for ttype in page.TYPES:
+            ko = page.TYPE_KO[ttype]
+            tpl = self._tpl_for(ttype)
+            DESC = f"div#{page.L3_MAP[ttype]}.in {page.SEL_L3_DESC}"
+            self._ensure_item(page, tpl, ttype)
+            page.l2_open_item_edit(0)
+            page.fill(DESC, "가" * 3000)
+            msg = page.l3_add_message(ttype, button="수정")
+            raw_err = "서버에서 오류" in (msg or "")
+            page.dismiss_alert()
+            if page.page.locator(f"div#{page.L3_MAP[ttype]}.in").count() > 0:
+                page.close_l3_modal(ttype)
 
-        # ★재오픈으로 실제 저장값 확인 — 메시지만 믿지 않는다(은폐 금지).
-        #   생성(sc3l)은 3000자에서 raw 서버 오류로 차단 → 수정이 통과라면 경로 불일치.
-        page.l2_open_item_edit(0)
-        stored = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
-        n = len(stored)
-        if raw_err:
-            verdict, note = ("warn",
-                "[raw 서버 오류 — 생성(sc3l)과 동일 클래스, 수정 경로도 클라 길이 가드 부재]")
-        elif n == 3000:
-            verdict, note = ("warn",
-                "[★경로 불일치 — 생성(sc3l)은 3000자를 서버 오류로 차단하는데 수정 경로는 "
-                "3000자가 그대로 DB 저장됨. 수정이 생성 검증을 우회]")
-        elif 0 < n < 3000:
-            verdict, note = ("warn", f"[조용한 절단 — 안내 없이 {n}자로 잘려 저장]")
-        else:
-            verdict, note = ("warn", "[조용한 미저장 — 경고 없이 커밋됐다는데 설명이 비어 있음]")
-        self._add(verdict,
-                  "sc4i — 수정에서 설명 3000자 → 실제 저장값 재오픈 대조",
-                  f"입력: 설명 3000자 + '수정' / 결과: 경고={msg!r}, 재오픈 저장 길이={n}자 {note}",
-                  sc=4,
-                  highlight=page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC),
-                  merge_key=("szproc_desc_ovf::ALLOW_PROCESS::warn::raw_server_error" if raw_err
-                             else "szproc_desc_ovf::modify_path::warn::create_modify_mismatch"),
-                  repro="1. 등록 항목 편집 → 설명 3000자 → '수정'\n"
-                        "2. 재오픈 → 실제 저장된 설명 길이 확인\n"
-                        "3. 생성 경로(서버 오류 차단)와 비교")
+            # 재오픈 — 실제 저장값 대조 (커밋 메시지만 믿는 은폐 금지)
+            page.l2_open_item_edit(0)
+            stored = page.l3_scope(ttype).locator(page.SEL_L3_DESC).first.input_value()
+            n = len(stored)
+            if raw_err:
+                verdict, note = "warn", "[raw 서버 오류 — 생성(sc3l)과 동일 클래스, 수정 경로도 가드 부재]"
+            elif n == 3000:
+                verdict, note = ("warn",
+                    "[★경로 불일치 — 생성(sc3l)은 3000자를 서버 오류로 차단하는데 수정 경로는 "
+                    "그대로 DB 저장. 수정이 생성 검증을 우회]")
+            elif 0 < n < 3000:
+                verdict, note = "warn", f"[조용한 절단 — 안내 없이 {n}자로 잘려 저장]"
+            else:
+                verdict, note = "warn", "[조용한 미저장 — 경고 없이 설명 유실]"
+            self._add(verdict,
+                      f"sc4i — {ko}: 수정 설명 3000자 → 실제 저장값 재오픈 대조",
+                      f"입력: 3000자 + '수정' / 결과: 경고={msg!r}, 재오픈 저장={n}자 {note}",
+                      sc=4,
+                      highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC),
+                      merge_key=(f"szproc_desc_ovf::{ttype}::warn::raw_server_error" if raw_err
+                                 else f"szproc_desc_ovf::{ttype}::warn::create_modify_mismatch"),
+                      repro=f"1. {ko} 등록 항목 편집 → 설명 3000자 → '수정'\n"
+                            "2. 재오픈 → 실제 저장 길이 확인\n3. 생성 경로(서버 오류)와 비교")
 
-        # ★경계 입력 이후 같은 항목 정상 재수정 — 오염/복구 검증(사용자 지적 2026-07-09)
-        page.fill(DESC, "sc4i_recover")
-        msg2 = page.l3_add_message("ALLOW_PROCESS", button="수정")
-        page.dismiss_alert()
-        if page.page.locator(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in").count() > 0:
-            page.close_l3_modal("ALLOW_PROCESS")
-        page.l2_open_item_edit(0)
-        after = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
-        page.close_l3_modal("ALLOW_PROCESS")
-        recovered = after == "sc4i_recover"
-        self._add("pass" if recovered else "fail",
-                  "sc4i — 3000자 시도 이후 같은 항목 정상값 재수정 → 복구",
-                  f"입력: 설명 'sc4i_recover' 재수정({msg2!r}) / 재오픈={after[:40]!r}, "
-                  f"복구={recovered}"
-                  + ("" if recovered else " [경계 입력 후 항목이 정상 수정 불가 — 상태 오염]"), sc=4,
-                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
-                  repro="1. 3000자 시도 직후 같은 항목 재편집\n2. 정상 설명으로 '수정'\n"
-                        "3. 재오픈 → 정상 반영(오염 없음) 확인")
-        page.l2_bulk_remove()
-        page.close_l2_modal()
+            # 경계 입력 이후 같은 항목 정상 재수정 — 오염/복구(사용자 지적 2026-07-09)
+            page.fill(DESC, "sc4i_recover")
+            msg2 = page.l3_add_message(ttype, button="수정")
+            page.dismiss_alert()
+            if page.page.locator(f"div#{page.L3_MAP[ttype]}.in").count() > 0:
+                page.close_l3_modal(ttype)
+            page.l2_open_item_edit(0)
+            after = page.l3_scope(ttype).locator(page.SEL_L3_DESC).first.input_value()
+            page.close_l3_modal(ttype)
+            recovered = after == "sc4i_recover"
+            self._add("pass" if recovered else "fail",
+                      f"sc4i — {ko}: 3000자 시도 후 정상값 재수정 → 복구",
+                      f"입력: 'sc4i_recover' 재수정({msg2!r}) / 재오픈={after[:30]!r}, 복구={recovered}"
+                      + ("" if recovered else " [경계 입력 후 항목 정상 수정 불가 — 상태 오염]"),
+                      sc=4, highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                      repro=f"1. {ko} 3000자 시도 직후 같은 항목 재편집\n2. 정상 설명 '수정'\n3. 반영 확인")
+            page.l2_bulk_remove()
+            page.close_l2_modal()
 
     # ── sc4j: 검증 메시지 i18n sweep (수정 컨텍스트) ──────────────────
     def test_scenario4j_i18n_sweep_in_modify(self, logged_in_page, settings):
@@ -430,4 +434,191 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                   f"결과: 편집 후 {before}건 → 제거 확인={msg!r} → {after}건", sc=4,
                   highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
                   repro="1. 항목 편집 → '수정' 커밋\n2. 같은 세션에서 행 체크 → 제거\n3. 0건")
+        page.close_l2_modal()
+
+    # ══ sc3↔sc4 대응 구간 — 생성에서 검증한 동작을 수정 경로에서 재검증 ══
+
+    def _tpl_for(self, ttype: str) -> str:
+        """타입별 sc4 공용 템플릿(타입 radio 잠금 — 타입별 1개)."""
+        return {"ALLOW_PROCESS": self._TPL,
+                "DENY_PROCESS": "[AUTO]_sz_proc_4_deny",
+                "EXCEPT_PROCESS": "[AUTO]_sz_proc_4_ex",
+                "BLOCK_PROCESS": "[AUTO]_sz_proc_4_block"}[ttype]
+
+    # ── sc4l: ★등록된 프로세스 자체 변경 (재선택 → '수정') — sc3c 대응 ──
+    def test_scenario4l_item_process_reselect(self, logged_in_page, settings):
+        """편집 모달의 '프로세스 선택'으로 다른 프로세스로 교체 → L2 행 이름 변경 +
+        카운트 불변(교체이지 추가 아님). 사용자 지적(2026-07-09): 기존 등록 프로세스 변경."""
+        import re as _re
+        print("\n━━ [프로세스] sc4l: 등록 프로세스 재선택 변경 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        self._ensure_item(page, self._TPL)
+        cur = page.l2_rows()[0].locator("td").nth(1).inner_text().strip()
+
+        page.l2_open_item_edit(0)
+        # 현재 프로세스가 아닌 아무 프로세스로 재선택
+        picked = page.l3_register("ALLOW_PROCESS", count=1,
+                                  name_pattern=_re.compile(rf"^(?!{_re.escape(cur)}$).+"))
+        msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
+        page.dismiss_alert()
+        cnt = page.l2_item_count()
+        new_name = page.l2_rows()[0].locator("td").nth(1).inner_text().strip() if cnt else ""
+        changed = bool(picked) and cnt == 1 and new_name == picked[0] and new_name != cur
+        self._add("pass" if changed else "fail",
+                  "sc4l — 등록 프로세스 재선택 변경: 행 이름 교체 + 카운트 불변",
+                  f"입력: {cur!r} 편집 → {picked} 재선택 + '수정'({msg!r}) / "
+                  f"결과: L2 {cnt}건(기대 1), 행 이름={new_name!r}", sc=4,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  repro="1. 등록 항목 이름 링크 → '프로세스 선택'\n2. 다른 프로세스 선택 → '수정'\n"
+                        "3. 행 이름이 새 프로세스로 교체 + 1건 유지")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc4m: 변경으로 중복 유발 (B → 이미 등록된 A 로 재선택) — sc3g 대응 ──
+    def test_scenario4m_item_reselect_duplicate(self, logged_in_page, settings):
+        """등록 중복 처리(sc3g: 생략 안내)가 '변경' 경로에도 있는지 — B 를 A 로 재선택."""
+        import re as _re
+        print("\n━━ [프로세스] sc4m: 재선택 중복 충돌 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.navigate_to_clean()
+        page.ensure_template(self._TPL, "ALLOW_PROCESS")
+        page.open_l2_modal(self._TPL)
+        if page.l2_item_count() != 2:
+            page.l2_bulk_remove()
+            page.open_l3_add("ALLOW_PROCESS")
+            page.l3_register("ALLOW_PROCESS", count=2)
+            page.l3_add_message("ALLOW_PROCESS")
+        names = [r.locator("td").nth(1).inner_text().strip() for r in page.l2_rows()]
+        a, b = names[0], names[1]
+
+        page.l2_open_item_edit(1)   # B 편집
+        page.l3_register("ALLOW_PROCESS", count=1,
+                         name_pattern=_re.compile(rf"^{_re.escape(a)}$"), search_term=a)
+        msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
+        page.dismiss_alert()
+        if page.page.locator(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in").count() > 0:
+            page.close_l3_modal("ALLOW_PROCESS")
+        after = [r.locator("td").nth(1).inner_text().strip() for r in page.l2_rows()]
+        dup = after.count(a) > 1
+        blocked = (not dup) and (a in after) and (b in after)   # 차단되어 원상 유지
+        self._add("warn" if dup else "pass",
+                  "sc4m — 재선택으로 중복 유발(B→A): 중복 차단/생략 여부",
+                  f"입력: {b!r} 편집 → 이미 등록된 {a!r} 로 재선택 '수정'({msg!r}) / "
+                  f"결과: {after} "
+                  + ("[★동일 프로세스 중복 행 생성 — 등록 경로(생략 안내)와 달리 변경 경로는 "
+                     "중복 검사 누락]" if dup else "(차단/생략 — 원상 유지)" if blocked
+                     else "(처리됨)"), sc=4,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  merge_key=("szproc_dup::reselect::warn::no_dup_check" if dup else None),
+                  repro=f"1. {a}, {b} 2건 등록\n2. {b} 편집 → {a} 로 재선택 → '수정'\n"
+                        "3. 중복 처리(차단/생략) 확인")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc4n: ★태그 항목 편집 (태그 수정 전무였음) — sc3e 대응 ──────────
+    def test_scenario4n_tag_item_edit(self, logged_in_page, settings):
+        """태그 탭 항목 편집 — 이름 링크는 td[2](순위 컬럼 시프트). 로드값 + 설명 수정 반영."""
+        print("\n━━ [프로세스] sc4n: 태그 항목 편집 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.navigate_to_clean()
+        page.ensure_template(self._TPL, "ALLOW_PROCESS")
+        page.open_l2_modal(self._TPL)
+        page.switch_l2_tab("태그")
+        if page.l2_item_count() == 0:
+            page.open_l3_add("ALLOW_PROCESS")
+            page.l3_register("ALLOW_PROCESS", tag=True, count=1)
+            page.l3_add_message("ALLOW_PROCESS")
+        tag_name = page.l2_rows()[0].locator("td").nth(2).inner_text().strip()
+
+        # 태그 탭 이름 링크 = td[2] (순위 시프트 — 2026-07-09 실측)
+        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(700)
+        loaded = page.l3_selected_name("ALLOW_PROCESS")
+        DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
+        page.fill(DESC, "sc4n_tag_desc")
+        msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
+        page.dismiss_alert()
+
+        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(700)
+        desc_after = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
+        page.close_l3_modal("ALLOW_PROCESS")
+        ok = (loaded == tag_name) and desc_after == "sc4n_tag_desc"
+        self._add("pass" if ok else "fail",
+                  "sc4n — 태그 항목 편집: 로드값 일치 + 설명 수정 재오픈 반영",
+                  f"결과: 로드 태그={loaded!r}(기대 {tag_name!r}), 커밋={msg!r}, "
+                  f"재오픈 설명={desc_after!r}(기대 'sc4n_tag_desc')", sc=4,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  repro="1. 태그 탭 이름 링크 → L3 편집\n2. 설명 변경 → '수정'\n3. 재오픈 반영")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc4o: 설명 특수문자 + 500자 (수정 경로 재읽기) — sc3i 대응 ──────
+    def test_scenario4o_desc_special_long_in_modify(self, logged_in_page, settings):
+        print("\n━━ [프로세스] sc4o: 설명 특수문자/500자(수정 경로) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        self._ensure_item(page, self._TPL)
+        DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
+        results = {}
+        for label, val in [("특수문자", "수정<>&!@# 특수"), ("500자", "나" * 500)]:
+            page.l2_open_item_edit(0)
+            page.fill(DESC, val)
+            page.l3_add_message("ALLOW_PROCESS", button="수정")
+            page.dismiss_alert()
+            page.l2_open_item_edit(0)
+            back = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
+            page.close_l3_modal("ALLOW_PROCESS")
+            results[label] = (back == val, len(back))
+        ok = all(v[0] for v in results.values())
+        self._add("pass" if ok else "warn",
+                  "sc4o — 수정 경로 설명 특수문자/500자 저장 재읽기 (생성 sc3i 대응)",
+                  f"결과: 특수문자 일치={results['특수문자'][0]}, "
+                  f"500자 일치={results['500자'][0]}(저장 {results['500자'][1]}자)"
+                  + ("" if ok else " [생성 경로(sc3i 수용)와 불일치 — 수정 경로 손실/변형]"), sc=4,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  merge_key=(None if ok else "szproc_desc::modify_special::warn::path_mismatch"),
+                  repro="1. 항목 편집 → 설명 특수문자/500자 → '수정'\n2. 재오픈 → 그대로 저장됐는지")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc4p: 다중 등록 상태에서 1개만 편집 → 나머지 불변 — sc3n 대응 ────
+    def test_scenario4p_edit_isolation_multi(self, logged_in_page, settings):
+        """3건 등록 상태에서 가운데 1건만 설명 수정 → 나머지 2건 이름·설명·옵션 불변(편집 격리)."""
+        print("\n━━ [프로세스] sc4p: 다중 상태 편집 격리 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.navigate_to_clean()
+        page.ensure_template(self._TPL, "ALLOW_PROCESS")
+        page.open_l2_modal(self._TPL)
+        page.l2_bulk_remove()
+        page.open_l3_add("ALLOW_PROCESS")
+        page.l3_register("ALLOW_PROCESS", count=3)
+        page.l3_add_message("ALLOW_PROCESS")
+
+        def _snapshot():
+            return [(r.locator("td").nth(1).inner_text().strip(),
+                     r.locator("td").nth(2).inner_text().strip()) for r in page.l2_rows()]
+        before = _snapshot()
+
+        page.l2_open_item_edit(1)   # 가운데 항목만
+        DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
+        page.fill(DESC, "sc4p_mid")
+        page.l3_add_message("ALLOW_PROCESS", button="수정")
+        page.dismiss_alert()
+        after = _snapshot()
+        others_ok = (len(after) == 3 and after[0] == before[0] and after[2] == before[2])
+        target_ok = len(after) == 3 and after[1][1] == "sc4p_mid"
+        ok = others_ok and target_ok
+        self._add("pass" if ok else "fail",
+                  "sc4p — 다중 등록 중 1건만 수정 → 대상만 변경·나머지 불변(편집 격리)",
+                  f"입력: 3건 중 2번째만 설명 'sc4p_mid' / 결과: 대상 반영={target_ok}, "
+                  f"나머지 불변={others_ok} (전={before} 후={after})", sc=4,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  repro="1. 3건 등록\n2. 2번째만 편집 → 설명 변경 → '수정'\n"
+                        "3. 2번째만 바뀌고 1·3번째 그대로인지")
+        page.l2_bulk_remove()
         page.close_l2_modal()
