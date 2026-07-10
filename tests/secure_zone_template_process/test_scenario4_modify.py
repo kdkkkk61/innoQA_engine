@@ -448,7 +448,8 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                          (f" [★편집 '수정'이 앱 JS 오류로 불능 — 3000자와 무관"
                           f"(정상값도 동일 실패), 무반응·서버 미도달: {rec_errs[0]}]" if broken
                           else " [경계 입력 후 항목 정상 수정 불가 — 상태 오염]")),
-                      sc=4, highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                      sc=4,
+                      highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
                       merge_key=(f"szproc_item_edit_broken::{ttype}" if broken else None),
                       repro=(f"1. {ko} 등록 항목 이름 링크 → 설명만 변경 → '수정'\n"
                              "2. 무반응(모달 유지·경고 없음, 콘솔 ReferenceError)\n"
@@ -598,7 +599,8 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                       + ("[★동일 프로세스 중복 행 생성 — 등록 경로(생략 안내)와 달리 변경 경로는 "
                          "중복 검사 누락]" if dup else "(차단/생략 — 원상 유지)" if blocked
                          else "(처리됨)"), sc=4,
-                      highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                      highlight=page.page.locator(
+                          f"{page.SEL_L2_MODAL} tbody tr:visible", has_text=a),
                       merge_key=("szproc_dup::reselect::warn::no_dup_check" if dup else None),
                       repro=f"1. {a}, {b} 2건 등록\n2. {b} 편집 → {a} 로 재선택 → '수정'\n"
                             "3. 중복 처리(차단/생략) 확인")

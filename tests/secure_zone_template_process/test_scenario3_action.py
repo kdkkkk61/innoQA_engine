@@ -99,7 +99,7 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   f"입력: 거부 타입 동명 생성 / 결과: 경고={msg_diff!r}, 동명 {count}개 "
                   + ("[타입 다르면 공존 허용 — 중복 검사가 타입 스코프. 부여 목록에 동명 노출 가능(경고 가치)]"
                      if coexist else "(전역 차단 — 공존 안 됨)"), sc=3,
-                  highlight=page.page.locator("table tbody"),
+                  highlight=page.page.locator(page.SEL_TABLE_ROW, has_text=self._DUP),
                   merge_key=("szproc_dup::cross_type::warn::type_scoped_name_check" if coexist else None),
                   repro="1. 허용 타입으로 만든 이름 그대로\n2. 거부 타입 선택 후 저장\n3. 동명 2개 공존 확인")
         page.search("")
@@ -685,16 +685,17 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
         page.navigate_to()
         page.search(copy_name)
         dup_cnt = page.get_template_names().count(copy_name)
-        page.search("")
         dup = dup_cnt > 1
+        # 캡처는 검색 필터 유지 상태에서 — 중복 행들만 정확히 강조(전체 tbody 는 crop 이 흐트러짐)
         self._add("warn" if dup else "pass",
                   "sc3q — 복사 충돌(_copy 존재 시 재복사)",
                   f"입력: '{copy_name}' 존재 상태 재복사 / 결과: 동명 {dup_cnt}개 "
                   + ("(중복 생성 — 복사는 중복 검사 안 함, 타 탭 동일 결함 클래스)" if dup
                      else "(중복 차단됨)"), sc=3,
-                  highlight=page.page.locator("table tbody"),
+                  highlight=page.page.locator(page.SEL_TABLE_ROW, has_text=copy_name),
                   merge_key=("szproc_copy_dup::copy::warn::no_dup_check" if dup else None),
                   repro="1. _copy 존재 상태\n2. 원본 재복사\n3. 같은 이름 중복 생기는지")
+        page.search("")
         page.navigate_to()
         while copy_name in page.get_template_names():
             page.delete_template(copy_name)
