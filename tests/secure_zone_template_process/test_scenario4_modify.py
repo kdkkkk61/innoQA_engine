@@ -292,7 +292,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         display_only = reload_inactive and before_on and after_on
         st = "pass" if ok else ("warn" if display_only else "fail")
         self._add(st,
-                  ("sc4g — 상태 '비활성' 저장은 되는데 목록 상태 표시가 계속 ON — 표시 결함"
+                  ("sc4g — 상태 '비활성' 저장은 되는데 목록 상태 표시는 계속 ON — 표시 결함"
                    if (not ok and display_only) else
                    "sc4g — 항목 상태 활성→비활성 '수정': L2 표시·재오픈 일치(+원복)"),
                   f"결과: 이전 ON={before_on} → 비활성 후 ON={after_on}(기대 False), "
@@ -304,7 +304,8 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                            "리스트 갱신 버그. 옵션 셀은 즉시 갱신되는 것과 대조적]")
                      if (not ok and display_only) else ""), sc=4,
                   highlight=page.l2_rows()[0].locator("td").nth(4) if page.l2_rows() else None,
-                  merge_key=("szproc_item_status_display::ALLOW_PROCESS"
+                  # 결과 동일한 타입·요소는 가로 병합(사용자 지시 2026-07-10)
+                  merge_key=("szproc_item_status_display"
                              if (not ok and display_only) else None),
                   repro="1. 이름 링크 → L3 상태 비활성 → '수정'\n2. L2 행 상태 OFF 표시\n"
                         "3. 재오픈 비활성 checked\n4. 활성 원복")
@@ -438,12 +439,13 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                 else:
                     verdict, note = "warn", "[조용한 미저장 — 경고 없이 설명 유실]"
                 self._add(verdict,
-                          f"sc4i — {ko}: 설명 3000자 → 저장 처리",   # 라벨 본문 = sc3l 과 동일(미러 dedup)
-                          f"대상: {ctx} / 입력: 3000자 + '수정' / 결과: 경고={msg!r}, "
+                          "sc4i — 설명 3000자 → 저장 처리",   # 라벨 본문 = sc3l 과 동일(미러 dedup)
+                          f"대상: {ko} — {ctx} / 입력: 3000자 + '수정' / 결과: 경고={msg!r}, "
                           f"재오픈 저장={n}자 {note}",
                           sc=4,
                           screenshots=shots,
-                          merge_key=f"szproc_desc_ovf::{ttype}",
+                          # 결과 동일(전 타입 조용한 미저장) → 타입 가로 병합(사용자 지시 2026-07-10)
+                          merge_key="szproc_desc_ovf::PROCESS",
                           repro=f"1. {ko} 템플릿 {tpl} 의 항목 {item} 편집 → 설명 3000자 → '수정'\n"
                                 "2. 재오픈 → 실제 저장 길이 확인\n3. 생성 경로(서버 오류)와 비교")
 
@@ -618,8 +620,8 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             blocked = (not dup) and (a in after) and (b in after)   # 차단되어 원상 유지
             self._add("warn" if dup else "pass",
                       "sc4m — 재선택으로 중복 유발(B→A): 중복 차단/생략 여부",
-                      f"입력: {b!r} 편집 → 이미 등록된 {a!r} 로 재선택 '수정'({msg!r}) / "
-                      f"결과: {after} "
+                      f"대상: {self._TPL!r} 개별 프로세스 탭 / 입력: {b!r} 편집 → 이미 등록된 "
+                      f"{a!r} 로 재선택 '수정'({msg!r}) / 결과: {after} "
                       + ("[★동일 프로세스 중복 행 생성 — 등록 경로(생략 안내)와 달리 변경 경로는 "
                          "중복 검사 누락]" if dup else "(차단/생략 — 원상 유지)" if blocked
                          else "(처리됨)"), sc=4,
@@ -847,15 +849,16 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         else:
             dup = after.count(a) > 1
             self._add("warn" if dup else "pass",
-                      "sc4q — 태그 재선택으로 중복 유발(B→A): 중복 차단/생략 여부",
-                      f"입력: {b!r} 편집 → 이미 등록된 {a!r} 로 재선택 '수정'({msg!r}) / "
-                      f"결과: {after} "
+                      "sc4q — 재선택으로 중복 유발(B→A): 중복 차단/생략 여부",
+                      f"대상: '[AUTO]_sz_proc_4q' 태그 탭 / 입력: {b!r} 편집 → 이미 등록된 "
+                      f"{a!r} 로 재선택 '수정'({msg!r}) / 결과: {after} "
                       + ("[★동일 태그 중복 행 생성 — 등록 경로(생략 안내)와 달리 변경 경로는 "
-                         "중복 검사 누락(개별 프로세스 sc4m 과 동일 결함 클래스)]" if dup
+                         "중복 검사 누락(개별 프로세스와 동일 결함)]" if dup
                          else "(차단/생략 — 원상 유지)"), sc=4,
                       highlight=page.page.locator(
                           f"{page.SEL_L2_MODAL} tbody tr:visible", has_text=a),
-                      merge_key=("szproc_dup::tag_reselect::warn::no_dup_check" if dup else None),
+                      # 결과 동일(중복 생성) → 프로세스(sc4m)와 가로 병합(사용자 지시 2026-07-10)
+                      merge_key=("szproc_dup::reselect::warn::no_dup_check" if dup else None),
                       repro=f"1. 태그 {a}, {b} 2건 등록\n2. {b} 편집 → {a} 재선택 → '수정'\n"
                             "3. 중복 처리(차단/생략) 확인")
         page.l2_bulk_remove()
@@ -941,15 +944,17 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         ok = saved_inactive and not after_on
         display_bug = saved_inactive and after_on
         self._add("pass" if ok else ("warn" if display_bug else "fail"),
-                  ("sc4s — 태그: 상태 '비활성' 저장은 되는데 행 상태 표시가 계속 ON — 표시 결함"
+                  ("sc4s — 상태 '비활성' 저장은 되는데 목록 상태 표시는 계속 ON — 표시 결함"
                    if display_bug else
                    "sc4s — 태그: 상태 활성→비활성 '수정' → 행 표시·재오픈 일치"),
-                  f"입력: 태그 비활성 '수정' / 결과: 행 표시 ON={after_on}(기대 False), "
+                  f"대상: '[AUTO]_sz_proc_4s' 태그 탭 / 입력: 태그 비활성 '수정' / "
+                  f"결과: 행 표시 ON={after_on}(기대 False), "
                   f"재오픈 비활성 checked={saved_inactive}"
                   + (" [★저장은 정상인데 상태 셀이 저장값 무관 ON 렌더 — 개별 프로세스와 동일 결함]"
                      if display_bug else ""), sc=4,
                   highlight=(page.l2_rows()[0].locator("td").nth(5) if page.l2_rows() else None),
-                  merge_key=("szproc_item_status_display::TAG" if display_bug else None),
+                  # 결과 동일한 타입·요소는 가로 병합(사용자 지시 2026-07-10)
+                  merge_key=("szproc_item_status_display" if display_bug else None),
                   repro="1. 태그 편집 → 상태 비활성 → '수정'\n2. 행 상태 OFF 여야\n"
                         "3. 재오픈 → 비활성 checked")
         page.l2_bulk_remove()

@@ -419,11 +419,13 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             guard = ("자" in msg or "길이" in msg or "초과" in msg) and not raw_err
             st = "warn" if raw_err else "pass"
             self._add(st,
-                      f"sc3l — {ko}: 설명 3000자 → 저장 처리",   # 라벨 본문 = sc4i 와 동일(미러 dedup)
-                      f"입력: 설명 3000자 + 추가 / 결과: 경고={msg!r}, 커밋={committed} "
+                      "sc3l — 설명 3000자 → 저장 처리",   # 라벨 본문 = sc4i 와 동일(미러 dedup)
+                      f"대상: {ko}({tpl!r}) / 입력: 설명 3000자 + 추가 / 결과: 경고={msg!r}, "
+                      f"커밋={committed} "
                       + ("[raw 서버 오류 — 클라 길이 가드 부재]" if raw_err
                          else "(길이 가드 안내)" if guard else "(제한 없이 커밋)"), sc=3,
-                      merge_key=(f"szproc_desc_ovf::{ttype}" if raw_err else None),   # 요소(타입)별 카드 — sc4i(수정)와 세로 병합
+                      # 결과 동일(전 타입 raw 서버 오류) → 타입 가로 병합(사용자 지시 2026-07-10)
+                      merge_key=("szproc_desc_ovf::PROCESS" if raw_err else None),
                       repro=f"1. {ko} L3 프로세스 선택 + 설명 3000자\n2. 추가\n3. 서버 처리 결과 확인")
             page.dismiss_alert()
             # ★서버 오류 후 정상값 재시도(복구) — 실측(14:29 run 진단 DUMP): 오류 확인을
@@ -849,17 +851,19 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             display_bug = saved_inactive and final_on
             rows = page.l2_rows()
             self._add("pass" if ok else ("warn" if display_bug else "fail"),
-                      (f"sc3t — {ko}: 비활성으로 등록해도 목록 상태 표시는 ON — 표시 결함"
+                      ("sc3t — 상태 '비활성' 저장은 되는데 목록 상태 표시는 계속 ON — 표시 결함"
                        if display_bug else
                        f"sc3t — {ko}: 등록 시 비활성 → 행 상태 표시·저장값 일치"),
-                      f"입력: {picked[0]!r} 상태=비활성 등록 / 결과: 직후 표시 ON={shown_on}, "
+                      f"대상: {ko}({tpl!r}) 의 {picked[0]!r} / 입력: 상태=비활성 등록 / "
+                      f"결과: 직후 표시 ON={shown_on}, "
                       f"재조회 후 ON={fresh_on}, 재오픈 비활성 checked={saved_inactive}"
                       + (" [★저장은 정상인데 상태 셀이 재조회 후에도 저장값 무관 ON 렌더 — "
                          "sc4g(편집 경로)와 동일 결함]" if display_bug
                          else (" (직후 일시 ON 표시 후 재조회로 정상화 — 표시 결함 아님)"
                                if shown_on and not final_on else "")), sc=3,
                       highlight=(rows[0].locator("td").nth(4) if rows else None),
-                      merge_key=(f"szproc_item_status_display::{ttype}" if display_bug else None),
+                      # 결과 동일한 타입·요소는 가로 병합(사용자 지시 2026-07-10) — 갈리면 리포터가 줄 분리
+                      merge_key=("szproc_item_status_display" if display_bug else None),
                       repro=f"1. {ko} 템플릿에 프로세스 등록(상태 비활성 선택)\n"
                             "2. 목록 상태 셀 OFF 여야(재조회 포함)\n3. 재오픈 → 비활성 checked",
                       )
