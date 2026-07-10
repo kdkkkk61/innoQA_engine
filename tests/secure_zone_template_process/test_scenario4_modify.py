@@ -270,7 +270,15 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             page.close_l3_modal("ALLOW_PROCESS")
             page.close_l2_modal()
             page.open_l2_modal(tpl)
-            fresh_on = self._row_item_status_on(page)
+            # open_l2_modal 은 모달 attach 까지만 대기 — 행 렌더를 기다린다
+            # (09:15 run: 재오픈 직후 l2_rows()=[] → IndexError 크래시)
+            try:
+                page.page.locator(
+                    f"{page.SEL_L2_MODAL} tbody tr:visible input[type='checkbox']"
+                ).first.wait_for(state="attached", timeout=page._TIMEOUT_TABLE)
+            except Exception:
+                pass
+            fresh_on = self._row_item_status_on(page) if page.l2_rows() else None
             page.l2_open_item_edit(0)
         # 원복(활성)
         page.l3_scope("ALLOW_PROCESS").locator("input#CREATE").first.evaluate(

@@ -2588,3 +2588,15 @@ sc5a 에는 재오픈 행 셀=O 검증(재오픈 렌더 계층) 별도 추가.)
 - **교훈**: '갱신 안 됨'과 '항상 틀리게 렌더'는 다른 결함이다 — stale 관찰 시 **신규 조회(재오픈) 대조**까지 해야 결함 서술이 정확해진다.
 
 상태: [RESOLVED — 카드 문구 정밀화, 제품 결함은 그대로 보고] (재실행 검증 대기 — 사용자 실행)
+
+---
+
+## sc4g 재오픈 프로브 IndexError — open_l2_modal 은 행 렌더를 안 기다림 — 2026-07-10
+
+- **증상**: 09:15 run — sc4g FAILED `IndexError: list index out of range` (`_row_item_status_on` 의 `l2_rows()[idx]`). 직전 커밋(c5c0d4f)에서 넣은 'L2 재오픈 프로브'가 원인.
+- **원인**: `open_l2_modal()` 은 `wait_for(SEL_L2_MODAL, state="attached")` — **모달 attach 까지만** 대기. 재오픈 직후 tbody 행이 아직 비동기 렌더 전이라 `l2_rows()=[]`. 기존 흐름들은 open 직후 바로 행을 읽지 않아 잠복해 있던 갭.
+- **수정**: 프로브에서 open 후 `tbody tr:visible input[type=checkbox]` attached 대기(+빈 리스트면 fresh_on=None 폴백) 후 읽기.
+- **파일**: `tests/secure_zone_template_process/test_scenario4_modify.py`
+- **교훈**: 모달 열림 대기 ≠ 데이터 렌더 대기. 모달 open 직후 행을 읽는 코드는 행 attach 를 명시적으로 기다릴 것.
+
+상태: [RESOLVED] (재실행 검증 대기 — 사용자 실행)
