@@ -292,7 +292,9 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         display_only = reload_inactive and before_on and after_on
         st = "pass" if ok else ("warn" if display_only else "fail")
         self._add(st,
-                  "sc4g — 항목 상태 활성→비활성 '수정': L2 표시·재오픈 일치(+원복)",
+                  ("sc4g — 상태 '비활성' 저장은 되는데 목록 상태 표시가 계속 ON — 표시 결함"
+                   if (not ok and display_only) else
+                   "sc4g — 항목 상태 활성→비활성 '수정': L2 표시·재오픈 일치(+원복)"),
                   f"결과: 이전 ON={before_on} → 비활성 후 ON={after_on}(기대 False), "
                   f"재오픈 비활성 checked={reload_inactive}, 원복 후 ON={restored_on}"
                   + ((" [★저장은 정상(재오픈 비활성)인데 L2 상태 표시는 모달 재오픈(신규 조회) "
@@ -434,17 +436,24 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             after = page.l3_scope(ttype).locator(page.SEL_L3_DESC).first.input_value()
             page.close_l3_modal(ttype)
             recovered = after == "sc4i_recover"
+            # 제목은 결함 중심으로 — '3000자'는 발견 경위일 뿐, JS 오류 분기의 실체는
+            # 편집 불능(사용자 지적 2026-07-10: 경위를 제목에 쓰면 3000자가 이슈로 읽힘)
+            broken = (not recovered) and bool(rec_errs)
             self._add("pass" if recovered else "fail",
-                      f"sc4i — {ko}: 3000자 시도 후 정상값 재수정 → 복구",
+                      (f"sc4i — {ko}: 편집 '수정'이 적용 안 됨 — 설명·상태 변경 불가(앱 JS 오류)"
+                       if broken else
+                       f"sc4i — {ko}: 3000자 시도 후 정상값 재수정 → 복구"),
                       f"입력: 'sc4i_recover' 재수정({msg2!r}) / 재오픈={after[:30]!r}, 복구={recovered}"
                       + ("" if recovered else
-                         (f" [★항목 편집 '수정' 자체가 앱 JS 오류로 불능 — 3000자와 무관"
-                          f"(정상값도 동일 실패), 서버 미도달: {rec_errs[0]}]" if rec_errs
+                         (f" [★편집 '수정'이 앱 JS 오류로 불능 — 3000자와 무관"
+                          f"(정상값도 동일 실패), 무반응·서버 미도달: {rec_errs[0]}]" if broken
                           else " [경계 입력 후 항목 정상 수정 불가 — 상태 오염]")),
                       sc=4, highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
-                      merge_key=(f"szproc_item_edit_broken::{ttype}"
-                                 if (not recovered and rec_errs) else None),
-                      repro=f"1. {ko} 3000자 시도 직후 같은 항목 재편집\n2. 정상 설명 '수정'\n3. 반영 확인")
+                      merge_key=(f"szproc_item_edit_broken::{ttype}" if broken else None),
+                      repro=(f"1. {ko} 등록 항목 이름 링크 → 설명만 변경 → '수정'\n"
+                             "2. 무반응(모달 유지·경고 없음, 콘솔 ReferenceError)\n"
+                             "3. 재오픈 → 반영 안 됨 (3000자 무관)" if broken else
+                             f"1. {ko} 3000자 시도 직후 같은 항목 재편집\n2. 정상 설명 '수정'\n3. 반영 확인"))
             page.l2_bulk_remove()
             page.close_l2_modal()
         page.page.remove_listener("pageerror", _collect)
