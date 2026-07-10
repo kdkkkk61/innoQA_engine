@@ -88,9 +88,13 @@ _add(status, label, detail, sc, highlight, repro, screenshot, merge_key)
 - 캡션 형식: "순번. [판정] 라벨" — 리포트에서 각 이미지 위에 표시(진행 흐름이 순서대로 읽히게).
 
 - `_shot(label, highlight=)` 은 **warn/fail 확정 후** 해당 화면을 다시 열어 호출 — pass 경로에서 불필요한 캡처(고아 파일) 금지.
+  - 예외: **모든 분기가 warn 인 카드**(결함이 실측으로 확정돼 pass 경로가 없는 시간 서사 —
+    예: 3000자 저장 처리)는 지나가면 재연 불가한 중간 상태(입력 직후·클릭 직후)를 **사전 컷**으로
+    찍는다 (사용자 지적 2026-07-10: 마지막 장면 1장은 "저장된 것처럼" 보여 증거가 안 됨).
 - 각 장은 반드시 highlight crop — 전면 캡처 여러 장은 리포트(base64 임베드) 비대화.
 - 리포터는 `screenshots`(이전 시점) → `screenshot`(_add 시점) 시간순으로 표시, summary 에 '(N장)' 표기.
-- 적용 예: 특수폴더 sc5c(설명 비움·매핑 제거 warn 분기).
+- 적용 예: 특수폴더 sc5c(설명 비움·매핑 제거 warn 분기), 프로세스 sc4i/sc4r
+  (3000자 서사 3컷: 입력→클릭 직후→재오픈).
 
 ## 5.1 행위 저널 — 자동 리턴 재생 (`_ckpt` / `_act`, `tests/shared_journal.py`)
 

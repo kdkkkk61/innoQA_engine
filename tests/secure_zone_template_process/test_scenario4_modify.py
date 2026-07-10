@@ -390,10 +390,16 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             ctx = f"{tpl!r} 의 {item!r}"   # 카드에 대상 컨텍스트 명시(사용자 지적 2026-07-10)
             page.l2_open_item_edit(0)
             page.fill(DESC, "가" * 3000)
+            # 시간 서사 카드 — 대비 컷(입력→클릭 직후→재오픈) 수집(사용자 지적 2026-07-10)
+            shots = [self._shot(f"sc4i_{ttype}_3000자_입력",
+                                highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC),
+                                caption="설명 3000자 입력 — '수정' 클릭 직전")]
             e0 = len(js_errors)
             msg = page.l3_add_message(ttype, button="수정")
             ovf_errs = js_errors[e0:]
             raw_err = "서버에서 오류" in (msg or "")
+            shots.append(self._shot(f"sc4i_{ttype}_클릭직후",
+                                    caption=f"'수정' 클릭 직후 — 경고={msg!r}"))
             page.dismiss_alert()
             if page.page.locator(f"div#{page.L3_MAP[ttype]}.in").count() > 0:
                 page.close_l3_modal(ttype)
@@ -402,6 +408,9 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             page.l2_open_item_edit(0)
             stored = page.l3_scope(ttype).locator(page.SEL_L3_DESC).first.input_value()
             n = len(stored)
+            shots.append(self._shot(f"sc4i_{ttype}_재오픈",
+                                    highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC),
+                                    caption=f"재오픈 — 설명 {n}자(3000자 저장 안 됨)"))
             # merge_key = 요소(타입)별 — sc3l(생성)과 같은 키로 세로 병합(3↔4 한 카드,
             #   결과가 다르면 리포터가 시나리오별 줄로 분리 표기)
             if ovf_errs and n == 0 and not raw_err:
@@ -413,7 +422,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                           f"재오픈 {n}자 [편집 '수정' 자체가 JS 오류로 불발 — 3000자 무관, "
                           f"아래 정상값 재수정과 동일 결함: {ovf_errs[0]}]",
                           sc=4,
-                          highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
+                          screenshots=shots,
                           merge_key=f"szproc_item_edit_broken::{ttype}",
                           repro=f"1. {ko} 템플릿 {tpl} 의 항목 {item} 편집 → '수정'\n"
                                 "2. 무반응(콘솔 ReferenceError) — 입력값 무관")
@@ -433,7 +442,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                           f"대상: {ctx} / 입력: 3000자 + '수정' / 결과: 경고={msg!r}, "
                           f"재오픈 저장={n}자 {note}",
                           sc=4,
-                          highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC),
+                          screenshots=shots,
                           merge_key=f"szproc_desc_ovf::{ttype}",
                           repro=f"1. {ko} 템플릿 {tpl} 의 항목 {item} 편집 → 설명 3000자 → '수정'\n"
                                 "2. 재오픈 → 실제 저장 길이 확인\n3. 생성 경로(서버 오류)와 비교")
@@ -859,19 +868,29 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         print("\n━━ [프로세스] sc4r: 태그 설명 3000자(수정 경로) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
-        self._ensure_tags(page, "[AUTO]_sz_proc_4r", n=1)
+        names = self._ensure_tags(page, "[AUTO]_sz_proc_4r", n=1)
+        tag = names[0] if names else "?"
         DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
         page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
         page.page.wait_for_timeout(700)
         base_desc = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
         page.fill(DESC, "가" * 3000)
+        # 시간 서사 카드 — 대비 컷 수집(사용자 지적 2026-07-10: 마지막 장면 1장으론 증거 안 됨)
+        shots = [self._shot("sc4r_3000자_입력",
+                            highlight=page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC),
+                            caption="설명 3000자 입력 — '수정' 클릭 직전")]
         msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
         page.dismiss_alert()
         if page.page.locator(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in").count() > 0:
+            shots.append(self._shot("sc4r_클릭직후",
+                                    caption="'수정' 클릭 직후 — 무반응(모달 유지·경고 없음)"))
             page.close_l3_modal("ALLOW_PROCESS")
         page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
         page.page.wait_for_timeout(700)
         stored = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
+        shots.append(self._shot("sc4r_재오픈",
+                                highlight=page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC),
+                                caption=f"재오픈 — 설명 {len(stored)}자(3000자 저장 안 됨)"))
         page.close_l3_modal("ALLOW_PROCESS")
         n = len(stored)
         if n == 3000:
@@ -883,10 +902,11 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             verdict, note = "warn", f"[조용한 절단/변형 — {n}자로 저장]"
         self._add(verdict,
                   "sc4r — 태그: 설명 3000자 → 저장 처리",
-                  f"입력: 태그 설명 3000자 + '수정'({msg!r}) / 재오픈 저장={n}자 {note}", sc=4,
-                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
+                  f"대상: '[AUTO]_sz_proc_4r' 태그 탭의 {tag!r} / 입력: 설명 3000자 + "
+                  f"'수정'({msg!r}) / 재오픈 저장={n}자 {note}", sc=4,
+                  screenshots=shots,
                   merge_key="szproc_desc_ovf::TAG",
-                  repro="1. 태그 항목 편집 → 설명 3000자 → '수정'\n"
+                  repro=f"1. 태그 {tag} 편집 → 설명 3000자 → '수정'\n"
                         "2. 무반응 관찰\n3. 재오픈 → 실제 저장 길이")
         page.l2_bulk_remove()
         page.close_l2_modal()
