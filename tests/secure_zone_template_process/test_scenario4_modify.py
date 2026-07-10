@@ -263,6 +263,15 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.l2_open_item_edit(0)
         reload_inactive = page.l3_scope("ALLOW_PROCESS").locator(
             "input#DELETE").first.is_checked()
+        # 표시만 어긋나면 L2 재오픈(신규 fetch)으로 고쳐지는지 — 갱신 지연 vs 항상 ON 렌더 판별
+        # (Chrome 실측 2026-07-10: 서버는 status=DELETE 를 내려주는데 재오픈 후에도 ON)
+        fresh_on = None
+        if after_on and reload_inactive:
+            page.close_l3_modal("ALLOW_PROCESS")
+            page.close_l2_modal()
+            page.open_l2_modal(tpl)
+            fresh_on = self._row_item_status_on(page)
+            page.l2_open_item_edit(0)
         # 원복(활성)
         page.l3_scope("ALLOW_PROCESS").locator("input#CREATE").first.evaluate(
             "el => el.click()")
@@ -278,9 +287,12 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                   "sc4g — 항목 상태 활성→비활성 '수정': L2 표시·재오픈 일치(+원복)",
                   f"결과: 이전 ON={before_on} → 비활성 후 ON={after_on}(기대 False), "
                   f"재오픈 비활성 checked={reload_inactive}, 원복 후 ON={restored_on}"
-                  + (" [★저장은 정상(재오픈 비활성)인데 L2 행 상태 표시가 갱신 안 됨(4s 폴링) — "
-                     "리스트 갱신 버그. 옵션 셀은 즉시 갱신되는 것과 대조적]" if (not ok and display_only)
-                     else ""), sc=4,
+                  + ((" [★저장은 정상(재오픈 비활성)인데 L2 상태 표시는 모달 재오픈(신규 조회) "
+                      "후에도 ON — 갱신 지연이 아니라 상태 셀이 저장값 미반영(항상 ON 렌더). "
+                      "옵션 셀은 즉시 갱신되는 것과 대조적]" if fresh_on
+                      else " [★저장은 정상(재오픈 비활성)인데 L2 행 상태 표시가 갱신 안 됨(4s 폴링) — "
+                           "리스트 갱신 버그. 옵션 셀은 즉시 갱신되는 것과 대조적]")
+                     if (not ok and display_only) else ""), sc=4,
                   highlight=page.l2_rows()[0].locator("td").nth(4) if page.l2_rows() else None,
                   merge_key=("szproc_item_status::display::warn::list_not_refreshed"
                              if (not ok and display_only) else None),
@@ -354,6 +366,11 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         print("\n━━ [프로세스] sc4i: 설명 3000자(수정 경로) 4타입 전수 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
+        # 앱 JS 예외 수집 — '수정' 클릭이 서버 도달 전에 죽는 결함 분류용
+        # (Chrome 실측 2026-07-10: 거부 타입은 정상값 수정도 'isProcessRestart is not defined' 로 불발)
+        js_errors = []
+        _collect = lambda exc: js_errors.append(str(exc).splitlines()[0][:120])
+        page.page.on("pageerror", _collect)
         for ttype in page.TYPES:
             ko = page.TYPE_KO[ttype]
             tpl = self._tpl_for(ttype)
@@ -361,7 +378,9 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             self._ensure_item(page, tpl, ttype)
             page.l2_open_item_edit(0)
             page.fill(DESC, "가" * 3000)
+            e0 = len(js_errors)
             msg = page.l3_add_message(ttype, button="수정")
+            ovf_errs = js_errors[e0:]
             raw_err = "서버에서 오류" in (msg or "")
             page.dismiss_alert()
             if page.page.locator(f"div#{page.L3_MAP[ttype]}.in").count() > 0:
@@ -382,6 +401,8 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                     "그대로 DB 저장. 수정이 생성 검증을 우회]")
             elif 0 < n < 3000:
                 verdict, note = "warn", f"[조용한 절단 — 안내 없이 {n}자로 잘려 저장]"
+            elif ovf_errs:
+                verdict, note = "warn", f"[저장 시도가 앱 JS 오류로 불발(서버 미도달): {ovf_errs[0]}]"
             else:
                 verdict, note = "warn", "[조용한 미저장 — 경고 없이 설명 유실]"
             self._add(verdict,
@@ -395,7 +416,9 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
 
             # 경계 입력 이후 같은 항목 정상 재수정 — 오염/복구(사용자 지적 2026-07-09)
             page.fill(DESC, "sc4i_recover")
+            e1 = len(js_errors)
             msg2 = page.l3_add_message(ttype, button="수정")
+            rec_errs = js_errors[e1:]
             page.dismiss_alert()
             if page.page.locator(f"div#{page.L3_MAP[ttype]}.in").count() > 0:
                 page.close_l3_modal(ttype)
@@ -406,11 +429,17 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             self._add("pass" if recovered else "fail",
                       f"sc4i — {ko}: 3000자 시도 후 정상값 재수정 → 복구",
                       f"입력: 'sc4i_recover' 재수정({msg2!r}) / 재오픈={after[:30]!r}, 복구={recovered}"
-                      + ("" if recovered else " [경계 입력 후 항목 정상 수정 불가 — 상태 오염]"),
+                      + ("" if recovered else
+                         (f" [★항목 편집 '수정' 자체가 앱 JS 오류로 불능 — 3000자와 무관"
+                          f"(정상값도 동일 실패), 서버 미도달: {rec_errs[0]}]" if rec_errs
+                          else " [경계 입력 후 항목 정상 수정 불가 — 상태 오염]")),
                       sc=4, highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                      merge_key=(f"szproc_item_edit_broken::{ttype}"
+                                 if (not recovered and rec_errs) else None),
                       repro=f"1. {ko} 3000자 시도 직후 같은 항목 재편집\n2. 정상 설명 '수정'\n3. 반영 확인")
             page.l2_bulk_remove()
             page.close_l2_modal()
+        page.page.remove_listener("pageerror", _collect)
 
     # ── sc4j: 검증 메시지 i18n sweep (수정 컨텍스트) ──────────────────
     def test_scenario4j_i18n_sweep_in_modify(self, logged_in_page, settings):
@@ -486,14 +515,24 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.dismiss_alert()
         cnt = page.l2_item_count()
         new_name = page.l2_rows()[0].locator("td").nth(1).inner_text().strip() if cnt else ""
-        changed = bool(picked) and cnt == 1 and new_name == picked[0] and new_name != cur
-        self._add("pass" if changed else "fail",
-                  "sc4l — 등록 프로세스 재선택 변경: 행 이름 교체 + 카운트 불변",
-                  f"입력: {cur!r} 편집 → {picked} 재선택 + '수정'({msg!r}) / "
-                  f"결과: L2 {cnt}건(기대 1), 행 이름={new_name!r}", sc=4,
-                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
-                  repro="1. 등록 항목 이름 링크 → '프로세스 선택'\n2. 다른 프로세스 선택 → '수정'\n"
-                        "3. 행 이름이 새 프로세스로 교체 + 1건 유지")
+        if not picked:
+            # 재선택 실패 = 자동화 문제 — 제품 FAIL 로 오판 금지(sc4m 과 동일 가드, 08:06 run 오탐 교훈)
+            self._add("warn",
+                      "sc4l — 등록 프로세스 재선택 변경 [검증 불가 — 편집 picker 재선택 실패]",
+                      f"입력: {cur!r} 편집 → 재선택 0건({msg!r}) / 결과: L2 {cnt}건, "
+                      f"행 이름={new_name!r} — 메커니즘 재실측 필요", sc=4,
+                      highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                      merge_key="szproc_reselect::picker::warn::not_working",
+                      repro="1. 등록 항목 이름 링크 → '프로세스 선택'\n2. picker 선택 반영 여부")
+        else:
+            changed = cnt == 1 and new_name == picked[0] and new_name != cur
+            self._add("pass" if changed else "fail",
+                      "sc4l — 등록 프로세스 재선택 변경: 행 이름 교체 + 카운트 불변",
+                      f"입력: {cur!r} 편집 → {picked} 재선택 + '수정'({msg!r}) / "
+                      f"결과: L2 {cnt}건(기대 1), 행 이름={new_name!r}", sc=4,
+                      highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                      repro="1. 등록 항목 이름 링크 → '프로세스 선택'\n2. 다른 프로세스 선택 → '수정'\n"
+                            "3. 행 이름이 새 프로세스로 교체 + 1건 유지")
         page.l2_bulk_remove()
         page.close_l2_modal()
 

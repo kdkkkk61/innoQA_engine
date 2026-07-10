@@ -414,10 +414,14 @@ class SecureZoneTemplateProcessPage(BasePage):
 
     def l3_register(self, ttype: str, *, tag: bool = False, count: int = 1,
                     name_pattern=None, search_term: str = None) -> list[str]:
-        """L3 picker 열기 → (검색) → 대상 행 체크박스 **plain JS click** → 확인 → L3 복귀.
+        """L3 picker 열기 → (검색) → 대상 행 체크박스/라디오 **plain JS click** → 확인 → L3 복귀.
         반환: 선택된 이름 리스트([] = 대상 없음, picker 닫고 반환).
         ★실측(2026-07-08): 이 picker 는 check(force) 로 ng-model 미동기 → plain click 필수.
         checkbox 방식이라 **다중 선택 가능**(count>=2 면 앞에서부터 count 개 체크 → N개 일괄 등록).
+        ★모드 이원화(Chrome 실측 2026-07-10): 같은 name='selectProcess' 인데
+        **추가 모드=checkbox(다중) / 편집(L3 수정) 모드=radio(단일 교체)**.
+        예전 checkbox 전용 셀렉터가 편집 모드에서 전 행 skip → picked=[] →
+        sc4l FAIL 오탐 / sc4m 검증 불가로 떨어지던 원인. type 무관 name 으로 잡는다.
         - name_pattern=None: 첫 데이터 행부터 count 개(기본 등록 검증).
         - name_pattern=정규식: 매칭 행만(seed 연계). 없으면 [] (skip 판단).
         - tag=True: 태그 checkbox(selectProcessTag).
@@ -443,7 +447,7 @@ class SecureZoneTemplateProcessPage(BasePage):
         for row in pick.locator("tbody tr").all():
             if len(picked) >= count:
                 break
-            cb = row.locator(f"input[type='checkbox'][name='{cb_name}']")
+            cb = row.locator(f"input[name='{cb_name}']")   # checkbox(추가)/radio(편집) 겸용
             if cb.count() == 0:
                 continue
             txt = row.inner_text().strip()
@@ -464,7 +468,7 @@ class SecureZoneTemplateProcessPage(BasePage):
                 pass
             return []
         # ★ 선택 실반영 검증 — 숨은 복사본 클릭 등으로 model 미갱신되면 여기서 즉시 실패
-        checked = pick.locator(f"input[type='checkbox'][name='{cb_name}']:checked").count()
+        checked = pick.locator(f"input[name='{cb_name}']:checked").count()
         if checked < len(picked):
             raise RuntimeError(
                 f"프로세스 picker 선택 미반영 — 요청 {len(picked)}개 클릭했으나 실제 checked {checked}개"

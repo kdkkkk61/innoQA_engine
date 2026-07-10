@@ -2554,3 +2554,37 @@ sc5a 에는 재오픈 행 셀=O 검증(재오픈 렌더 계층) 별도 추가.)
 - **교훈**: 오류 후 흐름은 오류 종류별로 모달 닫힘 동작이 다르다(검증 경고=유지 / 서버 500=전체 닫힘). 복구 검증은 진단 DUMP 의 모달 상태를 근거로 설계할 것.
 
 상태: [RESOLVED — sc3l 재진입 수정 / sc4l picker 는 실측 대기]
+
+---
+
+## 프로세스 편집 picker 모드 이원화 — 추가=checkbox / 편집=radio → sc4l FAIL 오탐·sc4m 검증 불가 — 2026-07-10
+
+- **증상**: 08:06 run — sc4l `[] 재선택 + '수정된 항목이 없습니다'` 로 FAIL(BUG #10, 3중 모달 스크린샷), sc4m 은 검증 불가 WARN. 사용자 수동 재현으로는 재선택·중복 생성이 됨.
+- **Chrome 실측(2026-07-10)**: 같은 picker(`div#globalProcessList`)인데 **추가 모드 = `input[type=checkbox][name=selectProcess]`(다중) / L3 편집 모드 = `input[type=radio][name=selectProcess]`(단일 교체)**. `l3_register` 가 checkbox 전용 셀렉터라 편집 모드에서 전 행 skip → picked=[]. radio 는 plain JS click 으로 ng-model 동기 정상(교체 즉시 L3 span 반영 확인).
+- **수정**: ①`l3_register` 행 셀렉터를 `input[name='selectProcess']` 로(type 무관, checked 검증도 동일) ②sc4l 에 picked=[] → '검증 불가 WARN' 가드 추가(sc4m 과 동일 merge_key — FAIL 오탐 방지).
+- **파일**: `pages/secure_zone_template_process_page.py`, `tests/secure_zone_template_process/test_scenario4_modify.py`
+- **교훈**: 같은 id/name 의 picker 라도 진입 컨텍스트(추가/편집)에 따라 입력 타입이 바뀔 수 있다 — 셀렉터에 input type 을 못박지 말 것.
+
+상태: [RESOLVED] (재실행 검증 대기 — 사용자 실행)
+
+---
+
+## 거부 프로세스 항목 편집 '수정' 불능 — isProcessRestart ReferenceError (sc4i '상태 오염' 오진 정정) — 2026-07-10
+
+- **증상**: sc4i 거부 타입만 "3000자 후 정상값 재수정 → 복구 FAIL [상태 오염]" (BUG #9). 로그에 거부만 PUT 500 없이 `[JS PAGE ERROR] isProcessRestart is not defined` 2회.
+- **Chrome 실측(2026-07-10)**: **3000자와 무관** — 거부 항목을 정상 설명만 바꿔 '수정' 클릭해도 `ReferenceError: isProcessRestart is not defined` (수정 버튼 click 핸들러)로 저장 요청 자체가 서버 미도달, L3 안 닫힘. 거부 L3 에는 '프로세스 재시작' 토글 자체가 없는데(옵션 없는 타입) 수정 핸들러가 참조. 같은 옵션-없는 실행차단은 정상, '추가' 핸들러도 정상 — **거부 타입 편집 저장만 완전 불능(제품 결함)**.
+- **수정**: sc4i 에 pageerror 수집 추가 — 재수정 실패 시 JS 오류 있으면 "[★항목 편집 '수정' 자체가 앱 JS 오류로 불능 — 3000자와 무관]" 로 분류(merge_key `szproc_item_edit_broken::<타입>`), 3000자 단계도 JS 오류 불발이면 '조용한 미저장' 대신 명시.
+- **교훈**: 복구 실패의 원인 후보는 '이전 입력의 오염'만이 아니다 — **콘솔 pageerror 를 카드 분류에 편입**해 자동화 관찰만으로 오진하지 않게 한다.
+
+상태: [RESOLVED — 카드 분류 정정, 제품 결함은 그대로 보고] (재실행 검증 대기 — 사용자 실행)
+
+---
+
+## 프로세스 L2 상태 셀 — 저장값 무관 항상 ON 렌더 (sc4g '리스트 갱신 버그' 문구 정밀화) — 2026-07-10
+
+- **증상**: sc4g WARN — 비활성 '수정' 후 4s 폴링에도 L2 상태 ON. 사용자 의문("수정 누르고 리스트 보면 바뀔 텐데?") → 실측.
+- **Chrome 실측(2026-07-10)**: 비활성 저장 후 **L2 모달을 완전히 닫고 재오픈(신규 fetch)해도 상태 셀은 ON**. 같은 응답에서 이름·수정일은 즉시 갱신됨. XHR 응답 확인: 서버는 `list[0].status={name:"DELETE",text:"비활성"}` 정확 반환 — 렌더된 셀은 `<input id="status" checked disabled>` 하드 고정. **갱신 지연이 아니라 상태 셀 렌더가 저장값 미반영(항상 ON)** — 클라 표시 결함 확정.
+- **수정**: sc4g 에 '표시만 어긋남' 감지 시 L2 재오픈 프로브 추가 — 재오픈 후에도 ON 이면 카드 문구를 '항상 ON 렌더'로, 아니면 기존 '갱신 지연'으로 분류.
+- **교훈**: '갱신 안 됨'과 '항상 틀리게 렌더'는 다른 결함이다 — stale 관찰 시 **신규 조회(재오픈) 대조**까지 해야 결함 서술이 정확해진다.
+
+상태: [RESOLVED — 카드 문구 정밀화, 제품 결함은 그대로 보고] (재실행 검증 대기 — 사용자 실행)
