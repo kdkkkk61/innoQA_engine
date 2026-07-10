@@ -183,7 +183,9 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
     # ══ L2/L3 구간 (2차분) — 항목 수정. L3 편집 커밋 = '수정' 버튼(실측 2026-07-08) ══
 
     def _ensure_item(self, page, tpl: str, ttype: str = "ALLOW_PROCESS") -> None:
-        """sc4 공용 — tpl(해당 타입)에 프로세스 1건 확보 후 L2 열린 상태로 반환."""
+        """sc4 공용 — tpl(해당 타입)에 프로세스 1건 확보 후 L2 열린 상태로 반환.
+        등록 직후 리스트 재렌더는 비동기 — 행 attach 까지 기다려서 반환 직후 판독을 보장
+        (같은 stale 판독 함정 3회째: sc4g 재오픈 프로브 → sc4q _ensure_tags → sc4i 16:29 run)."""
         page.navigate_to_clean()
         page.ensure_template(tpl, ttype)
         page.open_l2_modal(tpl)
@@ -191,6 +193,13 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             page.open_l3_add(ttype)
             page.l3_register(ttype, count=1)
             page.l3_add_message(ttype)
+            page.dismiss_alert()
+            try:
+                page.page.locator(
+                    f"{page.SEL_L2_MODAL} tbody tr:visible input[type='checkbox']"
+                ).first.wait_for(state="attached", timeout=page._TIMEOUT_TABLE)
+            except Exception:
+                pass
 
     def _row_item_status_on(self, page, idx: int = 0) -> bool:
         """L2 행 상태 셀(td[4]) ON 여부 — ★Chrome 실측(2026-07-09): 시각 상태는
@@ -387,7 +396,13 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             tpl = self._tpl_for(ttype)
             DESC = f"div#{page.L3_MAP[ttype]}.in {page.SEL_L3_DESC}"
             self._ensure_item(page, tpl, ttype)
-            item = page.l2_rows()[0].locator("td").nth(1).inner_text().strip()
+            rows0 = page.l2_rows()
+            if not rows0:
+                page.close_l2_modal()
+                self._add("warn", f"sc4i — {ko}: 설명 3000자 [검증 불가 — 항목 확보 실패]",
+                          f"대상: {tpl!r} / 등록 후에도 행 0건 — 재실측 필요", sc=4)
+                continue
+            item = rows0[0].locator("td").nth(1).inner_text().strip()
             ctx = f"{tpl!r} 의 {item!r}"   # 카드에 대상 컨텍스트 명시(사용자 지적 2026-07-10)
             page.l2_open_item_edit(0)
             page.fill(DESC, "가" * 3000)
