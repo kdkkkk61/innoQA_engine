@@ -786,3 +786,106 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   f"입력: 생성 검증 메시지 수집 / 결과: {msgs} / 키 누출={leaks or '없음'}", sc=3,
                   merge_key=("szproc_i18n::messages::warn::key_leak" if leaks else None),
                   repro="1. 생성 검증 경고 유발(이름 빈값/프로세스 미선택)\n2. raw i18n 키 노출 없는지")
+
+    # ── sc3t: 등록 시 비활성 → 행 상태 표시 — ★4타입 전수 (Chrome 실측 2026-07-10) ──
+    def test_scenario3t_item_status_display_by_type(self, logged_in_page, settings):
+        """등록 시점에 상태=비활성 선택 → 저장(재오픈 radio)과 행 상태 셀 표시를 대조.
+        실측(2026-07-10): 저장은 4타입 전부 정상(재오픈 DELETE checked)인데 행 표시는
+        허용/예외처리/실행차단이 저장값 무관 ON 렌더, 거부만 OFF 정상 — 타입별 카드."""
+        print("\n━━ [프로세스] sc3t: 등록 시 비활성 → 행 상태 표시 4타입 전수 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        for ttype in page.TYPES:
+            ko = page.TYPE_KO[ttype]
+            tpl = f"[AUTO]_sz_proc_3t_{ttype.split('_')[0].lower()}"
+            page.navigate_to_clean()
+            page.ensure_template(tpl, ttype)
+            page.open_l2_modal(tpl)
+            page.l2_bulk_remove()
+            page.open_l3_add(ttype)
+            picked = page.l3_register(ttype, count=1)
+            if not picked:
+                page.close_l3_modal(ttype)
+                page.close_l2_modal()
+                self._add("warn", f"sc3t — {ko}: 등록 시 비활성 → 행 상태 표시 [검증 불가]",
+                          "picker 선택 0건 — 재실측 필요", sc=3)
+                continue
+            page.l3_scope(ttype).locator("input#DELETE").first.evaluate("el => el.click()")
+            page.page.wait_for_timeout(150)
+            page.l3_add_message(ttype)
+            page.dismiss_alert()
+            rows = page.l2_rows()
+            sw = (rows[0].locator("label.switch").first.get_attribute("class") or "") if rows else ""
+            shown_on = " on" in f" {sw} "
+            # 저장값 대조 — 재오픈 radio
+            page.l2_open_item_edit(0)
+            saved_inactive = page.l3_scope(ttype).locator("input#DELETE").first.is_checked()
+            page.close_l3_modal(ttype)
+            ok = saved_inactive and not shown_on
+            display_bug = saved_inactive and shown_on
+            self._add("pass" if ok else ("warn" if display_bug else "fail"),
+                      (f"sc3t — {ko}: 비활성으로 등록해도 목록 상태 표시는 ON — 표시 결함"
+                       if display_bug else
+                       f"sc3t — {ko}: 등록 시 비활성 → 행 상태 표시·저장값 일치"),
+                      f"입력: {picked[0]!r} 상태=비활성 등록 / 결과: 행 표시 ON={shown_on}"
+                      f"(기대 False), 재오픈 비활성 checked={saved_inactive}"
+                      + (" [★저장은 정상인데 상태 셀이 저장값 무관 ON 렌더 — sc4g(편집 경로)와 동일 결함]"
+                         if display_bug else ""), sc=3,
+                      highlight=(rows[0].locator("td").nth(4) if rows else None),
+                      merge_key=(f"szproc_item_status_display::{ttype}" if display_bug else None),
+                      repro=f"1. {ko} 템플릿에 프로세스 등록(상태 비활성 선택)\n"
+                            "2. 목록 상태 셀 OFF 여야\n3. 재오픈 → 비활성 checked",
+                      )
+            page.l2_bulk_remove()
+            page.close_l2_modal()
+
+    # ── sc3u: 태그 중복 등록 생략 + 제거 (Chrome 실측 2026-07-10 — 태그 클래스 대칭) ──
+    def test_scenario3u_tag_dup_and_remove(self, logged_in_page, settings):
+        """태그 탭도 프로세스와 같은 등록 클래스 커버: 다중 등록 → 같은 태그 재등록(생략 안내
+        — sc3g 대응) → 제거(sc3f 대응). 실측(2026-07-10): 둘 다 정상 동작."""
+        print("\n━━ [프로세스] sc3u: 태그 중복 생략 + 제거 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3u"
+        page.navigate_to_clean()
+        page.ensure_template(tpl, "ALLOW_PROCESS")
+        page.open_l2_modal(tpl)
+        page.switch_l2_tab("태그")
+        page.l2_bulk_remove()
+        page.open_l3_add("ALLOW_PROCESS")
+        picked = page.l3_register("ALLOW_PROCESS", tag=True, count=2)
+        page.l3_add_message("ALLOW_PROCESS")
+        page.dismiss_alert()
+        cnt2 = page.l2_item_count()
+        if len(picked) < 2 or cnt2 != 2:
+            page.close_l2_modal()
+            self._add("warn", "sc3u — 태그 중복/제거 [검증 불가 — 2건 등록 실패]",
+                      f"결과: picked={picked}, L2={cnt2}건", sc=3)
+            return
+        # 중복 재등록 → 생략 안내 (프로세스 sc3g 와 동일 가드인지)
+        import re as _re
+        page.open_l3_add("ALLOW_PROCESS")
+        page.l3_register("ALLOW_PROCESS", tag=True, count=1,
+                         name_pattern=_re.compile(rf"^{_re.escape(picked[0])}$"))
+        msg = page.l3_add_message("ALLOW_PROCESS")
+        page.dismiss_alert()
+        cnt_dup = page.l2_item_count()
+        skipped = ("생략" in (msg or "") or "이미" in (msg or "")) and cnt_dup == 2
+        self._add("pass" if skipped else "warn",
+                  "sc3u — 태그 중복 등록 → 생략 안내(등록 경로 가드)",
+                  f"입력: 등록된 {picked[0]!r} 재등록 / 결과: 안내={msg!r}, {cnt_dup}건(기대 2)"
+                  + ("" if skipped else " [중복 태그 행 생성 — 등록 경로 가드 누락]"), sc=3,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible",
+                                              has_text=picked[0]),
+                  merge_key=(None if skipped else "szproc_dup::tag_register::warn::no_dup_check"),
+                  repro=f"1. 태그 {picked[0]} 등록 상태에서 재등록\n2. 생략 안내 + 2건 유지")
+        # 제거 — 확인 모달 + 카운트 감소
+        msg_rm = page.l2_remove_item(0)
+        cnt_rm = page.l2_item_count()
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+        ok_rm = cnt_rm == 1
+        self._add("pass" if ok_rm else "fail",
+                  "sc3u — 태그 제거(-) → 카운트 감소",
+                  f"입력: 태그 1건 제거 / 결과: 확인={msg_rm!r}, 2→{cnt_rm}건", sc=3,
+                  repro="1. 태그 행 체크 → -\n2. 확인 → 1건")

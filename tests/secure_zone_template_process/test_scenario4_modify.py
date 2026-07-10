@@ -304,7 +304,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                            "리스트 갱신 버그. 옵션 셀은 즉시 갱신되는 것과 대조적]")
                      if (not ok and display_only) else ""), sc=4,
                   highlight=page.l2_rows()[0].locator("td").nth(4) if page.l2_rows() else None,
-                  merge_key=("szproc_item_status::display::warn::list_not_refreshed"
+                  merge_key=("szproc_item_status_display::ALLOW_PROCESS"
                              if (not ok and display_only) else None),
                   repro="1. 이름 링크 → L3 상태 비활성 → '수정'\n2. L2 행 상태 OFF 표시\n"
                         "3. 재오픈 비활성 checked\n4. 활성 원복")
@@ -641,8 +641,61 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                   "sc4n — 태그 항목 편집: 로드값 일치 + 설명 수정 재오픈 반영",
                   f"결과: 로드 태그={loaded!r}(기대 {tag_name!r}), 커밋={msg!r}, "
                   f"재오픈 설명={desc_after!r}(기대 'sc4n_tag_desc')", sc=4,
-                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
                   repro="1. 태그 탭 이름 링크 → L3 편집\n2. 설명 변경 → '수정'\n3. 재오픈 반영")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+        # ── 거부 타입 태그 편집 — 실측(2026-07-10): 프로세스와 같은 수정 핸들러라
+        #    'isProcessRestart is not defined' JS 오류로 저장 불능 → 결함 카드(sc4i 와 병합)
+        js_errors = []
+        _collect = lambda exc: js_errors.append(str(exc).splitlines()[0][:120])
+        page.page.on("pageerror", _collect)
+        tpl_d = self._tpl_for("DENY_PROCESS")
+        page.navigate_to_clean()
+        page.ensure_template(tpl_d, "DENY_PROCESS")
+        page.open_l2_modal(tpl_d)
+        page.switch_l2_tab("태그")
+        if page.l2_item_count() == 0:
+            page.open_l3_add("DENY_PROCESS")
+            page.l3_register("DENY_PROCESS", tag=True, count=1)
+            page.l3_add_message("DENY_PROCESS")
+            page.dismiss_alert()
+        if page.l2_item_count() == 0:
+            page.close_l2_modal()
+            page.page.remove_listener("pageerror", _collect)
+            self._add("warn", "sc4n — 거부 프로세스: 태그 편집 [검증 불가 — 태그 등록 실패]",
+                      "거부 템플릿 태그 등록 0건 — 재실측 필요", sc=4)
+            return
+        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(700)
+        DESC_D = f"div#{page.L3_MAP['DENY_PROCESS']}.in {page.SEL_L3_DESC}"
+        page.fill(DESC_D, "sc4n_deny_tag")
+        e0 = len(js_errors)
+        msg_d = page.l3_add_message("DENY_PROCESS", button="수정")
+        errs = js_errors[e0:]
+        page.dismiss_alert()
+        if page.page.locator(f"div#{page.L3_MAP['DENY_PROCESS']}.in").count() > 0:
+            page.close_l3_modal("DENY_PROCESS")
+        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(700)
+        after_d = page.l3_scope("DENY_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
+        page.close_l3_modal("DENY_PROCESS")
+        page.page.remove_listener("pageerror", _collect)
+        applied = after_d == "sc4n_deny_tag"
+        broken = (not applied) and bool(errs)
+        self._add("pass" if applied else "fail",
+                  ("sc4n — 거부 프로세스: 편집 '수정'이 적용 안 됨 — 설명·상태 변경 불가(앱 JS 오류)"
+                   if broken else
+                   "sc4n — 거부 프로세스: 태그 항목 편집 반영"),
+                  f"입력: 거부 태그 설명 'sc4n_deny_tag' '수정'({msg_d!r}) / 재오픈={after_d!r}, "
+                  f"반영={applied}"
+                  + (f" [★태그 탭도 동일 — 편집 '수정'이 앱 JS 오류로 불능(개별 프로세스와 같은 "
+                     f"수정 핸들러), 무반응·서버 미도달: {errs[0]}]" if broken else ""), sc=4,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
+                  merge_key=("szproc_item_edit_broken::DENY_PROCESS" if broken else None),
+                  repro="1. 거부 템플릿 태그 탭 → 이름 링크 → 설명만 변경 → '수정'\n"
+                        "2. 무반응(모달 유지·경고 없음, 콘솔 ReferenceError)\n3. 재오픈 → 반영 안 됨")
         page.l2_bulk_remove()
         page.close_l2_modal()
 
@@ -712,3 +765,182 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                         "3. 2번째만 바뀌고 1·3번째 그대로인지")
         page.l2_bulk_remove()
         page.close_l2_modal()
+
+    # ══ 태그 탭 수정 클래스 대칭 (Chrome 실측 2026-07-10) — sc4l/4m/4i/4g 의 태그판 ══
+
+    def _ensure_tags(self, page, tpl: str, n: int = 1) -> list[str]:
+        """태그 탭에 태그 n건 확보 — L2 태그 탭 열린 상태로 이름 리스트 반환(td[2])."""
+        page.navigate_to_clean()
+        page.ensure_template(tpl, "ALLOW_PROCESS")
+        page.open_l2_modal(tpl)
+        page.switch_l2_tab("태그")
+        if page.l2_item_count() != n:
+            page.l2_bulk_remove()
+            page.open_l3_add("ALLOW_PROCESS")
+            page.l3_register("ALLOW_PROCESS", tag=True, count=n)
+            page.l3_add_message("ALLOW_PROCESS")
+            page.dismiss_alert()
+        return [r.locator("td").nth(2).inner_text().strip() for r in page.l2_rows()]
+
+    # ── sc4q: 태그 재선택 중복 (sc4m 태그판 — 편집 picker=radio 실측 2026-07-10) ──
+    def test_scenario4q_tag_reselect_duplicate(self, logged_in_page, settings):
+        """태그 B 편집 → 이미 등록된 A 로 radio 재선택 '수정' → 중복 차단/생략 여부.
+        실측(2026-07-10): 경고 없이 동일 태그 중복 행 생성 — 변경 경로 중복 검사 누락."""
+        import re as _re
+        print("\n━━ [프로세스] sc4q: 태그 재선택 중복 충돌 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        names = self._ensure_tags(page, "[AUTO]_sz_proc_4q", n=2)
+        if len(names) < 2:
+            page.close_l2_modal()
+            self._add("warn", "sc4q — 태그 재선택 중복 [검증 불가 — 2건 확보 실패]",
+                      f"결과: {names}", sc=4)
+            return
+        a, b = names[0], names[1]
+        page.l2_rows()[1].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(700)
+        picked = page.l3_register("ALLOW_PROCESS", tag=True, count=1,
+                                  name_pattern=_re.compile(rf"^{_re.escape(a)}$"))
+        msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
+        page.dismiss_alert()
+        if page.page.locator(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in").count() > 0:
+            page.close_l3_modal("ALLOW_PROCESS")
+        after = [r.locator("td").nth(2).inner_text().strip() for r in page.l2_rows()]
+        if not picked:
+            self._add("warn",
+                      "sc4q — 태그 재선택 중복 [검증 불가 — 편집 picker 재선택 실패]",
+                      f"입력: {b!r} 편집 → {a!r} 재선택 시도 / 결과: 선택 0건({msg!r}), {after}",
+                      sc=4, merge_key="szproc_reselect::tag_picker::warn::not_working")
+        else:
+            dup = after.count(a) > 1
+            self._add("warn" if dup else "pass",
+                      "sc4q — 태그 재선택으로 중복 유발(B→A): 중복 차단/생략 여부",
+                      f"입력: {b!r} 편집 → 이미 등록된 {a!r} 로 재선택 '수정'({msg!r}) / "
+                      f"결과: {after} "
+                      + ("[★동일 태그 중복 행 생성 — 등록 경로(생략 안내)와 달리 변경 경로는 "
+                         "중복 검사 누락(개별 프로세스 sc4m 과 동일 결함 클래스)]" if dup
+                         else "(차단/생략 — 원상 유지)"), sc=4,
+                      highlight=page.page.locator(
+                          f"{page.SEL_L2_MODAL} tbody tr:visible", has_text=a),
+                      merge_key=("szproc_dup::tag_reselect::warn::no_dup_check" if dup else None),
+                      repro=f"1. 태그 {a}, {b} 2건 등록\n2. {b} 편집 → {a} 재선택 → '수정'\n"
+                            "3. 중복 처리(차단/생략) 확인")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc4r: 태그 설명 3000자 (sc4i 태그판 — 실측: 무반응·요청 미발송) ─────
+    def test_scenario4r_tag_desc_overflow_in_modify(self, logged_in_page, settings):
+        """태그 편집 설명 3000자 → '수정'. 실측(2026-07-10): 경고·서버 요청 모두 없이
+        무반응(개별 프로세스의 PUT 500/JS 오류와 다른 제3의 무피드백 모드) — 재오픈 대조."""
+        print("\n━━ [프로세스] sc4r: 태그 설명 3000자(수정 경로) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        self._ensure_tags(page, "[AUTO]_sz_proc_4r", n=1)
+        DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
+        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(700)
+        base_desc = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
+        page.fill(DESC, "가" * 3000)
+        msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
+        page.dismiss_alert()
+        if page.page.locator(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in").count() > 0:
+            page.close_l3_modal("ALLOW_PROCESS")
+        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(700)
+        stored = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
+        page.close_l3_modal("ALLOW_PROCESS")
+        n = len(stored)
+        if n == 3000:
+            verdict, note = "warn", "[★3000자 그대로 저장 — 생성/프로세스 경로와 불일치]"
+        elif stored == base_desc:
+            verdict, note = "warn", ("[조용한 미저장 — 경고·저장 요청 모두 없이 무반응"
+                                     "(3000자 수정이 통째로 무시됨)]")
+        else:
+            verdict, note = "warn", f"[조용한 절단/변형 — {n}자로 저장]"
+        self._add(verdict,
+                  "sc4r — 태그: 설명 3000자 → 저장 처리",
+                  f"입력: 태그 설명 3000자 + '수정'({msg!r}) / 재오픈 저장={n}자 {note}", sc=4,
+                  highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
+                  merge_key="szproc_desc_ovf::TAG",
+                  repro="1. 태그 항목 편집 → 설명 3000자 → '수정'\n"
+                        "2. 무반응 관찰\n3. 재오픈 → 실제 저장 길이")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc4s: 태그 상태 비활성 → 행 표시 (sc4g 태그판 — 실측: 표시 ON 고정) ──
+    def test_scenario4s_tag_status_display(self, logged_in_page, settings):
+        """태그 상태 활성→비활성 '수정' → 행 상태 셀 표시 + 재오픈 저장값 대조.
+        실측(2026-07-10): 저장 정상(재오픈 DELETE)인데 행 표시는 ON — 프로세스 행과 동일."""
+        print("\n━━ [프로세스] sc4s: 태그 상태 비활성 → 행 표시 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        self._ensure_tags(page, "[AUTO]_sz_proc_4s", n=1)
+        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(700)
+        page.l3_scope("ALLOW_PROCESS").locator("input#DELETE").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(150)
+        page.l3_add_message("ALLOW_PROCESS", button="수정")
+        # 태그 행 상태 셀 = td[5] (순위 컬럼 시프트) — label.switch 'on' 클래스가 진실
+        import time as _t
+        deadline = _t.monotonic() + 4
+        def _tag_row_on():
+            cls = page.l2_rows()[0].locator("label.switch").first.get_attribute("class") or ""
+            return " on" in f" {cls} "
+        after_on = _tag_row_on()
+        while after_on and _t.monotonic() < deadline:
+            page.page.wait_for_timeout(250)
+            after_on = _tag_row_on()
+        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(700)
+        saved_inactive = page.l3_scope("ALLOW_PROCESS").locator("input#DELETE").first.is_checked()
+        page.close_l3_modal("ALLOW_PROCESS")
+        ok = saved_inactive and not after_on
+        display_bug = saved_inactive and after_on
+        self._add("pass" if ok else ("warn" if display_bug else "fail"),
+                  ("sc4s — 태그: 상태 '비활성' 저장은 되는데 행 상태 표시가 계속 ON — 표시 결함"
+                   if display_bug else
+                   "sc4s — 태그: 상태 활성→비활성 '수정' → 행 표시·재오픈 일치"),
+                  f"입력: 태그 비활성 '수정' / 결과: 행 표시 ON={after_on}(기대 False), "
+                  f"재오픈 비활성 checked={saved_inactive}"
+                  + (" [★저장은 정상인데 상태 셀이 저장값 무관 ON 렌더 — 개별 프로세스와 동일 결함]"
+                     if display_bug else ""), sc=4,
+                  highlight=(page.l2_rows()[0].locator("td").nth(5) if page.l2_rows() else None),
+                  merge_key=("szproc_item_status_display::TAG" if display_bug else None),
+                  repro="1. 태그 편집 → 상태 비활성 → '수정'\n2. 행 상태 OFF 여야\n"
+                        "3. 재오픈 → 비활성 checked")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc4t: 수정 모달 이름 특수문자 rename (sc3h 생성 특수문자와 경로 대칭) ──
+    def test_scenario4t_name_special_char_rename(self, logged_in_page, settings):
+        """생성(sc3h)이 특수문자 이름을 허용하므로 수정 경로도 동일한지 — rename 후 목록 대조."""
+        print("\n━━ [프로세스] sc4t: 이름 특수문자 rename ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.navigate_to_clean()
+        page.ensure_template(self._TPL, "ALLOW_PROCESS")
+        sp = "[AUTO]_sz_proc_4t<>!@#"
+        while sp in page.get_template_names():
+            page.delete_template(sp)
+            page.navigate_to()
+        page.open_modify_modal(self._TPL)
+        page.page.locator(f"{page.SEL_MODAL} {page.SEL_NAME}").first.fill(sp)
+        msg = page.submit_and_message()
+        page._close_modal_if_open()
+        page.navigate_to()
+        renamed = sp in page.get_template_names()
+        # 생성 경로(sc3h: 특수문자 허용)와의 대칭 — rename 도 허용이면 pass, 다르면 warn
+        self._add("pass" if renamed else "warn",
+                  "sc4t — 수정 경로 이름 특수문자 rename (생성 sc3h 대응)",
+                  f"입력: {self._TPL!r} → {sp!r} rename({msg!r}) / 결과: 목록 존재={renamed}"
+                  + ("" if renamed else " [생성 경로(허용)와 불일치 — 수정 경로만 차단/실패]"), sc=4,
+                  highlight=(page._row_locator(sp) if renamed else None),
+                  merge_key=(None if renamed else "szproc_special_name::rename::warn::path_mismatch"),
+                  repro=f"1. 수정 모달 이름에 특수문자({sp})\n2. 확인\n3. 목록 반영 대조")
+        # 원상복귀(이름 되돌림) — 후속 테스트가 _TPL 을 쓰므로
+        if renamed:
+            page.open_modify_modal(sp)
+            page.page.locator(f"{page.SEL_MODAL} {page.SEL_NAME}").first.fill(self._TPL)
+            page.submit_and_message()
+            page._close_modal_if_open()
+            page.navigate_to()
