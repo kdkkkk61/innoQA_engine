@@ -780,6 +780,14 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             page.l3_register("ALLOW_PROCESS", tag=True, count=n)
             page.l3_add_message("ALLOW_PROCESS")
             page.dismiss_alert()
+            # 등록 직후 리스트 재렌더는 비동기 — 행 attach 대기 없이 읽으면 []
+            # (14:14 run sc4q '검증 불가 — 2건 확보 실패' 원인)
+            try:
+                page.page.locator(
+                    f"{page.SEL_L2_MODAL} tbody tr:visible input[type='checkbox']"
+                ).first.wait_for(state="attached", timeout=page._TIMEOUT_TABLE)
+            except Exception:
+                pass
         return [r.locator("td").nth(2).inner_text().strip() for r in page.l2_rows()]
 
     # ── sc4q: 태그 재선택 중복 (sc4m 태그판 — 편집 picker=radio 실측 2026-07-10) ──

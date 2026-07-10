@@ -814,27 +814,54 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             page.page.wait_for_timeout(150)
             page.l3_add_message(ttype)
             page.dismiss_alert()
-            rows = page.l2_rows()
-            sw = (rows[0].locator("label.switch").first.get_attribute("class") or "") if rows else ""
-            shown_on = " on" in f" {sw} "
+            # 등록 직후 표시는 일시 stale 일 수 있음(14:14 run: 거부까지 ON 판독 —
+            # 사용자 수동 관찰(거부 OFF 정상)과 불일치) → 폴링 후에도 ON 이면
+            # L2 재오픈(신규 조회)으로 확정. 재조회 후에도 ON 이어야 표시 결함.
+            import time as _t
+            def _row_on():
+                rs = page.l2_rows()
+                if not rs:
+                    return None
+                cls = rs[0].locator("label.switch").first.get_attribute("class") or ""
+                return " on" in f" {cls} "
+            deadline = _t.monotonic() + 2.5
+            shown_on = _row_on()
+            while shown_on and _t.monotonic() < deadline:
+                page.page.wait_for_timeout(250)
+                shown_on = _row_on()
+            fresh_on = None
+            if shown_on:
+                page.close_l2_modal()
+                page.open_l2_modal(tpl)
+                try:
+                    page.page.locator(
+                        f"{page.SEL_L2_MODAL} tbody tr:visible input[type='checkbox']"
+                    ).first.wait_for(state="attached", timeout=page._TIMEOUT_TABLE)
+                except Exception:
+                    pass
+                fresh_on = _row_on()
+            final_on = fresh_on if fresh_on is not None else shown_on
             # 저장값 대조 — 재오픈 radio
             page.l2_open_item_edit(0)
             saved_inactive = page.l3_scope(ttype).locator("input#DELETE").first.is_checked()
             page.close_l3_modal(ttype)
-            ok = saved_inactive and not shown_on
-            display_bug = saved_inactive and shown_on
+            ok = saved_inactive and not final_on
+            display_bug = saved_inactive and final_on
+            rows = page.l2_rows()
             self._add("pass" if ok else ("warn" if display_bug else "fail"),
                       (f"sc3t — {ko}: 비활성으로 등록해도 목록 상태 표시는 ON — 표시 결함"
                        if display_bug else
                        f"sc3t — {ko}: 등록 시 비활성 → 행 상태 표시·저장값 일치"),
-                      f"입력: {picked[0]!r} 상태=비활성 등록 / 결과: 행 표시 ON={shown_on}"
-                      f"(기대 False), 재오픈 비활성 checked={saved_inactive}"
-                      + (" [★저장은 정상인데 상태 셀이 저장값 무관 ON 렌더 — sc4g(편집 경로)와 동일 결함]"
-                         if display_bug else ""), sc=3,
+                      f"입력: {picked[0]!r} 상태=비활성 등록 / 결과: 직후 표시 ON={shown_on}, "
+                      f"재조회 후 ON={fresh_on}, 재오픈 비활성 checked={saved_inactive}"
+                      + (" [★저장은 정상인데 상태 셀이 재조회 후에도 저장값 무관 ON 렌더 — "
+                         "sc4g(편집 경로)와 동일 결함]" if display_bug
+                         else (" (직후 일시 ON 표시 후 재조회로 정상화 — 표시 결함 아님)"
+                               if shown_on and not final_on else "")), sc=3,
                       highlight=(rows[0].locator("td").nth(4) if rows else None),
                       merge_key=(f"szproc_item_status_display::{ttype}" if display_bug else None),
                       repro=f"1. {ko} 템플릿에 프로세스 등록(상태 비활성 선택)\n"
-                            "2. 목록 상태 셀 OFF 여야\n3. 재오픈 → 비활성 checked",
+                            "2. 목록 상태 셀 OFF 여야(재조회 포함)\n3. 재오픈 → 비활성 checked",
                       )
             page.l2_bulk_remove()
             page.close_l2_modal()
