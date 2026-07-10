@@ -269,6 +269,14 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.page.wait_for_timeout(150)
         page.l3_add_message("ALLOW_PROCESS", button="수정")
         after_on = self._wait_row_status(page, False)   # 재렌더 폴링(stale 방지)
+        # ①결함 장면 사전 컷 — 편집을 열면 상태 셀이 갱신돼 버려 판정 후 캡처는 모순 증거가 됨
+        #   (사용자 지적 2026-07-10: 카드 스크린샷이 OFF 로 찍혀 '먼소리야')
+        shots = []
+        if after_on:
+            shots.append(self._shot(
+                "sc4g_목록ON",
+                highlight=(page.l2_rows()[0].locator("td").nth(4) if page.l2_rows() else None),
+                caption="비활성 '수정' 후 — 목록 상태는 계속 ON (결함 장면)"))
         page.l2_open_item_edit(0)
         reload_inactive = page.l3_scope("ALLOW_PROCESS").locator(
             "input#DELETE").first.is_checked()
@@ -288,6 +296,12 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             except Exception:
                 pass
             fresh_on = self._row_item_status_on(page) if page.l2_rows() else None
+            if fresh_on:
+                shots.append(self._shot(
+                    "sc4g_재조회ON",
+                    highlight=(page.l2_rows()[0].locator("td").nth(4)
+                               if page.l2_rows() else None),
+                    caption="L2 를 닫고 다시 열어도(신규 조회) 여전히 ON — 저장은 비활성"))
             page.l2_open_item_edit(0)
         # 원복(활성)
         page.l3_scope("ALLOW_PROCESS").locator("input#CREATE").first.evaluate(
@@ -313,6 +327,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                            "리스트 갱신 버그. 옵션 셀은 즉시 갱신되는 것과 대조적]")
                      if (not ok and display_only) else ""), sc=4,
                   highlight=page.l2_rows()[0].locator("td").nth(4) if page.l2_rows() else None,
+                  screenshots=([s for s in shots if s] or None),
                   # 결과 동일한 타입·요소는 가로 병합(사용자 지시 2026-07-10)
                   merge_key=("szproc_item_status_display"
                              if (not ok and display_only) else None),
@@ -952,10 +967,25 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         while after_on and _t.monotonic() < deadline:
             page.page.wait_for_timeout(250)
             after_on = _tag_row_on()
+        # ①결함 장면 사전 컷 — 편집을 열면 상태 셀이 갱신돼 버림(사용자 지적 2026-07-10)
+        shots = []
+        if after_on:
+            shots.append(self._shot(
+                "sc4s_목록ON",
+                highlight=(page.l2_rows()[0].locator("td").nth(5) if page.l2_rows() else None),
+                caption="비활성 '수정' 후 — 목록 상태는 계속 ON (결함 장면)"))
         page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
         page.page.wait_for_timeout(700)
         saved_inactive = page.l3_scope("ALLOW_PROCESS").locator("input#DELETE").first.is_checked()
         page.close_l3_modal("ALLOW_PROCESS")
+        # ②편집 열닫 후 재판독 — 갱신 트리거 실측
+        page.page.wait_for_timeout(400)
+        after_edit_on = _tag_row_on()
+        if after_on and not after_edit_on:
+            shots.append(self._shot(
+                "sc4s_편집후OFF",
+                highlight=(page.l2_rows()[0].locator("td").nth(5) if page.l2_rows() else None),
+                caption="같은 태그 편집을 열었다 닫자 OFF 로 갱신 — 저장은 처음부터 비활성"))
         ok = saved_inactive and not after_on
         display_bug = saved_inactive and after_on
         self._add("pass" if ok else ("warn" if display_bug else "fail"),
@@ -964,14 +994,17 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                    "sc4s — 태그: 상태 활성→비활성 '수정' → 행 표시·재오픈 일치"),
                   f"대상: '[AUTO]_sz_proc_4s' 태그 탭 / 입력: 태그 비활성 '수정' / "
                   f"결과: 행 표시 ON={after_on}(기대 False), "
-                  f"재오픈 비활성 checked={saved_inactive}"
-                  + (" [★저장은 정상인데 상태 셀이 저장값 무관 ON 렌더 — 개별 프로세스와 동일 결함]"
+                  f"재오픈 비활성 checked={saved_inactive}, 편집 열닫 후 ON={after_edit_on}"
+                  + (" [★목록 조회로는 저장값 미반영 — 해당 항목 편집 모달을 열었다 닫아야 "
+                     "상태 셀 갱신. 개별 프로세스와 동일 결함]"
                      if display_bug else ""), sc=4,
                   highlight=(page.l2_rows()[0].locator("td").nth(5) if page.l2_rows() else None),
+                  screenshots=([s for s in shots if s] or None),
                   # 결과 동일한 타입·요소는 가로 병합(사용자 지시 2026-07-10)
                   merge_key=("szproc_item_status_display" if display_bug else None),
-                  repro="1. 태그 편집 → 상태 비활성 → '수정'\n2. 행 상태 OFF 여야\n"
-                        "3. 재오픈 → 비활성 checked")
+                  repro="1. 태그 편집 → 상태 비활성 → '수정'\n"
+                        "2. 행 상태 ON 으로 잘못 표시\n"
+                        "3. 편집 열었다 닫으면 OFF 갱신(저장은 비활성이었음)")
         page.l2_bulk_remove()
         page.close_l2_modal()
 

@@ -792,8 +792,9 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
     # ── sc3t: 등록 시 비활성 → 행 상태 표시 — ★4타입 전수 (Chrome 실측 2026-07-10) ──
     def test_scenario3t_item_status_display_by_type(self, logged_in_page, settings):
         """등록 시점에 상태=비활성 선택 → 저장(재오픈 radio)과 행 상태 셀 표시를 대조.
-        실측(2026-07-10): 저장은 4타입 전부 정상(재오픈 DELETE checked)인데 행 표시는
-        허용/예외처리/실행차단이 저장값 무관 ON 렌더, 거부만 OFF 정상 — 타입별 카드."""
+        실측 정정(2026-07-10 16:29 run 리포트): 4타입 전부 동일 — 목록 조회(재조회 포함)로는
+        저장값 미반영(항상 ON)이고, **해당 항목 편집 모달을 열었다 닫아야 상태 셀이 갱신**됨.
+        (이전의 '거부만 OFF 정상' 관찰은 편집 모달을 연 뒤 목록을 본 것 — 갱신 트리거 효과)"""
         print("\n━━ [프로세스] sc3t: 등록 시 비활성 → 행 상태 표시 4타입 전수 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
@@ -843,10 +844,28 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                     pass
                 fresh_on = _row_on()
             final_on = fresh_on if fresh_on is not None else shown_on
+            # ①결함 장면 사전 컷 — 편집을 열면 상태 셀이 갱신돼 버림(16:29 run 리포트에서
+            #   판정 후 캡처가 OFF 로 찍혀 카드와 모순, 사용자 지적 2026-07-10)
+            shots = []
+            if final_on:
+                rs0 = page.l2_rows()
+                shots.append(self._shot(
+                    f"sc3t_{ttype}_목록ON",
+                    highlight=(rs0[0].locator("td").nth(4) if rs0 else None),
+                    caption="비활성으로 등록 — 재조회 후에도 목록 상태 ON (결함 장면)"))
             # 저장값 대조 — 재오픈 radio
             page.l2_open_item_edit(0)
             saved_inactive = page.l3_scope(ttype).locator("input#DELETE").first.is_checked()
             page.close_l3_modal(ttype)
+            # ②편집 열닫 후 재판독 — 그제서야 OFF 로 갱신되는지(갱신 트리거 실측)
+            page.page.wait_for_timeout(400)
+            after_edit_on = _row_on()
+            if final_on and after_edit_on is False:
+                rs1 = page.l2_rows()
+                shots.append(self._shot(
+                    f"sc3t_{ttype}_편집후OFF",
+                    highlight=(rs1[0].locator("td").nth(4) if rs1 else None),
+                    caption="같은 항목 편집을 열었다 닫자 OFF 로 갱신 — 저장은 처음부터 비활성"))
             ok = saved_inactive and not final_on
             display_bug = saved_inactive and final_on
             rows = page.l2_rows()
@@ -855,17 +874,20 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                        if display_bug else
                        f"sc3t — {ko}: 등록 시 비활성 → 행 상태 표시·저장값 일치"),
                       f"대상: {ko}({tpl!r}) 의 {picked[0]!r} / 입력: 상태=비활성 등록 / "
-                      f"결과: 직후 표시 ON={shown_on}, "
-                      f"재조회 후 ON={fresh_on}, 재오픈 비활성 checked={saved_inactive}"
-                      + (" [★저장은 정상인데 상태 셀이 재조회 후에도 저장값 무관 ON 렌더 — "
-                         "sc4g(편집 경로)와 동일 결함]" if display_bug
+                      f"결과: 직후 표시 ON={shown_on}, 재조회 후 ON={fresh_on}, "
+                      f"재오픈 비활성 checked={saved_inactive}, 편집 열닫 후 ON={after_edit_on}"
+                      + (" [★목록 조회(모달 재오픈 포함)로는 저장값 미반영 — 해당 항목 편집 모달을 "
+                         "열었다 닫아야 상태 셀 갱신. 갱신 지연이 아니라 목록 렌더가 상태를 안 읽음]"
+                         if display_bug
                          else (" (직후 일시 ON 표시 후 재조회로 정상화 — 표시 결함 아님)"
                                if shown_on and not final_on else "")), sc=3,
                       highlight=(rows[0].locator("td").nth(4) if rows else None),
+                      screenshots=([s for s in shots if s] or None),
                       # 결과 동일한 타입·요소는 가로 병합(사용자 지시 2026-07-10) — 갈리면 리포터가 줄 분리
                       merge_key=("szproc_item_status_display" if display_bug else None),
                       repro=f"1. {ko} 템플릿에 프로세스 등록(상태 비활성 선택)\n"
-                            "2. 목록 상태 셀 OFF 여야(재조회 포함)\n3. 재오픈 → 비활성 checked",
+                            "2. 목록 상태 셀 ON 으로 잘못 표시(재조회해도 동일)\n"
+                            "3. 항목 편집 열었다 닫으면 OFF 로 갱신(저장은 비활성이었음)",
                       )
             page.l2_bulk_remove()
             page.close_l2_modal()
