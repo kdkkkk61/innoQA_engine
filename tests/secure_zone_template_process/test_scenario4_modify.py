@@ -386,6 +386,8 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             tpl = self._tpl_for(ttype)
             DESC = f"div#{page.L3_MAP[ttype]}.in {page.SEL_L3_DESC}"
             self._ensure_item(page, tpl, ttype)
+            item = page.l2_rows()[0].locator("td").nth(1).inner_text().strip()
+            ctx = f"{tpl!r} 의 {item!r}"   # 카드에 대상 컨텍스트 명시(사용자 지적 2026-07-10)
             page.l2_open_item_edit(0)
             page.fill(DESC, "가" * 3000)
             e0 = len(js_errors)
@@ -402,27 +404,39 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             n = len(stored)
             # merge_key = 요소(타입)별 — sc3l(생성)과 같은 키로 세로 병합(3↔4 한 카드,
             #   결과가 다르면 리포터가 시나리오별 줄로 분리 표기)
-            mk = f"szproc_desc_ovf::{ttype}"
-            if raw_err:
-                verdict, note = "warn", "[raw 서버 오류 — 생성(sc3l)과 동일, 수정 경로도 가드 부재]"
-            elif n == 3000:
-                verdict, note = ("warn",
-                    "[★경로 불일치 — 생성은 3000자를 서버 오류로 차단하는데 수정 경로는 "
-                    "그대로 DB 저장. 수정이 생성 검증을 우회]")
-            elif 0 < n < 3000:
-                verdict, note = "warn", f"[조용한 절단 — 안내 없이 {n}자로 잘려 저장]"
-            elif ovf_errs:
-                verdict, note = "warn", f"[저장 시도가 앱 JS 오류로 불발(서버 미도달): {ovf_errs[0]}]"
+            if ovf_errs and n == 0 and not raw_err:
+                # ★JS 오류 불발 = '3000자 저장 처리' 결함이 아니라 편집 불능 결함의 한 사례
+                #   — 별도 카드 대신 편집 불능 카드로 귀속(사용자 지적 2026-07-10: 중복 카드)
+                self._add("warn",
+                          f"sc4i — {ko}: 편집 '수정'이 적용 안 됨 — 설명·상태 변경 불가(앱 JS 오류)",
+                          f"대상: {ctx} / 입력: 설명 3000자 + '수정' / 결과: 무반응(경고 없음), "
+                          f"재오픈 {n}자 [편집 '수정' 자체가 JS 오류로 불발 — 3000자 무관, "
+                          f"아래 정상값 재수정과 동일 결함: {ovf_errs[0]}]",
+                          sc=4,
+                          highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
+                          merge_key=f"szproc_item_edit_broken::{ttype}",
+                          repro=f"1. {ko} 템플릿 {tpl} 의 항목 {item} 편집 → '수정'\n"
+                                "2. 무반응(콘솔 ReferenceError) — 입력값 무관")
             else:
-                verdict, note = "warn", "[조용한 미저장 — 경고 없이 설명 유실]"
-            self._add(verdict,
-                      f"sc4i — {ko}: 설명 3000자 → 저장 처리",   # 라벨 본문 = sc3l 과 동일(미러 dedup)
-                      f"입력: 3000자 + '수정' / 결과: 경고={msg!r}, 재오픈 저장={n}자 {note}",
-                      sc=4,
-                      highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC),
-                      merge_key=mk,
-                      repro=f"1. {ko} 등록 항목 편집 → 설명 3000자 → '수정'\n"
-                            "2. 재오픈 → 실제 저장 길이 확인\n3. 생성 경로(서버 오류)와 비교")
+                if raw_err:
+                    verdict, note = "warn", "[raw 서버 오류 — 생성(sc3l)과 동일, 수정 경로도 가드 부재]"
+                elif n == 3000:
+                    verdict, note = ("warn",
+                        "[★경로 불일치 — 생성은 3000자를 서버 오류로 차단하는데 수정 경로는 "
+                        "그대로 DB 저장. 수정이 생성 검증을 우회]")
+                elif 0 < n < 3000:
+                    verdict, note = "warn", f"[조용한 절단 — 안내 없이 {n}자로 잘려 저장]"
+                else:
+                    verdict, note = "warn", "[조용한 미저장 — 경고 없이 설명 유실]"
+                self._add(verdict,
+                          f"sc4i — {ko}: 설명 3000자 → 저장 처리",   # 라벨 본문 = sc3l 과 동일(미러 dedup)
+                          f"대상: {ctx} / 입력: 3000자 + '수정' / 결과: 경고={msg!r}, "
+                          f"재오픈 저장={n}자 {note}",
+                          sc=4,
+                          highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC),
+                          merge_key=f"szproc_desc_ovf::{ttype}",
+                          repro=f"1. {ko} 템플릿 {tpl} 의 항목 {item} 편집 → 설명 3000자 → '수정'\n"
+                                "2. 재오픈 → 실제 저장 길이 확인\n3. 생성 경로(서버 오류)와 비교")
 
             # 경계 입력 이후 같은 항목 정상 재수정 — 오염/복구(사용자 지적 2026-07-09)
             page.fill(DESC, "sc4i_recover")
@@ -443,7 +457,8 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                       (f"sc4i — {ko}: 편집 '수정'이 적용 안 됨 — 설명·상태 변경 불가(앱 JS 오류)"
                        if broken else
                        f"sc4i — {ko}: 3000자 시도 후 정상값 재수정 → 복구"),
-                      f"입력: 'sc4i_recover' 재수정({msg2!r}) / 재오픈={after[:30]!r}, 복구={recovered}"
+                      f"대상: {ctx} / 입력: 'sc4i_recover' 재수정({msg2!r}) / "
+                      f"재오픈={after[:30]!r}, 복구={recovered}"
                       + ("" if recovered else
                          (f" [★편집 '수정'이 앱 JS 오류로 불능 — 3000자와 무관"
                           f"(정상값도 동일 실패), 무반응·서버 미도달: {rec_errs[0]}]" if broken
@@ -451,7 +466,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                       sc=4,
                       highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
                       merge_key=(f"szproc_item_edit_broken::{ttype}" if broken else None),
-                      repro=(f"1. {ko} 등록 항목 이름 링크 → 설명만 변경 → '수정'\n"
+                      repro=(f"1. {ko} 템플릿 {tpl} 의 항목 {item} 이름 링크 → 설명만 변경 → '수정'\n"
                              "2. 무반응(모달 유지·경고 없음, 콘솔 ReferenceError)\n"
                              "3. 재오픈 → 반영 안 됨 (3000자 무관)" if broken else
                              f"1. {ko} 3000자 시도 직후 같은 항목 재편집\n2. 정상 설명 '수정'\n3. 반영 확인"))
@@ -667,6 +682,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             self._add("warn", "sc4n — 거부 프로세스: 태그 편집 [검증 불가 — 태그 등록 실패]",
                       "거부 템플릿 태그 등록 0건 — 재실측 필요", sc=4)
             return
+        tag_d = page.l2_rows()[0].locator("td").nth(2).inner_text().strip()
         page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
         page.page.wait_for_timeout(700)
         DESC_D = f"div#{page.L3_MAP['DENY_PROCESS']}.in {page.SEL_L3_DESC}"
@@ -688,13 +704,13 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                   ("sc4n — 거부 프로세스: 편집 '수정'이 적용 안 됨 — 설명·상태 변경 불가(앱 JS 오류)"
                    if broken else
                    "sc4n — 거부 프로세스: 태그 항목 편집 반영"),
-                  f"입력: 거부 태그 설명 'sc4n_deny_tag' '수정'({msg_d!r}) / 재오픈={after_d!r}, "
-                  f"반영={applied}"
+                  f"대상: {tpl_d!r} 태그 탭의 {tag_d!r} / 입력: 설명 'sc4n_deny_tag' "
+                  f"'수정'({msg_d!r}) / 재오픈={after_d!r}, 반영={applied}"
                   + (f" [★태그 탭도 동일 — 편집 '수정'이 앱 JS 오류로 불능(개별 프로세스와 같은 "
                      f"수정 핸들러), 무반응·서버 미도달: {errs[0]}]" if broken else ""), sc=4,
                   highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
                   merge_key=("szproc_item_edit_broken::DENY_PROCESS" if broken else None),
-                  repro="1. 거부 템플릿 태그 탭 → 이름 링크 → 설명만 변경 → '수정'\n"
+                  repro=f"1. 거부 템플릿 {tpl_d} 태그 탭 → {tag_d} 이름 링크 → 설명만 변경 → '수정'\n"
                         "2. 무반응(모달 유지·경고 없음, 콘솔 ReferenceError)\n3. 재오픈 → 반영 안 됨")
         page.l2_bulk_remove()
         page.close_l2_modal()
