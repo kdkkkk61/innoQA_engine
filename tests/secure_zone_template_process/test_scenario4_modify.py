@@ -728,15 +728,25 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.page.wait_for_timeout(700)
         DESC_D = f"div#{page.L3_MAP['DENY_PROCESS']}.in {page.SEL_L3_DESC}"
         page.fill(DESC_D, "sc4n_deny_tag")
+        # 대비 컷(입력→클릭 직후→재오픈) — sc4i 미러. 예상된 결함 카드에 스토리를 직접
+        # 첨부해야 _R 리턴 재생(예기치 못한 fail 전용)이 발동하지 않음 (16:29 run 55s 낭비)
+        shots_d = [self._shot("sc4n_deny_설명입력",
+                              highlight=page.l3_scope("DENY_PROCESS").locator(page.SEL_L3_DESC),
+                              caption="설명 'sc4n_deny_tag' 입력 — '수정' 클릭 직전")]
         e0 = len(js_errors)
         msg_d = page.l3_add_message("DENY_PROCESS", button="수정")
         errs = js_errors[e0:]
+        shots_d.append(self._shot("sc4n_deny_클릭직후",
+                                  caption=f"'수정' 클릭 직후 — 무반응(경고={msg_d!r})"))
         page.dismiss_alert()
         if page.page.locator(f"div#{page.L3_MAP['DENY_PROCESS']}.in").count() > 0:
             page.close_l3_modal("DENY_PROCESS")
         page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
         page.page.wait_for_timeout(700)
         after_d = page.l3_scope("DENY_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
+        shots_d.append(self._shot("sc4n_deny_재오픈",
+                                  highlight=page.l3_scope("DENY_PROCESS").locator(page.SEL_L3_DESC),
+                                  caption=f"재오픈 — 설명 {after_d!r}(수정 미반영)"))
         page.close_l3_modal("DENY_PROCESS")
         page.page.remove_listener("pageerror", _collect)
         applied = after_d == "sc4n_deny_tag"
@@ -750,6 +760,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                   + (f" [★태그 탭도 동일 — 편집 '수정'이 앱 JS 오류로 불능(개별 프로세스와 같은 "
                      f"수정 핸들러), 무반응·서버 미도달: {errs[0]}]" if broken else ""), sc=4,
                   highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
+                  screenshots=(([s for s in shots_d if s] or None) if not applied else None),
                   merge_key=("szproc_item_edit_broken::DENY_PROCESS" if broken else None),
                   repro=f"1. 거부 템플릿 {tpl_d} 태그 탭 → {tag_d} 이름 링크 → 설명만 변경 → '수정'\n"
                         "2. 무반응(모달 유지·경고 없음, 콘솔 ReferenceError)\n3. 재오픈 → 반영 안 됨")
