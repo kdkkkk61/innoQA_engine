@@ -137,12 +137,27 @@ class SecureZoneTemplateProcessPage(BasePage):
     # 네비게이션 (탭 전환은 전체 goto — reloadOnSearch=false)
     # ──────────────────────────────────────────────────────────────
     def navigate_to_clean(self) -> None:
-        """F5 + navigate — AngularJS 모달 상태 누적 정리(저널 리셋용, sync 동일 패턴)."""
+        """상태 리셋 재진입 — dirty 시에만 F5 (2026-07-13 성능: 무조건 F5 28회 = ~2분).
+        dirty = 모달/backdrop/modal-open 잔존, 검색어 잔존, 타입·상태 필터 변경.
+        저널 재생 시작 상태(모달 열림)는 dirty 로 걸려 종전대로 F5 — 재현 결정론 유지.
+        판정 불가(evaluate 실패)면 안전측(F5)."""
         try:
-            self.page.reload(wait_until="domcontentloaded", timeout=15000)
-            self.page.wait_for_timeout(500)
+            dirty = self.page.evaluate(
+                "() => !!document.querySelector('.modal.in, .modal-backdrop')"
+                " || document.body.classList.contains('modal-open')"
+                " || [...document.querySelectorAll('input#searchText')]"
+                "     .some(i => i.value && i.value.trim() !== '')"
+                " || [...document.querySelectorAll("
+                "      'select#szTemplateType, select#status')]"
+                "     .some(s => s.selectedIndex > 0)")
         except Exception:
-            pass
+            dirty = True
+        if dirty:
+            try:
+                self.page.reload(wait_until="domcontentloaded", timeout=15000)
+                self.page.wait_for_timeout(500)
+            except Exception:
+                pass
         self.navigate_to()
 
     def navigate_to(self) -> None:
@@ -379,9 +394,16 @@ class SecureZoneTemplateProcessPage(BasePage):
 
     def switch_l2_tab(self, tab_label: str) -> None:
         """L2 내부 탭 전환 — '개별 프로세스' | '태그'."""
-        self.page.locator(self.SEL_L2_MODAL).last.locator(
-            "li a", has_text=tab_label).first.evaluate("el => el.click()")
-        self.page.wait_for_timeout(400)
+        modal = self.page.locator(self.SEL_L2_MODAL).last
+        modal.locator("li a", has_text=tab_label).first.evaluate("el => el.click()")
+        # 활성 탭 클래스 반영 폴링 — 고정 400ms 대체(상한 동일, 보통 <100ms) (2026-07-13)
+        for _ in range(8):
+            try:
+                if modal.locator("li.active a", has_text=tab_label).count() > 0:
+                    break
+            except Exception:
+                break
+            self.page.wait_for_timeout(50)
 
     def open_l3_add(self, ttype: str) -> None:
         """L2 '+' → 타입종속 L3 모달 (하드매핑 id 로 대기)."""
@@ -521,16 +543,30 @@ class SecureZoneTemplateProcessPage(BasePage):
         return " on" in f" {cls} "
 
     def l2_toggle_option(self, index: int = 0) -> bool:
-        """L2 행 옵션 버튼 클릭 → 토글 후 on 여부 반환 (인라인 즉시 반영, 실측)."""
+        """L2 행 옵션 버튼 클릭 → 토글 후 on 여부 반환 (인라인 즉시 반영, 실측).
+        고정 300ms → 클래스 변화 폴링(상한 동일) (2026-07-13 성능)."""
         btn = self.l2_rows()[index].locator("td").nth(3).locator("button").first
+        before = self.l2_option_on(index)
         btn.evaluate("el => el.click()")
-        self.page.wait_for_timeout(300)
+        for _ in range(6):
+            self.page.wait_for_timeout(50)
+            if self.l2_option_on(index) != before:
+                break
         return self.l2_option_on(index)
 
-    def l2_open_item_edit(self, index: int = 0) -> None:
-        """L2 행 프로세스명 링크 클릭 → 해당 타입 L3 편집 모달 진입(로드값)."""
-        self.l2_rows()[index].locator("td").nth(1).locator("a").first.evaluate("el => el.click()")
-        self.page.wait_for_timeout(700)
+    def l2_open_item_edit(self, index: int = 0, tag: bool = False) -> None:
+        """L2 행 이름 링크 클릭 → 해당 타입 L3 편집 모달 진입(로드값).
+        태그 탭은 '순위' 컬럼이 끼어 이름=td[2] (실측 2026-07-09) — tag=True.
+        고정 700ms → L3 열림(.in attach) 조건 대기 + 로드값 바인딩 여유 (2026-07-13 성능)."""
+        col = 2 if tag else 1
+        self.l2_rows()[index].locator("td").nth(col).locator("a").first.evaluate(
+            "el => el.click()")
+        try:
+            self.page.locator(self.SEL_L3_ANY).first.wait_for(
+                state="attached", timeout=self._TIMEOUT_MODAL)
+        except Exception:
+            pass
+        self.page.wait_for_timeout(150)
 
     def l2_bulk_remove(self) -> str:
         """L2 헤더 전체선택 → removeItemBtn → 일괄 제거. 확인 후 0건 될 때까지 대기(재렌더)."""
@@ -564,23 +600,33 @@ class SecureZoneTemplateProcessPage(BasePage):
         흐름은 테스트에서 클릭/대기/dismiss 를 분리(저널 행위)해서 사용."""
         with overlay_off(self.page):
             self.l3_scope(ttype).locator("button", has_text=button).first.click(force=True)
-        self.page.wait_for_timeout(500)
-        msg = ""
-        if self.is_confirm_modal_visible():
+        outcome = self._l3_commit_outcome(ttype)
+        if outcome == "alert":
             try:
                 msg = self.get_modal_message()
             except Exception:
                 msg = ""
             self.click_attached(self.SEL_CONFIRM_BTN)
             self.wait_for_modal_closed()
-        else:
-            # 커밋 성공 경로 — L3 자동 닫힘 대기 (다음 조작이 stale L3 를 잡지 않게)
-            try:
-                self.page.locator(f"div#{self.L3_MAP[ttype]}.in").wait_for(
-                    state="detached", timeout=self._TIMEOUT_MODAL)
-            except Exception:
-                pass
-        return msg
+            return msg
+        # 'closed'=커밋(L3 자동 닫힘 확인됨) / 'silent'=무반응(거부 결함 등 — 종전엔
+        # 고정 500ms + detach 3s 를 허비하던 경로, 폴링 상한에서 즉시 반환)
+        return ""
+
+    def _l3_commit_outcome(self, ttype: str, cap_ms: int = 1500) -> str:
+        """커밋 클릭 후 결과 폴링 — 'alert'(알림 뜸·L3 유지) / 'closed'(알림 없이 L3
+        자동 닫힘=커밋) / 'silent'(cap 까지 무반응 — 거부 silent no-op 결함 등).
+        고정 500ms sleep + 무반응 시 detach 3s 허비 대체 (2026-07-13 성능)."""
+        l3 = self.page.locator(f"div#{self.L3_MAP[ttype]}.in")
+        waited = 0
+        while waited <= cap_ms:
+            if self.is_confirm_modal_visible():
+                return "alert"
+            if l3.count() == 0:
+                return "closed"
+            self.page.wait_for_timeout(100)
+            waited += 100
+        return "silent"
 
     def l3_click_add_wait(self, ttype: str) -> None:
         """L3 '추가' 클릭 → 알림/닫힘 대기(★dismiss 안 함). 행위 저널(_act)용 —
@@ -588,7 +634,7 @@ class SecureZoneTemplateProcessPage(BasePage):
         판정·dismiss 는 호출측(_add 후)."""
         with overlay_off(self.page):
             self.l3_scope(ttype).locator("button", has_text="추가").first.click(force=True)
-        self.page.wait_for_timeout(700)
+        self._l3_commit_outcome(ttype)
 
     def dismiss_alert(self) -> None:
         if self.is_confirm_modal_visible():

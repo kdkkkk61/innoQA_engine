@@ -2659,3 +2659,22 @@ sc5a 에는 재오픈 행 셀=O 검증(재오픈 렌더 계층) 별도 추가.)
 - **교훈**: 예상된 결함 카드를 fail 로 낼 때는 스토리 캡처를 카드에 직접 첨부해야 한다 — 없으면 _R 안전망이 오발동해 시간을 낭비하고, 조용히 실패하면 카드 증거도 비게 된다.
 
 상태: [RESOLVED] (수정분 재실행 검증 대기 — 사용자 실행)
+
+---
+
+## 프로세스 스위트 성능 — 고정 sleep 조건 대기 전환 + 조건부 F5 (run 20.5분 단축 작업) — 2026-07-13
+
+- **증상**: 전체 run 20분 33초(61 tests). 상위 15개(688s, 56%)가 4타입 전수·태그 편집 왕복 — 테스트당 고정 비용 반복이 원인.
+- **병목 실측**:
+  - `l3_add_message` 무반응(거부 silent no-op) 경로가 고정 500ms + detach 대기 3s = 호출당 3.5s 허비 (~8회/run).
+  - L3 편집 재오픈 고정 700ms × 스위트 전체 ~60회.
+  - `navigate_to_clean` 무조건 F5(3~5s) × 28회 = ~2분.
+- **수정** (`secure_zone_template_process_page.py`):
+  - `_l3_commit_outcome()` 신설 — 커밋 후 alert/L3닫힘/무반응 3상태 폴링(cap 1.5s). `l3_add_message`/`l3_click_add_wait` 가 사용.
+  - `l2_open_item_edit(index, tag=)` — 700ms → `SEL_L3_ANY` attach 대기+150ms. sc4 의 raw 태그 링크 클릭+700ms 9곳을 헬퍼로 통합.
+  - `switch_l2_tab`/`l2_toggle_option` — 고정 400/300ms → 클래스 반영 폴링(상한 동일 = 최악에도 종전과 같음).
+  - `navigate_to_clean` — dirty-check(모달/backdrop/modal-open/검색어/필터) 시에만 F5. 저널 재생 시작 상태(모달 열림)는 dirty 로 걸려 종전대로 F5(재현 결정론 유지). 판정 불가 시 안전측 F5.
+- **보류**: 검색 계열 고정 대기(`search` 700/`_picker_search` 800/`l2_search` 800/`filter_by` 900)는 "결과가 이전과 동일할 수 있어" 완료 조건 정의가 불가 — 미변경.
+- **교훈**: silent no-op 결함을 수집하는 흐름은 '무반응 확인' 대기가 이중으로 쌓이기 쉽다(sleep+detach). 결과 3상태(alert/closed/silent)를 한 폴링으로 판정하면 정확성과 속도가 같이 잡힌다.
+
+상태: [RESOLVED] (예상 절감 ~2.5분 — 비교 run 검증 대기, 사용자 실행)

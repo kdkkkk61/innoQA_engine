@@ -680,16 +680,14 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         tag_name = page.l2_rows()[0].locator("td").nth(2).inner_text().strip()
 
         # 태그 탭 이름 링크 = td[2] (순위 시프트 — 2026-07-09 실측)
-        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(700)
+        page.l2_open_item_edit(0, tag=True)
         loaded = page.l3_selected_name("ALLOW_PROCESS")
         DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
         page.fill(DESC, "sc4n_tag_desc")
         msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
         page.dismiss_alert()
 
-        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(700)
+        page.l2_open_item_edit(0, tag=True)
         desc_after = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
         page.close_l3_modal("ALLOW_PROCESS")
         ok = (loaded == tag_name) and desc_after == "sc4n_tag_desc"
@@ -724,8 +722,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                       "거부 템플릿 태그 등록 0건 — 재실측 필요", sc=4)
             return
         tag_d = page.l2_rows()[0].locator("td").nth(2).inner_text().strip()
-        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(700)
+        page.l2_open_item_edit(0, tag=True)
         DESC_D = f"div#{page.L3_MAP['DENY_PROCESS']}.in {page.SEL_L3_DESC}"
         page.fill(DESC_D, "sc4n_deny_tag")
         # 대비 컷(입력→클릭 직후→재오픈) — sc4i 미러. 예상된 결함 카드에 스토리를 직접
@@ -741,8 +738,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.dismiss_alert()
         if page.page.locator(f"div#{page.L3_MAP['DENY_PROCESS']}.in").count() > 0:
             page.close_l3_modal("DENY_PROCESS")
-        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(700)
+        page.l2_open_item_edit(0, tag=True)
         after_d = page.l3_scope("DENY_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
         shots_d.append(self._shot("sc4n_deny_재오픈",
                                   highlight=page.l3_scope("DENY_PROCESS").locator(page.SEL_L3_DESC),
@@ -873,8 +869,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                       f"결과: {names}", sc=4)
             return
         a, b = names[0], names[1]
-        page.l2_rows()[1].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(700)
+        page.l2_open_item_edit(1, tag=True)
         picked = page.l3_register("ALLOW_PROCESS", tag=True, count=1,
                                   name_pattern=_re.compile(rf"^{_re.escape(a)}$"))
         msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
@@ -915,8 +910,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         names = self._ensure_tags(page, "[AUTO]_sz_proc_4r", n=1)
         tag = names[0] if names else "?"
         DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
-        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(700)
+        page.l2_open_item_edit(0, tag=True)
         base_desc = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
         page.fill(DESC, "가" * 3000)
         # 시간 서사 카드 — 대비 컷 수집(사용자 지적 2026-07-10: 마지막 장면 1장으론 증거 안 됨)
@@ -929,8 +923,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             shots.append(self._shot("sc4r_클릭직후",
                                     caption="'수정' 클릭 직후 — 무반응(모달 유지·경고 없음)"))
             page.close_l3_modal("ALLOW_PROCESS")
-        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(700)
+        page.l2_open_item_edit(0, tag=True)
         stored = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
         shots.append(self._shot("sc4r_재오픈",
                                 highlight=page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC),
@@ -963,8 +956,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
         self._ensure_tags(page, "[AUTO]_sz_proc_4s", n=1)
-        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(700)
+        page.l2_open_item_edit(0, tag=True)
         page.l3_scope("ALLOW_PROCESS").locator("input#DELETE").first.evaluate("el => el.click()")
         page.page.wait_for_timeout(150)
         page.l3_add_message("ALLOW_PROCESS", button="수정")
@@ -985,8 +977,7 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                 "sc4s_목록ON",
                 highlight=(page.l2_rows()[0].locator("td").nth(5) if page.l2_rows() else None),
                 caption="비활성 '수정' 후 — 목록 상태는 계속 ON (결함 장면)"))
-        page.l2_rows()[0].locator("td").nth(2).locator("a").first.evaluate("el => el.click()")
-        page.page.wait_for_timeout(700)
+        page.l2_open_item_edit(0, tag=True)
         saved_inactive = page.l3_scope("ALLOW_PROCESS").locator("input#DELETE").first.is_checked()
         page.close_l3_modal("ALLOW_PROCESS")
         # ②편집 열닫 후 재판독 — 갱신 트리거 실측
