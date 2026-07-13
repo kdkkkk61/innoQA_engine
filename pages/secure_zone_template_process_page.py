@@ -642,7 +642,24 @@ class SecureZoneTemplateProcessPage(BasePage):
             return msg
         # 'closed'=커밋(L3 자동 닫힘 확인됨) / 'silent'=무반응(거부 결함 등 — 종전엔
         # 고정 500ms + detach 3s 를 허비하던 경로, 폴링 상한에서 즉시 반환)
+        if outcome == "closed":
+            # ★커밋 직후 L2 목록 재렌더는 비동기 — 반환이 빨라지자 직후 판독 stale 이
+            #   3곳(sc3k 0건 오탐·sc4m/sc4p IndexError, 13:22 run)에서 동시 발화(함정
+            #   5회째). 호출부 패치 대신 커밋 함수가 '판독 가능'까지 보장(행 수 연속
+            #   2회 일치 + 1건 이상, cap 2s).
+            self._l2_wait_stable()
         return ""
+
+    def _l2_wait_stable(self, cap_ms: int = 2000) -> None:
+        import time as _t
+        deadline = _t.monotonic() + cap_ms / 1000
+        prev = -1
+        while _t.monotonic() < deadline:
+            cur = self.l2_item_count()
+            if cur == prev and cur > 0:
+                return
+            prev = cur
+            self.page.wait_for_timeout(120)
 
     def _l3_commit_outcome(self, ttype: str, cap_ms: int = 1500) -> str:
         """커밋 클릭 후 결과 폴링 — 'alert'(알림 뜸·L3 유지) / 'closed'(알림 없이 L3
