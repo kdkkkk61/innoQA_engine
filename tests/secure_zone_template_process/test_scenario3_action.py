@@ -1005,3 +1005,81 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                         "3. 커밋/서버 처리 확인")
         page.l2_bulk_remove()
         page.close_l2_modal()
+
+    # ── sc3w: 태그 탭 L2 검색 — sc3r(개별 탭) 미러 (매트릭스 감사 갭 2026-07-13) ──
+    def test_scenario3w_tag_l2_search(self, logged_in_page, settings):
+        """L2 검색창은 태그 탭에도 노출 — 검색 클래스가 개별 프로세스 탭(sc3r)만 검증돼
+        있던 갭. 태그 이름 정확 검색 + 빈 검색 복귀를 동일 기준으로 확인."""
+        print("\n━━ [프로세스] sc3w: 태그 탭 L2 검색 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3w"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_l2_modal(tpl)
+        page.switch_l2_tab("태그")
+        page.l2_bulk_remove()
+        page.open_l3_add("ALLOW_PROCESS")
+        picked = page.l3_register("ALLOW_PROCESS", tag=True, count=2)
+        page.l3_add_message("ALLOW_PROCESS")
+        page.dismiss_alert()
+        if len(picked) < 2:
+            page.close_l2_modal()
+            self._add("warn", "sc3w — 태그 탭 L2 검색 [검증 불가 — 태그 2건 등록 실패]",
+                      f"결과: picked={picked}", sc=3)
+            return
+        target = picked[0]
+        total = page.l2_item_count()
+        page.l2_search(target)
+        hit = page.l2_item_count()
+        page.l2_search("")
+        back = page.l2_item_count()
+        ok = hit >= 1 and back == total
+        self._add("pass" if ok else "warn",
+                  "sc3w — 태그 탭 L2 검색: 정확 검색 + 빈 검색 복귀 (개별 탭과 동일 클래스)",
+                  f"입력: 태그 {total}건 중 {target!r} 정확 검색 → 빈 검색 / "
+                  f"결과: 검색 {hit}건(기대 1+), 복귀 {back}건(기대 {total})"
+                  + ("" if ok else " [태그 탭 검색 동작이 개별 탭(sc3r)과 다름 — 미매칭/복귀 불가]"),
+                  sc=3, highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody"),
+                  merge_key=(None if ok else "szproc_l2_search::tag::warn::mismatch"),
+                  repro=f"1. 태그 2건 등록\n2. 검색창에 {target!r} → 해당 행\n3. 빈 검색 → 전체 복귀")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
+
+    # ── sc3x: 상태 필터 '비활성' 변별 — sc3p 활성 쪽만 있던 갭 (감사 2026-07-13) ──
+    def test_scenario3x_status_filter_inactive(self, logged_in_page, settings):
+        """sc3p 는 상태 필터를 '활성'만 확인. 비활성 템플릿을 만들어 상태=비활성 필터가
+        전부-비활성 + 대상 포함으로 변별되는지 확인 후 원복."""
+        print("\n━━ [프로세스] sc3x: 상태 필터(비활성) 변별 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3x"
+        page.navigate_to_clean()
+        page.ensure_template(tpl)
+        page.open_modify_modal(tpl)
+        page.page.locator(f"{page.SEL_MODAL} input#DELETE").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(150)
+        page.submit_and_message()
+        page._close_modal_if_open()
+        page.navigate_to()
+        page.filter_by(status="비활성")
+        vals = page.page.locator("table tbody").first.evaluate(
+            "tb => [...tb.querySelectorAll('tr')]"
+            ".map(r => (r.cells && r.cells.length > 4) ? r.cells[4].innerText.trim() : '')"
+            ".filter(t => t)")
+        names = page.get_template_names()
+        all_inactive = bool(vals) and all(v == "비활성" for v in vals)
+        ok = all_inactive and tpl in names
+        page.filter_by(status="상태")   # 리셋 — sc3p 와 동일
+        self._add("pass" if ok else "fail",
+                  "sc3x — 상태 필터(비활성) → 결과 반영 (sc3p 활성 쪽 보완)",
+                  f"입력: {tpl!r} 비활성 전환 후 상태=비활성 필터 / "
+                  f"결과: {len(vals)}행 전부 비활성={all_inactive}, 대상 포함={tpl in names}", sc=3,
+                  highlight=page.page.locator("table tbody"),
+                  repro="1. 템플릿 비활성 전환\n2. 상태 드롭다운=비활성 + 검색\n3. 전부 비활성 + 대상 포함")
+        # 원복(활성) — 잔존 비활성이 타 검증에 간섭하지 않게
+        page.open_modify_modal(tpl)
+        page.page.locator(f"{page.SEL_MODAL} input#CREATE").first.evaluate("el => el.click()")
+        page.page.wait_for_timeout(150)
+        page.submit_and_message()
+        page._close_modal_if_open()

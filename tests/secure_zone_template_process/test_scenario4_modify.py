@@ -1076,3 +1076,52 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             page.submit_and_message()
             page._close_modal_if_open()
             page.navigate_to()
+
+    # ── sc4u: 수정 취소(닫기) — 변경 미커밋 (L1+L3, 매트릭스 감사 갭 2026-07-13) ──
+    def test_scenario4u_modify_cancel_no_commit(self, logged_in_page, settings):
+        """'수정' 없이 닫기로 나가면 변경이 저장되지 않아야 한다 — L1(이름)·L3(설명) 두
+        컨텍스트. 닫기가 저장/잔존시키면 결함(암묵 커밋·모달 상태 누적). 취소 경로가
+        스위트 전체에 전무하던 갭."""
+        print("\n━━ [프로세스] sc4u: 수정 취소(닫기) 미커밋 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        # ── L1: 이름 변경 후 닫기 ──
+        page.navigate_to_clean()
+        page.ensure_template(self._TPL, "ALLOW_PROCESS")
+        page.open_modify_modal(self._TPL)
+        page.fill(f"{page.SEL_MODAL} {page.SEL_NAME}", self._TPL + "_cancel")
+        page._close_modal_if_open()          # '닫기' — 커밋 아님
+        page.navigate_to()
+        names = page.get_template_names()
+        l1_kept = self._TPL in names and (self._TPL + "_cancel") not in names
+        page.open_modify_modal(self._TPL)
+        loaded = page.page.locator(f"{page.SEL_MODAL} {page.SEL_NAME}").first.input_value()
+        page._close_modal_if_open()
+        l1_ok = l1_kept and loaded == self._TPL
+        self._add("pass" if l1_ok else "warn",
+                  "sc4u — L1 수정 취소(닫기): 이름 변경 미커밋",
+                  f"입력: 이름 '{self._TPL}_cancel' 변경 후 '닫기' / 결과: 원명 유지={l1_kept}, "
+                  f"재오픈 로드={loaded!r}"
+                  + ("" if l1_ok else " [닫기가 변경을 저장/잔존 — 취소 semantics 결함]"), sc=4,
+                  merge_key=(None if l1_ok else "szproc_cancel::warn::implicit_commit"),
+                  repro="1. 수정 모달에서 이름 변경\n2. '수정' 없이 닫기\n3. 목록·재오픈 원값 유지")
+        # ── L3: 설명 변경 후 닫기 ──
+        self._ensure_item(page, self._TPL)
+        page.l2_open_item_edit(0)
+        DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
+        before = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
+        page.fill(DESC, "sc4u_cancel")
+        page.close_l3_modal("ALLOW_PROCESS")   # '닫기' — 커밋 아님
+        page.l2_open_item_edit(0)
+        after = page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC).first.input_value()
+        page.close_l3_modal("ALLOW_PROCESS")
+        l3_ok = after == before and after != "sc4u_cancel"
+        self._add("pass" if l3_ok else "warn",
+                  "sc4u — L3 편집 취소(닫기): 설명 변경 미커밋",
+                  f"입력: 설명 'sc4u_cancel' 변경 후 닫기 / 결과: 재오픈 {after!r}(변경 전 {before!r})"
+                  + ("" if l3_ok else " [닫기 후에도 변경 잔존 — 취소 semantics 결함 또는 모달 상태 누적]"),
+                  sc=4,
+                  merge_key=(None if l3_ok else "szproc_cancel::warn::implicit_commit"),
+                  repro="1. 항목 편집에서 설명만 변경\n2. '수정' 없이 닫기\n3. 재오픈 → 변경 전 값")
+        page.l2_bulk_remove()
+        page.close_l2_modal()
