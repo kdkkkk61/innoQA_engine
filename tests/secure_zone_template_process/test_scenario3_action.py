@@ -418,14 +418,17 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             raw_err = ("서버" in msg and "오류" in msg)
             guard = ("자" in msg or "길이" in msg or "초과" in msg) and not raw_err
             st = "warn" if raw_err else "pass"
+            # ★증상별 카드 분리(사용자 지시 2026-07-14): 같은 증상(raw 서버 오류)끼리만
+            #   병합 — 수정 경로의 '조용한 미저장'(다른 증상)과 한 카드로 묶지 않는다.
+            #   수정 경로가 같은 raw 오류를 내면 ::raw 키로 자동 재병합.
             self._add(st,
-                      "sc3l — 설명 3000자 → 저장 처리",   # 라벨 본문 = sc4i 와 동일(미러 dedup)
+                      ("sc3l — 설명 3000자 → raw 서버 오류(클라 길이 가드 부재)" if raw_err
+                       else "sc3l — 설명 3000자 → 저장 처리"),
                       f"대상: {ko}({tpl!r}) / 입력: 설명 3000자 + 추가 / 결과: 경고={msg!r}, "
                       f"커밋={committed} "
                       + ("[raw 서버 오류 — 클라 길이 가드 부재]" if raw_err
                          else "(길이 가드 안내)" if guard else "(제한 없이 커밋)"), sc=3,
-                      # 결과 동일(전 타입 raw 서버 오류) → 타입 가로 병합(사용자 지시 2026-07-10)
-                      merge_key=("szproc_desc_ovf::PROCESS" if raw_err else None),
+                      merge_key=("szproc_desc_ovf::PROCESS::raw" if raw_err else None),
                       repro=f"1. {ko} L3 프로세스 선택 + 설명 3000자\n2. 추가\n3. 서버 처리 결과 확인")
             page.dismiss_alert()
             # ★서버 오류 후 정상값 재시도(복구) — 실측(14:29 run 진단 DUMP): 오류 확인을
@@ -989,18 +992,29 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             page.close_l3_modal("ALLOW_PROCESS")
         after = page.l2_item_count()
         committed = after == before + 1
-        raw_err = ("서버" in msg and "오류" in msg)
+        raw_err = ("서버" in msg or "페이지" in msg) and bool(msg)
         srv = f"서버 오류응답 {errs}" if errs else "오류응답 없음"
         st = "warn" if (raw_err or errs or not committed) else "pass"
+        # ★증상별 카드 분리(사용자 지시 2026-07-14): 알림형(raw)과 무반응형(silent)은
+        #   다른 증상 — 수정 경로(sc4r)와는 같은 증상일 때만 병합.
+        if raw_err:
+            label_v = "sc3v — 태그: 설명 3000자 → raw 서버 오류(클라 길이 가드 부재)"
+            mk_v = "szproc_desc_ovf::TAG::raw"
+        elif not committed:
+            label_v = "sc3v — 태그: 설명 3000자 → 조용한 미저장(경고 없음)"
+            mk_v = "szproc_desc_ovf::TAG::silent"
+        else:
+            label_v = "sc3v — 태그: 설명 3000자 → 저장 처리"
+            mk_v = None
         self._add(st,
-                  "sc3v — 태그: 설명 3000자 → 저장 처리",   # 라벨 본문 = sc4r 미러(세로 병합)
+                  label_v,
                   f"대상: {tpl!r} 태그 탭의 {picked[0]!r} / 입력: 설명 3000자 + 추가 / "
                   f"결과: 경고={msg!r}, 커밋={committed}, {srv} "
                   + ("[raw 서버 오류 — 클라 길이 가드 부재]" if raw_err
                      else f"[커밋 불발 — 경고 없이 무반응]" if not committed
                      else "(제한 없이 커밋)"), sc=3,
                   screenshots=(([s for s in shots if s] or None) if st == "warn" else None),
-                  merge_key=("szproc_desc_ovf::TAG" if st == "warn" else None),
+                  merge_key=(mk_v if st == "warn" else None),
                   repro=f"1. {tpl} 태그 탭 → + → 태그 선택 + 설명 3000자\n2. 추가\n"
                         "3. 커밋/서버 처리 확인")
         page.l2_bulk_remove()

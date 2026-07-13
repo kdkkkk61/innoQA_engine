@@ -459,24 +459,34 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                           repro=f"1. {ko} 템플릿 {tpl} 의 항목 {item} 편집 → '수정'\n"
                                 "2. 무반응(콘솔 ReferenceError) — 입력값 무관")
             else:
+                # ★증상별 카드 분리(사용자 지시 2026-07-14): 생성 경로(raw 서버 오류)와
+                #   수정 경로(조용한 미저장)는 다른 증상 — 제목·병합 키를 증상 기준으로.
                 if raw_err:
                     verdict, note = "warn", "[raw 서버 오류 — 생성(sc3l)과 동일, 수정 경로도 가드 부재]"
+                    label_i = "sc4i — 설명 3000자 → raw 서버 오류(클라 길이 가드 부재)"
+                    mk_i = "szproc_desc_ovf::PROCESS::raw"
                 elif n == 3000:
                     verdict, note = ("warn",
                         "[★경로 불일치 — 생성은 3000자를 서버 오류로 차단하는데 수정 경로는 "
                         "그대로 DB 저장. 수정이 생성 검증을 우회]")
+                    label_i = "sc4i — 설명 3000자 수정 → 생성 검증 우회 저장"
+                    mk_i = "szproc_desc_ovf::PROCESS::bypass"
                 elif 0 < n < 3000:
                     verdict, note = "warn", f"[조용한 절단 — 안내 없이 {n}자로 잘려 저장]"
+                    label_i = "sc4i — 설명 3000자 수정 → 조용한 절단 저장"
+                    mk_i = "szproc_desc_ovf::PROCESS::clip"
                 else:
                     verdict, note = "warn", "[조용한 미저장 — 경고 없이 설명 유실]"
+                    label_i = "sc4i — 설명 3000자 수정 → 조용한 미저장(경고 없음)"
+                    mk_i = "szproc_desc_ovf::PROCESS::silent"
                 self._add(verdict,
-                          "sc4i — 설명 3000자 → 저장 처리",   # 라벨 본문 = sc3l 과 동일(미러 dedup)
+                          label_i,
                           f"대상: {ko} — {ctx} / 입력: 3000자 + '수정' / 결과: 경고={msg!r}, "
                           f"재오픈 저장={n}자 {note}",
                           sc=4,
                           screenshots=shots,
-                          # 결과 동일(전 타입 조용한 미저장) → 타입 가로 병합(사용자 지시 2026-07-10)
-                          merge_key="szproc_desc_ovf::PROCESS",
+                          # 같은 증상끼리만 타입 가로 병합(2026-07-10 정책 + 2026-07-14 증상 분리)
+                          merge_key=mk_i,
                           repro=f"1. {ko} 템플릿 {tpl} 의 항목 {item} 편집 → 설명 3000자 → '수정'\n"
                                 "2. 재오픈 → 실제 저장 길이 확인\n3. 생성 경로(서버 오류)와 비교")
 
@@ -959,8 +969,12 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.close_l3_modal("ALLOW_PROCESS")
         n = len(stored)
         srv = (f"서버 응답 {put_statuses}" if put_statuses else "저장 요청 미발송")
+        # ★증상별 카드 분리(사용자 지시 2026-07-14) — 등록 경로(raw 알림)와 병합은
+        #   같은 증상일 때만.
         if n == 3000:
             verdict, note = "warn", "[★3000자 그대로 저장 — 생성/프로세스 경로와 불일치]"
+            label_r = "sc4r — 태그: 설명 3000자 수정 → 검증 우회 저장"
+            mk_r = "szproc_desc_ovf::TAG::bypass"
         elif stored == base_desc:
             if any(s >= 500 for s in put_statuses):
                 note = (f"[raw 서버 오류 은폐 — PUT {put_statuses} 인데 UI 는 경고 없이 "
@@ -969,14 +983,18 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             else:
                 note = f"[조용한 미저장 — 경고 없이 무반응({srv})]"
             verdict = "warn"
+            label_r = "sc4r — 태그: 설명 3000자 → 조용한 미저장(경고 없음)"
+            mk_r = "szproc_desc_ovf::TAG::silent"
         else:
             verdict, note = "warn", f"[조용한 절단/변형 — {n}자로 저장]"
+            label_r = "sc4r — 태그: 설명 3000자 수정 → 조용한 절단 저장"
+            mk_r = "szproc_desc_ovf::TAG::clip"
         self._add(verdict,
-                  "sc4r — 태그: 설명 3000자 → 저장 처리",
+                  label_r,
                   f"대상: '[AUTO]_sz_proc_4r' 태그 탭의 {tag!r} / 입력: 설명 3000자 + "
                   f"'수정'({msg!r}) / 재오픈 저장={n}자, {srv} {note}", sc=4,
                   screenshots=shots,
-                  merge_key="szproc_desc_ovf::TAG",
+                  merge_key=mk_r,
                   repro=f"1. 태그 {tag} 편집 → 설명 3000자 → '수정'\n"
                         "2. 무반응 관찰\n3. 재오픈 → 실제 저장 길이")
         page.l2_bulk_remove()
