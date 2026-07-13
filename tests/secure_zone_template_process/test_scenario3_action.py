@@ -1030,6 +1030,22 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             return
         target = picked[0]
         total = page.l2_item_count()
+        # ★태그 탭 검색창은 개별 탭의 input#searchText 가 아닐 수 있음(15:38 run —
+        #   :visible 매칭 0 → fill timeout, 관리자 세션 만료로 즉시 프로브 불가).
+        #   미식별 시 크래시 대신 보이는 input 목록을 수집(다음 실측의 근거) 후 검증 불가.
+        if page.page.locator(f"{page.SEL_L2_MODAL} input#searchText:visible").count() == 0:
+            inputs = page.page.locator(page.SEL_L2_MODAL).last.evaluate(
+                "m => [...m.querySelectorAll('input')]"
+                ".filter(i => i.offsetParent !== null && i.type !== 'checkbox')"
+                ".map(i => (i.id || '?') + ':' + (i.placeholder || ''))")
+            page.l2_bulk_remove()
+            page.close_l2_modal()
+            self._add("warn",
+                      "sc3w — 태그 탭 L2 검색 [검증 불가 — 검색창이 개별 탭과 다른 DOM]",
+                      f"관찰: 태그 탭 visible input = {inputs} (input#searchText 없음) — "
+                      "검색창 id 실측 후 셀렉터 확정 필요", sc=3,
+                      repro="1. 태그 탭 검색창 DOM 확인\n2. 개별 탭(input#searchText)과 대조")
+            return
         page.l2_search(target)
         hit = page.l2_item_count()
         page.l2_search("")
