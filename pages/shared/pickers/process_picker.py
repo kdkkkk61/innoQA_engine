@@ -136,8 +136,17 @@ class ProcessPicker:
 
     # ── 액션 ────────────────────────────────────────────────────────
     def confirm(self) -> None:
-        """확인 → picker 닫고 호출 모달로 선택값 반환."""
-        self._click(self.page.locator(self.SEL_CONFIRM_BTN).first)
+        """확인 → picker 닫고 호출 모달로 선택값 반환.
+        ★4탭 템플릿 페이지는 래퍼(div#globalProcessList.modal-wrap)가 w=0 로 공존해
+        native click 이 visible 대기 timeout 나는 케이스 있음(13:57 run sc3c).
+        JS click fallback — Chrome 실측(2026-07-13): 래퍼 확인 버튼 JS click 으로
+        선택 반영·닫힘 정상 동작 확인."""
+        btn = self.page.locator(self.SEL_CONFIRM_BTN).first
+        try:
+            with overlay_off(self.page):
+                btn.click(timeout=2000)
+        except Exception:
+            btn.evaluate("el => el.click()")
 
     def cancel(self) -> None:
         self._click(self.page.locator(self.SEL_CLOSE_BTN).first)

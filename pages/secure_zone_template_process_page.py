@@ -465,6 +465,13 @@ class SecureZoneTemplateProcessPage(BasePage):
         #   confirm/검색/닫기(self.picker)는 globalProcessList 래퍼 공용이라 그대로 사용.
         pick = self.page.locator("div#processTagList:visible" if tag
                                  else "div#globalProcessList:visible")
+        # ★행 로드 비동기 — attach 대기 후 순회 (13:57 run sc3c: picker 열림 직후
+        #   빈 순회 → picked=[] → 미선택 '추가' 연쇄. wait_open 은 모달만 보장)
+        try:
+            pick.locator("tbody tr").first.wait_for(
+                state="attached", timeout=self._TIMEOUT_TABLE)
+        except Exception:
+            pass
         picked = []
         for row in pick.locator("tbody tr").all():
             if len(picked) >= count:
@@ -648,6 +655,21 @@ class SecureZoneTemplateProcessPage(BasePage):
             #   5회째). 호출부 패치 대신 커밋 함수가 '판독 가능'까지 보장(행 수 연속
             #   2회 일치 + 1건 이상, cap 2s).
             self._l2_wait_stable()
+            # ★늦게 도착하는 알림 회수(13:57 run sc3g: 부분중복 '생략' 안내가 L3 닫힘
+            #   **뒤에** 표시 — 캡처엔 알림이 있는데 msg='' 오판. 구코드 500ms sleep 이
+            #   우연히 잡아주던 케이스). 안정화 후 300ms 내 알림 attach 시 메시지 반환.
+            try:
+                self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).first.wait_for(
+                    state="attached", timeout=300)
+            except Exception:
+                return ""
+            try:
+                late_msg = self.get_modal_message()
+            except Exception:
+                late_msg = ""
+            self.click_attached(self.SEL_CONFIRM_BTN)
+            self.wait_for_modal_closed()
+            return late_msg
         return ""
 
     def _l2_wait_stable(self, cap_ms: int = 2000) -> None:
