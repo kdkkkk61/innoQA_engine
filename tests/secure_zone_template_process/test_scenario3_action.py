@@ -421,9 +421,11 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             # ★증상별 카드 분리(사용자 지시 2026-07-14): 같은 증상(raw 서버 오류)끼리만
             #   병합 — 수정 경로의 '조용한 미저장'(다른 증상)과 한 카드로 묶지 않는다.
             #   수정 경로가 같은 raw 오류를 내면 ::raw 키로 자동 재병합.
+            # 라벨 = "<타입>: <증상>" 패턴 → 병합 제목이 "증상 — N건(타입 목록)"으로
+            # 압축돼 타입 범위가 제목에 노출(부분-타입 이슈의 전체 오독 방지, 2026-07-14)
             self._add(st,
-                      ("sc3l — 설명 3000자 → raw 서버 오류(클라 길이 가드 부재)" if raw_err
-                       else "sc3l — 설명 3000자 → 저장 처리"),
+                      (f"sc3l — {ko}: 설명 3000자 → raw 서버 오류(클라 길이 가드 부재)"
+                       if raw_err else f"sc3l — {ko}: 설명 3000자 → 저장 처리"),
                       f"대상: {ko}({tpl!r}) / 입력: 설명 3000자 + 추가 / 결과: 경고={msg!r}, "
                       f"커밋={committed} "
                       + ("[raw 서버 오류 — 클라 길이 가드 부재]" if raw_err

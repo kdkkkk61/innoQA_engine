@@ -461,23 +461,24 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             else:
                 # ★증상별 카드 분리(사용자 지시 2026-07-14): 생성 경로(raw 서버 오류)와
                 #   수정 경로(조용한 미저장)는 다른 증상 — 제목·병합 키를 증상 기준으로.
+                # 라벨 = "<타입>: <증상>" 패턴 — 병합 제목에 타입 범위 노출(전체 오독 방지)
                 if raw_err:
                     verdict, note = "warn", "[raw 서버 오류 — 생성(sc3l)과 동일, 수정 경로도 가드 부재]"
-                    label_i = "sc4i — 설명 3000자 → raw 서버 오류(클라 길이 가드 부재)"
+                    label_i = f"sc4i — {ko}: 설명 3000자 → raw 서버 오류(클라 길이 가드 부재)"
                     mk_i = "szproc_desc_ovf::PROCESS::raw"
                 elif n == 3000:
                     verdict, note = ("warn",
                         "[★경로 불일치 — 생성은 3000자를 서버 오류로 차단하는데 수정 경로는 "
                         "그대로 DB 저장. 수정이 생성 검증을 우회]")
-                    label_i = "sc4i — 설명 3000자 수정 → 생성 검증 우회 저장"
+                    label_i = f"sc4i — {ko}: 설명 3000자 수정 → 생성 검증 우회 저장"
                     mk_i = "szproc_desc_ovf::PROCESS::bypass"
                 elif 0 < n < 3000:
                     verdict, note = "warn", f"[조용한 절단 — 안내 없이 {n}자로 잘려 저장]"
-                    label_i = "sc4i — 설명 3000자 수정 → 조용한 절단 저장"
+                    label_i = f"sc4i — {ko}: 설명 3000자 수정 → 조용한 절단 저장"
                     mk_i = "szproc_desc_ovf::PROCESS::clip"
                 else:
                     verdict, note = "warn", "[조용한 미저장 — 경고 없이 설명 유실]"
-                    label_i = "sc4i — 설명 3000자 수정 → 조용한 미저장(경고 없음)"
+                    label_i = f"sc4i — {ko}: 설명 3000자 수정 → 조용한 미저장(경고 없음)"
                     mk_i = "szproc_desc_ovf::PROCESS::silent"
                 self._add(verdict,
                           label_i,
