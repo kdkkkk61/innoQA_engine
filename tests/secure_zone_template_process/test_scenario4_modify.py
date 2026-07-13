@@ -194,12 +194,14 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
             page.l3_register(ttype, count=1)
             page.l3_add_message(ttype)
             page.dismiss_alert()
-            try:
-                page.page.locator(
-                    f"{page.SEL_L2_MODAL} tbody tr:visible input[type='checkbox']"
-                ).first.wait_for(state="attached", timeout=page._TIMEOUT_TABLE)
-            except Exception:
-                pass
+        # ★행 attach 대기는 무조건(등록 분기 밖) — 기존 항목 경로도 모달 오픈 직후
+        #   재렌더로 순간 detach 가능(stale 함정 4회째, 12:27 run sc4k IndexError)
+        try:
+            page.page.locator(
+                f"{page.SEL_L2_MODAL} tbody tr:visible input[type='checkbox']"
+            ).first.wait_for(state="attached", timeout=page._TIMEOUT_TABLE)
+        except Exception:
+            pass
 
     def _row_item_status_on(self, page, idx: int = 0) -> bool:
         """L2 행 상태 셀 ON 여부 — ★재정정(Chrome 프로브 2026-07-13): 'on' 클래스는
@@ -480,14 +482,24 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
 
             # 경계 입력 이후 같은 항목 정상 재수정 — 오염/복구(사용자 지적 2026-07-09)
             page.fill(DESC, "sc4i_recover")
+            # 대비 컷 — fail(복구 실패) 카드에 스토리가 없으면 _R 이 6분 테스트를 통째로
+            # 재생(teardown +343s, 12:27 run) → 예상된 결함 카드는 직접 첨부(sc4n 동일 원칙)
+            rec_shots = [self._shot(f"sc4i_{ttype}_복구입력",
+                                    highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC),
+                                    caption="정상값 'sc4i_recover' 입력 — '수정' 클릭 직전")]
             e1 = len(js_errors)
             msg2 = page.l3_add_message(ttype, button="수정")
             rec_errs = js_errors[e1:]
+            rec_shots.append(self._shot(f"sc4i_{ttype}_복구클릭직후",
+                                        caption=f"'수정' 클릭 직후 — 경고={msg2!r}"))
             page.dismiss_alert()
             if page.page.locator(f"div#{page.L3_MAP[ttype]}.in").count() > 0:
                 page.close_l3_modal(ttype)
             page.l2_open_item_edit(0)
             after = page.l3_scope(ttype).locator(page.SEL_L3_DESC).first.input_value()
+            rec_shots.append(self._shot(f"sc4i_{ttype}_복구재오픈",
+                                        highlight=page.l3_scope(ttype).locator(page.SEL_L3_DESC),
+                                        caption=f"재오픈 — 설명 {after[:20]!r}"))
             page.close_l3_modal(ttype)
             recovered = after == "sc4i_recover"
             # 제목은 결함 중심으로 — '3000자'는 발견 경위일 뿐, JS 오류 분기의 실체는
@@ -505,6 +517,8 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                           else " [경계 입력 후 항목 정상 수정 불가 — 상태 오염]")),
                       sc=4,
                       highlight=page.page.locator(f"{page.SEL_L2_MODAL} tbody tr:visible"),
+                      screenshots=(([s for s in rec_shots if s] or None)
+                                   if not recovered else None),
                       merge_key=(f"szproc_item_edit_broken::{ttype}" if broken else None),
                       repro=(f"1. {ko} 템플릿 {tpl} 의 항목 {item} 이름 링크 → 설명만 변경 → '수정'\n"
                              "2. 무반응(모달 유지·경고 없음, 콘솔 ReferenceError)\n"

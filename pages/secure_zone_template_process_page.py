@@ -580,7 +580,17 @@ class SecureZoneTemplateProcessPage(BasePage):
         태그 탭은 '순위' 컬럼이 끼어 이름=td[2] (실측 2026-07-09) — tag=True.
         고정 700ms → L3 열림(.in attach) 조건 대기 + 로드값 바인딩 여유 (2026-07-13 성능)."""
         col = 2 if tag else 1
-        self.l2_rows()[index].locator("td").nth(col).locator("a").first.evaluate(
+        rows = self.l2_rows()
+        if index >= len(rows):
+            # 재렌더 사이 순간 detach 대비(stale 함정 4회째, 12:27 run sc4k) — attach 재대기
+            try:
+                self.page.locator(
+                    f"{self.SEL_L2_MODAL} tbody tr:visible input[type='checkbox']"
+                ).first.wait_for(state="attached", timeout=self._TIMEOUT_TABLE)
+            except Exception:
+                pass
+            rows = self.l2_rows()
+        rows[index].locator("td").nth(col).locator("a").first.evaluate(
             "el => el.click()")
         try:
             self.page.locator(self.SEL_L3_ANY).first.wait_for(
@@ -637,17 +647,22 @@ class SecureZoneTemplateProcessPage(BasePage):
     def _l3_commit_outcome(self, ttype: str, cap_ms: int = 1500) -> str:
         """커밋 클릭 후 결과 폴링 — 'alert'(알림 뜸·L3 유지) / 'closed'(알림 없이 L3
         자동 닫힘=커밋) / 'silent'(cap 까지 무반응 — 거부 silent no-op 결함 등).
-        고정 500ms sleep + 무반응 시 detach 3s 허비 대체 (2026-07-13 성능)."""
+        고정 500ms sleep + 무반응 시 detach 3s 허비 대체 (2026-07-13 성능).
+        ★루프 안은 논블로킹 count() 만 — is_confirm_modal_visible() 은 모달 부재 시
+        3s(wait_for attached) 블로킹이라 폴링에 쓰면 silent 커밋당 ~50s 역회귀
+        (12:27 run 32분·sc4i +205s 의 원인, 실경과시간 기준 cap 으로 교정)."""
+        import time as _t
         l3 = self.page.locator(f"div#{self.L3_MAP[ttype]}.in")
-        waited = 0
-        while waited <= cap_ms:
-            if self.is_confirm_modal_visible():
+        alert = self.page.locator(self.SEL_CONFIRM_MODAL_OPENED)
+        deadline = _t.monotonic() + cap_ms / 1000
+        while True:
+            if alert.count() > 0:
                 return "alert"
             if l3.count() == 0:
                 return "closed"
+            if _t.monotonic() >= deadline:
+                return "silent"
             self.page.wait_for_timeout(100)
-            waited += 100
-        return "silent"
 
     def l3_click_add_wait(self, ttype: str) -> None:
         """L3 '추가' 클릭 → 알림/닫힘 대기(★dismiss 안 함). 행위 저널(_act)용 —
@@ -658,9 +673,15 @@ class SecureZoneTemplateProcessPage(BasePage):
         self._l3_commit_outcome(ttype)
 
     def dismiss_alert(self) -> None:
-        if self.is_confirm_modal_visible():
-            self.click_attached(self.SEL_CONFIRM_BTN)
-            self.wait_for_modal_closed()
+        # is_confirm_modal_visible() 은 모달 부재 시 3s 블로킹(wait_for attached) —
+        # 커밋 결과 확정 후 호출되는 자리라 300ms 유예면 충분 (2026-07-13 성능)
+        try:
+            self.page.locator(self.SEL_CONFIRM_MODAL_OPENED).wait_for(
+                state="attached", timeout=300)
+        except Exception:
+            return
+        self.click_attached(self.SEL_CONFIRM_BTN)
+        self.wait_for_modal_closed()
 
     def l2_item_count(self) -> int:
         """L2 현재 탭의 등록 행 수 — 개별/태그 두 테이블이 DOM 공존(탭 전환)하므로

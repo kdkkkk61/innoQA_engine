@@ -2710,3 +2710,19 @@ sc5a 에는 재오픈 행 셀=O 검증(재오픈 렌더 계층) 별도 추가.)
 - **교훈**: ①토글류 판독은 클래스·checked 가 아니라 **비주얼(computed 색)이 진실** — DOM 인코딩은 반전·고정·XOR 일 수 있다. ②카드와 캡처가 모순되면 캡처(눈)가 맞고 판독(코드)을 의심할 것. ③"무반응"은 네트워크 관찰 없이 단정 금지.
 
 상태: [RESOLVED] (재실행 검증 대기 — 사용자 실행)
+
+---
+
+## 성능 1차 역회귀 — 폴링 루프가 블로킹 헬퍼를 반복 호출 (20.5분→32분) — 2026-07-13
+
+- **증상**: 성능 커밋(f06db35) 후 run 이 24분→32분. sc4i +205s(call)+205s(teardown), sc3j +93s, sc4n +38s, sc4r +41s. TimeoutError 로그 0건 — 명시 실패 없이 시간만 증발.
+- **원인 1(주범)**: `_l3_commit_outcome` 폴링 루프가 `is_confirm_modal_visible()` 을 반복 호출 — 이 헬퍼는 단순 체크가 아니라 **모달 부재 시 `wait_for(attached, 3000)` 3초 블로킹**. silent(무반응) 커밋 1회당 3s×16 iteration ≈ 50s (sc4i 타입당 +51s 실측과 일치). cap 카운터도 sleep 만 세서 실경과시간 미반영.
+- **원인 2**: sc4i 거부 '복구 실패' fail 카드에 screenshots 없음 → `_R` 이 6분 테스트 전체 재생(teardown 343s). sc4n(b67fff0)과 동일 함정의 다른 카드 — 08:33 run 부터 이미 137s 로 존재.
+- **원인 3(별건, 이번 run 유일 FAIL)**: sc4k IndexError — `_ensure_item` 의 행 attach 대기가 등록 분기 **안에만** 있어 "항목 이미 있음" 경로는 무대기 반환 → 모달 오픈 직후 재렌더 사이 순간 detach 를 밟음(stale 함정 4회째).
+- **수정**:
+  - `_l3_commit_outcome`: 루프 안은 논블로킹 `locator.count()` 만 + `time.monotonic()` 실경과시간 cap. `dismiss_alert` 도 3s 블로킹 → 300ms 유예로(커밋 결과 확정 후 호출되는 자리).
+  - sc4i 복구 카드에 대비 3컷(입력→클릭직후→재오픈) 첨부 — fail 시 `_R` 미발동.
+  - `_ensure_item` 행 attach 대기를 분기 밖으로(무조건) + `l2_open_item_edit` 에 rows 부족 시 attach 재대기 가드.
+- **교훈**: **폴링 루프에 넣는 조건 체크는 반드시 논블로킹인지 먼저 확인**(is_* 이름이라도 내부가 wait_for 일 수 있다). cap 은 iteration 수가 아니라 실경과시간으로. 그리고 "예상된 결함 fail 카드 = 스토리 직접 첨부" 규칙은 카드 신설 때마다 재확인.
+
+상태: [RESOLVED] (재실행 검증 대기 — 사용자 실행)
