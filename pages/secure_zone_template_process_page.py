@@ -257,15 +257,22 @@ class SecureZoneTemplateProcessPage(BasePage):
             for n in targets:
                 if not self._AUTO_ANY.match(n):
                     raise Exception(f"[AUTO] 접두사 아님 — 일괄 삭제 대상 오류: {n}")
-            # 매칭 행 체크박스 일괄 체크 — 단일 evaluate
-            self.page.locator("table tbody").first.evaluate(
+            # 매칭 행 체크박스 일괄 체크 — 단일 evaluate.
+            # ★재렌더가 체크를 지울 수 있음(16:50 run sc5d: '삭제할 항목을 체크해 주세요')
+            #   → 체크 반영 수를 확인하고 미달이면 재체크(최대 4회) 후에만 삭제 클릭.
+            _check_js = (
                 "(tb, nms) => { const s = new Set(nms);"
                 " [...tb.querySelectorAll('tr')].forEach(r => {"
                 "  if (r.cells && r.cells.length > 1 && s.has(r.cells[1].innerText.trim())) {"
                 "   const c = r.querySelector(\"input[type='checkbox']\");"
-                "   if (c && !c.checked) c.click(); } }); }",
-                targets)
-            self.page.wait_for_timeout(300)
+                "   if (c && !c.checked) c.click(); } }); }")
+            for _try in range(4):
+                self.page.locator("table tbody").first.evaluate(_check_js, targets)
+                self.page.wait_for_timeout(300)
+                checked = self.page.locator(
+                    "table tbody input[type='checkbox']:checked").count()
+                if checked >= len(targets):
+                    break
             self.click(self.SEL_DELETE_BTN)
             if not self.is_confirm_modal_visible():
                 raise Exception("일괄 삭제 — 확인 모달 없음")
@@ -273,6 +280,10 @@ class SecureZoneTemplateProcessPage(BasePage):
             self.click_attached(self.SEL_CONFIRM_BTN)
             self.wait_for_modal_closed()
             if "하시겠습니까" not in msg:
+                if "체크" in msg:   # 체크 유실(재렌더 경합) — 외곽 루프에서 재시도
+                    self._dismiss_stale_confirm_modal()
+                    self.page.wait_for_timeout(400)
+                    continue
                 raise Exception(f"일괄 삭제 중 에러 모달: {msg!r}")
             self._dismiss_stale_confirm_modal()   # 결과 알림(있으면)
             self.wait_for(self.SEL_ADD_BTN)
