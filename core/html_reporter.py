@@ -636,19 +636,40 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             else:
                 severity = "낮음"
             # 스크린샷 — 기본 1장(extra["screenshot"]) + 필요 시 이전 시점 추가 캡처(extra["screenshots"], 시간순 앞에)
-            ss_paths = []
-            if r.extra:
-                ss_paths = list(r.extra.get("screenshots") or [])
-                if r.extra.get("screenshot"):
-                    ss_paths.append(r.extra["screenshot"])
+            def _shots_of(it):
+                if not it.extra:
+                    return []
+                out = list(it.extra.get("screenshots") or [])
+                if it.extra.get("screenshot"):
+                    out.append(it.extra["screenshot"])
+                return out
+            ss_paths = _shots_of(r)
+            if mk and len(merge_items.get(mk, [])) > 1:
+                # ★병합 카드 캡처 전수(사용자 지적 2026-07-13): 대표 항목 캡처만 싣고 나머지
+                #   항목 캡처를 버리던 정보 손실 제거 — '결과 전수 표기'와 같은 원칙.
+                #   각 검출은 별도 테스트의 재현 컷이므로 항목별 구분 머리를 붙여 전부 표기.
+                ss_paths = []
+                for it in merge_items[mk]:
+                    shots_i = _shots_of(it)
+                    if not shots_i:
+                        continue
+                    head_i = _strip_scenario_prefix(it.label or "").split(": ", 1)[0]
+                    ss_paths.append({"divider":
+                        f"{_scenario_label(it, is_list, page_id)} — {head_i}"})
+                    ss_paths.extend(shots_i)
             ss_html = ""
             if ss_paths:
                 from pathlib import Path as _Path
                 imgs = ""
+                n_imgs = 0
                 for sp in ss_paths:
                     # dict 형식 {"path","caption"} = 스텝 캡처(리턴 재생 등 — 순서·맥락 표기), str = 기존 단일 캡처
+                    # {"divider": ...} = 병합 항목 구분 머리(어느 검출의 컷인지)
                     cap = None
                     if isinstance(sp, dict):
+                        if sp.get("divider"):
+                            imgs += f'\n                  <div class="ss-div">{html.escape(sp["divider"])}</div>'
+                            continue
                         cap, sp = sp.get("caption"), sp.get("path")
                     if not sp:
                         continue
@@ -657,8 +678,9 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                         if cap:
                             imgs += f'\n                  <div class="ss-cap">{html.escape(cap)}</div>'
                         imgs += f'\n                  <img src="{ss_uri}" class="ss-img" alt="{html.escape(r.label)}">'
+                        n_imgs += 1
                 if imgs:
-                    n_note = f" ({len(ss_paths)}장)" if len(ss_paths) > 1 else ""
+                    n_note = f" ({n_imgs}장)" if n_imgs > 1 else ""
                     ss_html = f"""
             <tr>
               <th>스크린샷</th>
@@ -668,13 +690,18 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                 </details>
               </td>
             </tr>"""
+            # 병합 카드 = 검출 N개소(항목 수) — 헤더 chip + data-spots(탭 필터 카운트용)
+            n_spots = len(merge_items.get(mk, [r])) if mk else 1
+            spots_chip = (f'<span class="defect-spots">검출 {n_spots}개소</span>'
+                          if n_spots > 1 else "")
             defects.append(f"""
-        <div class="defect-card defect-{css}" data-page-key="{html.escape(label)}">
+        <div class="defect-card defect-{css}" data-page-key="{html.escape(label)}" data-spots="{n_spots}">
           <div class="defect-header">
             <span class="issue-num">#{issue_num}</span>
             {badge}
             <span class="defect-page">{html.escape(label)}</span>
             <span class="defect-scenario">{html.escape(scenario)}</span>
+            {spots_chip}
             <span class="defect-severity severity-{severity}">심각도: {severity}</span>
           </div>
           <div class="defect-title">{html.escape(merged_title or _strip_scenario_prefix(r.label or ''))}</div>
@@ -804,6 +831,10 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
   border-radius: 4px; display: block; }
 .ss-cap { margin-top: 14px; font-size: 13px; font-weight: 600; color: #1e3a5f;
   border-left: 3px solid #1e3a5f; padding-left: 8px; }
+.ss-div { margin-top: 18px; font-size: 12px; font-weight: 700; color: #555;
+  background: #f0f3f8; border-radius: 4px; padding: 4px 8px; }
+.defect-spots { font-size: 12px; font-weight: 600; color: #4a6fa5;
+  background: #eef3fa; border-radius: 4px; padding: 2px 8px; }
 """
 
 
@@ -931,7 +962,7 @@ def generate_html_report(
 
   <!-- DEFECT_SECTION_START -->
   <div class="section">
-    <div class="section-title">🐛 확정된 결함 (<span id="defect-count">{total_f + total_k + total_e}</span>건)</div>
+    <div class="section-title">🐛 확정된 결함 (<span id="defect-count">{defect_html.count('class="defect-card')}</span>건 · 검출 <span id="defect-spots">{total_f + total_k + total_e}</span>개소)</div>
     {defect_html}
   </div>
   <!-- DEFECT_SECTION_END -->
@@ -948,16 +979,21 @@ def generate_html_report(
 function switchTab(btn, key) {{
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  var defectCount = 0;
+  var defectCount = 0, spotCount = 0;
   document.querySelectorAll('[data-page-key]').forEach(function(el) {{
     var show = key === '전체' || el.dataset.pageKey === key;
     el.style.display = show ? '' : 'none';
-    if (show && el.classList.contains('defect-card')) defectCount++;
+    if (show && el.classList.contains('defect-card')) {{
+      defectCount++;
+      spotCount += parseInt(el.dataset.spots || '1', 10);
+    }}
   }});
   var noDefEl = document.getElementById('tab-no-defect');
   if (noDefEl) noDefEl.style.display = defectCount > 0 ? 'none' : '';
   var countEl = document.getElementById('defect-count');
   if (countEl) countEl.textContent = defectCount;
+  var spotEl = document.getElementById('defect-spots');
+  if (spotEl) spotEl.textContent = spotCount;
 }}
 </script>
 </body>
