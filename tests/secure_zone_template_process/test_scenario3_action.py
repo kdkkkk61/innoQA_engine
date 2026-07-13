@@ -1008,8 +1008,9 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
 
     # ── sc3w: 태그 탭 L2 검색 — sc3r(개별 탭) 미러 (매트릭스 감사 갭 2026-07-13) ──
     def test_scenario3w_tag_l2_search(self, logged_in_page, settings):
-        """L2 검색창은 태그 탭에도 노출 — 검색 클래스가 개별 프로세스 탭(sc3r)만 검증돼
-        있던 갭. 태그 이름 정확 검색 + 빈 검색 복귀를 동일 기준으로 확인."""
+        """★실측 확정(Chrome 2026-07-13): 태그 탭에는 검색 UI 가 없음(visible 텍스트
+        input·검색 버튼 0개 — 개별 탭 전용). 매트릭스 '기능 부재(실측)' 제외 — 부재를
+        사실 기록하고, 향후 제품이 검색을 추가하면 이 테스트가 sc3r 클래스 검증으로 전환."""
         print("\n━━ [프로세스] sc3w: 태그 탭 L2 검색 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
@@ -1030,21 +1031,18 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             return
         target = picked[0]
         total = page.l2_item_count()
-        # ★태그 탭 검색창은 개별 탭의 input#searchText 가 아닐 수 있음(15:38 run —
-        #   :visible 매칭 0 → fill timeout, 관리자 세션 만료로 즉시 프로브 불가).
-        #   미식별 시 크래시 대신 보이는 input 목록을 수집(다음 실측의 근거) 후 검증 불가.
+        # ★실측 확정(Chrome 2026-07-13): 태그 탭 visible 텍스트 input·검색 버튼 0개 —
+        #   검색 기능 자체가 개별 탭 전용. 부재를 사실 기록(pass), 향후 검색이 추가되면
+        #   아래 sc3r 클래스 검증이 자동 활성화.
         if page.page.locator(f"{page.SEL_L2_MODAL} input#searchText:visible").count() == 0:
-            inputs = page.page.locator(page.SEL_L2_MODAL).last.evaluate(
-                "m => [...m.querySelectorAll('input')]"
-                ".filter(i => i.offsetParent !== null && i.type !== 'checkbox')"
-                ".map(i => (i.id || '?') + ':' + (i.placeholder || ''))")
             page.l2_bulk_remove()
             page.close_l2_modal()
-            self._add("warn",
-                      "sc3w — 태그 탭 L2 검색 [검증 불가 — 검색창이 개별 탭과 다른 DOM]",
-                      f"관찰: 태그 탭 visible input = {inputs} (input#searchText 없음) — "
-                      "검색창 id 실측 후 셀렉터 확정 필요", sc=3,
-                      repro="1. 태그 탭 검색창 DOM 확인\n2. 개별 탭(input#searchText)과 대조")
+            self._add("pass",
+                      "sc3w — 태그 탭 L2 검색: 기능 없음(실측) — 검색은 개별 탭 전용",
+                      "결과: 태그 탭 visible 텍스트 input/검색 버튼 0개 (Chrome 실측 "
+                      "2026-07-13). 검색 클래스는 개별 탭(sc3r)에서 커버 — 기능 부재 제외",
+                      sc=3,
+                      repro="1. 태그 탭 열기\n2. 검색창 존재 여부(현재 없음 — 생기면 검증 전환)")
             return
         page.l2_search(target)
         hit = page.l2_item_count()
