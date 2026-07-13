@@ -202,12 +202,11 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                 pass
 
     def _row_item_status_on(self, page, idx: int = 0) -> bool:
-        """L2 행 상태 셀(td[4]) ON 여부 — ★Chrome 실측(2026-07-09): 시각 상태는
-        label.switch 의 'on' 클래스. 내부 input#status 는 checked 가 모델과 미바인딩
-        (활성인데 checked=false)이라 신뢰 불가 — sc4g 첫 FAIL 원인."""
-        cls = page.l2_rows()[idx].locator("td").nth(4).locator(
-            "label.switch").first.get_attribute("class") or ""
-        return " on" in f" {cls} "
+        """L2 행 상태 셀 ON 여부 — ★재정정(Chrome 프로브 2026-07-13): 'on' 클래스는
+        항상 붙음(무의미)·checked 는 저장값 반전·비주얼은 XOR CSS 로 저장값을 정확히
+        표시. 클래스 판독(2026-07-09 정정 포함)이 '항상 ON' 오탐 원인 — 비주얼 판독으로
+        교체(page.l2_status_display_on 참조)."""
+        return bool(page.l2_status_display_on(idx))
 
     def _wait_row_status(self, page, want_on: bool, timeout_ms: int = 4000) -> bool:
         """L2 행 상태 표시가 기대값이 될 때까지 폴링 — '수정' 커밋 후 목록 재렌더가
@@ -900,10 +899,12 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.l2_bulk_remove()
         page.close_l2_modal()
 
-    # ── sc4r: 태그 설명 3000자 (sc4i 태그판 — 실측: 무반응·요청 미발송) ─────
+    # ── sc4r: 태그 설명 3000자 (sc4i 태그판 — 서버 응답을 실측해 모드 분류) ─────
     def test_scenario4r_tag_desc_overflow_in_modify(self, logged_in_page, settings):
-        """태그 편집 설명 3000자 → '수정'. 실측(2026-07-10): 경고·서버 요청 모두 없이
-        무반응(개별 프로세스의 PUT 500/JS 오류와 다른 제3의 무피드백 모드) — 재오픈 대조."""
+        """태그 편집 설명 3000자 → '수정'. ★정정(run 실측 2026-07-13): '요청 미발송
+        무반응'(2026-07-10 수동 프로브)은 JS setter 미동기 오관찰 — 실제로는 PUT
+        /processTag/szTag 가 발송되고 서버 500, UI 가 경고 없이 삼킴(프로세스 설명
+        오버플로와 동일 계열). 네트워크 응답을 수집해 문구를 실측으로 분기."""
         print("\n━━ [프로세스] sc4r: 태그 설명 3000자(수정 경로) ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
@@ -917,7 +918,18 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         shots = [self._shot("sc4r_3000자_입력",
                             highlight=page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC),
                             caption="설명 3000자 입력 — '수정' 클릭 직전")]
+        # '수정' 커밋의 서버 응답 실측 — "무반응"이 미발송인지 raw 오류 은폐인지 판별
+        put_statuses: list[int] = []
+        def _collect_put(resp):
+            try:
+                if "/processTag/" in resp.url and resp.request.method == "PUT":
+                    put_statuses.append(resp.status)
+            except Exception:
+                pass
+        page.page.on("response", _collect_put)
         msg = page.l3_add_message("ALLOW_PROCESS", button="수정")
+        page.page.wait_for_timeout(400)
+        page.page.remove_listener("response", _collect_put)
         page.dismiss_alert()
         if page.page.locator(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in").count() > 0:
             shots.append(self._shot("sc4r_클릭직후",
@@ -930,17 +942,23 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                                 caption=f"재오픈 — 설명 {len(stored)}자(3000자 저장 안 됨)"))
         page.close_l3_modal("ALLOW_PROCESS")
         n = len(stored)
+        srv = (f"서버 응답 {put_statuses}" if put_statuses else "저장 요청 미발송")
         if n == 3000:
             verdict, note = "warn", "[★3000자 그대로 저장 — 생성/프로세스 경로와 불일치]"
         elif stored == base_desc:
-            verdict, note = "warn", ("[조용한 미저장 — 경고·저장 요청 모두 없이 무반응"
-                                     "(3000자 수정이 통째로 무시됨)]")
+            if any(s >= 500 for s in put_statuses):
+                note = (f"[raw 서버 오류 은폐 — PUT {put_statuses} 인데 UI 는 경고 없이 "
+                        "무반응·미저장(프로세스 설명 오버플로와 동일 계열, 측정=허용 템플릿. "
+                        "거부는 편집 불능으로 검증 불가)]")
+            else:
+                note = f"[조용한 미저장 — 경고 없이 무반응({srv})]"
+            verdict = "warn"
         else:
             verdict, note = "warn", f"[조용한 절단/변형 — {n}자로 저장]"
         self._add(verdict,
                   "sc4r — 태그: 설명 3000자 → 저장 처리",
                   f"대상: '[AUTO]_sz_proc_4r' 태그 탭의 {tag!r} / 입력: 설명 3000자 + "
-                  f"'수정'({msg!r}) / 재오픈 저장={n}자 {note}", sc=4,
+                  f"'수정'({msg!r}) / 재오픈 저장={n}자, {srv} {note}", sc=4,
                   screenshots=shots,
                   merge_key="szproc_desc_ovf::TAG",
                   repro=f"1. 태그 {tag} 편집 → 설명 3000자 → '수정'\n"
@@ -960,12 +978,11 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
         page.l3_scope("ALLOW_PROCESS").locator("input#DELETE").first.evaluate("el => el.click()")
         page.page.wait_for_timeout(150)
         page.l3_add_message("ALLOW_PROCESS", button="수정")
-        # 태그 행 상태 셀 = td[5] (순위 컬럼 시프트) — label.switch 'on' 클래스가 진실
+        # ★판독 정정(Chrome 2026-07-13): 클래스 아닌 비주얼(computed 색) 판독
         import time as _t
         deadline = _t.monotonic() + 4
         def _tag_row_on():
-            cls = page.l2_rows()[0].locator("label.switch").first.get_attribute("class") or ""
-            return " on" in f" {cls} "
+            return bool(page.l2_status_display_on(0))
         after_on = _tag_row_on()
         while after_on and _t.monotonic() < deadline:
             page.page.wait_for_timeout(250)

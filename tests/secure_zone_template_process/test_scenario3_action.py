@@ -792,9 +792,9 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
     # ── sc3t: 등록 시 비활성 → 행 상태 표시 — ★4타입 전수 (Chrome 실측 2026-07-10) ──
     def test_scenario3t_item_status_display_by_type(self, logged_in_page, settings):
         """등록 시점에 상태=비활성 선택 → 저장(재오픈 radio)과 행 상태 셀 표시를 대조.
-        실측 정정(2026-07-10 16:29 run 리포트): 4타입 전부 동일 — 목록 조회(재조회 포함)로는
-        저장값 미반영(항상 ON)이고, **해당 항목 편집 모달을 열었다 닫아야 상태 셀이 갱신**됨.
-        (이전의 '거부만 OFF 정상' 관찰은 편집 모달을 연 뒤 목록을 본 것 — 갱신 트리거 효과)"""
+        ★재정정(Chrome 프로브 2026-07-13): 표시는 등록·수정 양방향 저장값을 즉시 정확히
+        반영(정상). 종전 '항상 ON·편집 열닫 갱신 트리거' 관측(2026-07-10)은 클래스('on'
+        항상 붙음) 판독 오탐이었음 — 비주얼 판독은 page.l2_status_display_on 참조."""
         print("\n━━ [프로세스] sc3t: 등록 시 비활성 → 행 상태 표시 4타입 전수 ━━━")
         page = self._new_page(logged_in_page, settings)
         page.navigate_to()
@@ -822,11 +822,9 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
             # L2 재오픈(신규 조회)으로 확정. 재조회 후에도 ON 이어야 표시 결함.
             import time as _t
             def _row_on():
-                rs = page.l2_rows()
-                if not rs:
-                    return None
-                cls = rs[0].locator("label.switch").first.get_attribute("class") or ""
-                return " on" in f" {cls} "
+                # ★판독 정정(Chrome 2026-07-13): 'on' 클래스는 항상 붙음(무의미) —
+                #   비주얼(computed 색) 판독으로 교체. 종전 클래스 판독이 '항상 ON' 오탐 원인.
+                return page.l2_status_display_on(0)
             deadline = _t.monotonic() + 2.5
             shown_on = _row_on()
             while shown_on and _t.monotonic() < deadline:

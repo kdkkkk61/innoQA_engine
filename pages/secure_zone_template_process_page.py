@@ -542,6 +542,27 @@ class SecureZoneTemplateProcessPage(BasePage):
         cls = btn.get_attribute("class") or ""
         return " on" in f" {cls} "
 
+    def l2_status_display_on(self, index: int = 0):
+        """L2 행 상태 셀의 **비주얼 표시** ON 여부 — 슬라이더 computed 색으로 판독.
+        ★실측 정정(Chrome 2026-07-13, [AUTO]_probe_status 프로브): 이 셀의 DOM 은 3중 함정 —
+        ①label.switch 의 'on' 클래스는 **항상 붙음**(상태 무관·무의미)
+        ②input#status.checked 는 저장값의 **반전**(비활성=checked true)
+        ③CSS `.switch.on input:checked+.slider`(회색)가 `.switch.on .slider`(파랑)를
+          이겨 비주얼 = (클래스 on) XOR (checked).
+        결과적으로 **비주얼은 등록·수정 양방향 저장값을 즉시 정확히 표시**(정상 동작).
+        클래스만 읽던 판독(sc3t/sc4g/sc4s '항상 ON' 결함 카드)은 전부 오탐이었음.
+        판독은 비주얼 진실인 computed 색: 파랑 rgb(68,153,232)=ON / 회색=OFF.
+        None = 행 없음/판독 불가."""
+        rows = self.l2_rows()
+        if index >= len(rows):
+            return None
+        try:
+            bg = rows[index].locator("label.switch .slider").first.evaluate(
+                "el => getComputedStyle(el).backgroundColor")
+            return bg == "rgb(68, 153, 232)"
+        except Exception:
+            return None
+
     def l2_toggle_option(self, index: int = 0) -> bool:
         """L2 행 옵션 버튼 클릭 → 토글 후 on 여부 반환 (인라인 즉시 반영, 실측).
         고정 300ms → 클래스 변화 폴링(상한 동일) (2026-07-13 성능)."""
