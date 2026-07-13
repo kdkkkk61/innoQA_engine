@@ -635,6 +635,13 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                 severity = "높음"
             else:
                 severity = "낮음"
+            # ★크래시 카드(테스트 코드 예외 중단) — 제품 결함 카드처럼 읽히던 문제
+            #   (사용자 보고 2026-07-13: "입력: 정상 동작" 등 기본 채움이 혼란 유발).
+            #   제품 이슈가 아님을 명시하고 무의미한 채움 텍스트 제거.
+            if (r.extra or {}).get("crash"):
+                steps = "테스트 코드가 예외로 중단됨 — 제품 재현 절차 아님"
+                expected = "해당 없음 — 테스트 도구 오류 (제품 결함 아님, 테스트 코드 수정 대상)"
+                severity = "도구오류"
             # 스크린샷 — 기본 1장(extra["screenshot"]) + 필요 시 이전 시점 추가 캡처(extra["screenshots"], 시간순 앞에)
             def _shots_of(it):
                 if not it.extra:
@@ -815,6 +822,7 @@ body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #
 .defect-severity { margin-left: auto; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
 .severity-높음 { background: #fde8e8; color: #e74c3c; }
 .severity-낮음 { background: #fef9e7; color: #f39c12; }
+.severity-도구오류 { background: #ececec; color: #666; }
 .defect-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
 .defect-detail { width: 100%; border-collapse: collapse; font-size: 13px; }
 .defect-detail th { width: 120px; padding: 8px 12px; background: #f8f9fa; text-align: left; font-weight: 600; border: 1px solid #eee; color: #555; vertical-align: top; }
