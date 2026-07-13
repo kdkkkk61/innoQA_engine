@@ -940,3 +940,68 @@ class TestSecureZoneTemplateProcessScenario3Action(SecureZoneTemplateProcessBase
                   "sc3u — 태그 제거(-) → 카운트 감소",
                   f"입력: 태그 1건 제거 / 결과: 확인={msg_rm!r}, 2→{cnt_rm}건", sc=3,
                   repro="1. 태그 행 체크 → -\n2. 확인 → 1건")
+
+    # ── sc3v: 태그 설명 3000자 — 등록 경로 (sc3l 태그판·sc4r 세로 대칭) ──────
+    def test_scenario3v_tag_desc_overflow(self, logged_in_page, settings):
+        """태그 등록 경로 설명 3000자 — 수정 경로(sc4r)만 있고 등록 경로가 없던 비대칭
+        해소(사용자 지적 2026-07-13: 태그 오버플로 카드가 시나리오 4 단독). 서버 응답을
+        수집해 무반응/raw 오류를 실측 분기. 측정=허용 템플릿(sc4r 과 동일 스코프)."""
+        print("\n━━ [프로세스] sc3v: 태그 설명 3000자(등록 경로) ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        tpl = "[AUTO]_sz_proc_3v"
+        page.navigate_to_clean()
+        page.ensure_template(tpl, "ALLOW_PROCESS")
+        page.open_l2_modal(tpl)
+        page.switch_l2_tab("태그")
+        page.l2_bulk_remove()
+        page.open_l3_add("ALLOW_PROCESS")
+        picked = page.l3_register("ALLOW_PROCESS", tag=True, count=1)
+        if not picked:
+            page.close_l3_modal("ALLOW_PROCESS")
+            page.close_l2_modal()
+            self._add("warn", "sc3v — 태그 설명 3000자(등록) [검증 불가 — 태그 선택 0건]",
+                      "picker 선택 실패 — 재실측 필요", sc=3)
+            return
+        DESC = f"div#{page.L3_MAP['ALLOW_PROCESS']}.in {page.SEL_L3_DESC}"
+        page.fill(DESC, "가" * 3000)
+        shots = [self._shot("sc3v_3000자_입력",
+                            highlight=page.l3_scope("ALLOW_PROCESS").locator(page.SEL_L3_DESC),
+                            caption="태그 선택 + 설명 3000자 — '추가' 클릭 직전")]
+        before = page.l2_item_count()
+        errs: list = []
+        def _collect(resp):
+            try:
+                if resp.status >= 400:
+                    errs.append((resp.request.method, resp.status,
+                                 resp.url.rsplit("/", 1)[-1]))
+            except Exception:
+                pass
+        page.page.on("response", _collect)
+        page.l3_click_add_wait("ALLOW_PROCESS")
+        page.page.wait_for_timeout(400)
+        page.page.remove_listener("response", _collect)
+        msg = (page.get_modal_message()
+               if page.page.locator(page.SEL_CONFIRM_MODAL_OPENED).count() > 0 else "")
+        shots.append(self._shot("sc3v_클릭직후", caption=f"'추가' 클릭 직후 — 경고={msg!r}"))
+        page.dismiss_alert()
+        if page.page.locator(f"div#{page.L3_MAP['ALLOW_PROCESS']}.in").count() > 0:
+            page.close_l3_modal("ALLOW_PROCESS")
+        after = page.l2_item_count()
+        committed = after == before + 1
+        raw_err = ("서버" in msg and "오류" in msg)
+        srv = f"서버 오류응답 {errs}" if errs else "오류응답 없음"
+        st = "warn" if (raw_err or errs or not committed) else "pass"
+        self._add(st,
+                  "sc3v — 태그: 설명 3000자 → 저장 처리",   # 라벨 본문 = sc4r 미러(세로 병합)
+                  f"대상: {tpl!r} 태그 탭의 {picked[0]!r} / 입력: 설명 3000자 + 추가 / "
+                  f"결과: 경고={msg!r}, 커밋={committed}, {srv} "
+                  + ("[raw 서버 오류 — 클라 길이 가드 부재]" if raw_err
+                     else f"[커밋 불발 — 경고 없이 무반응]" if not committed
+                     else "(제한 없이 커밋)"), sc=3,
+                  screenshots=(([s for s in shots if s] or None) if st == "warn" else None),
+                  merge_key=("szproc_desc_ovf::TAG" if st == "warn" else None),
+                  repro=f"1. {tpl} 태그 탭 → + → 태그 선택 + 설명 3000자\n2. 추가\n"
+                        "3. 커밋/서버 처리 확인")
+        page.l2_bulk_remove()
+        page.close_l2_modal()

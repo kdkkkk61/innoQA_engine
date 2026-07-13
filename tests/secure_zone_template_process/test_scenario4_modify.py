@@ -666,7 +666,9 @@ class TestSecureZoneTemplateProcessScenario4Modify(SecureZoneTemplateProcessBase
                       f"대상: {self._TPL!r} 개별 프로세스 탭 / 입력: {b!r} 편집 → 이미 등록된 "
                       f"{a!r} 로 재선택 '수정'({msg!r}) / 결과: {after} "
                       + ("[★동일 프로세스 중복 행 생성 — 등록 경로(생략 안내)와 달리 변경 경로는 "
-                         "중복 검사 누락]" if dup else "(차단/생략 — 원상 유지)" if blocked
+                         "중복 검사 누락. 대조: 미등록 항목으로의 재선택 변경은 정상 반영(sc4l 통과) "
+                         "— 변경 자체는 정상, 중복 검사만 빠짐]" if dup
+                         else "(차단/생략 — 원상 유지)" if blocked
                          else "(처리됨)"), sc=4,
                       highlight=page.page.locator(
                           f"{page.SEL_L2_MODAL} tbody tr:visible", has_text=a),
