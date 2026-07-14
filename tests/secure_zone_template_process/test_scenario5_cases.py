@@ -202,6 +202,58 @@ class TestSecureZoneTemplateProcessScenario5Cases(SecureZoneTemplateProcessBase)
         except Exception as e:
             self._add("warn", "sc5c — 수정 후 속성 재확인", f"예외: {e!r}", sc=5)
 
+    # ── 5e: 방식 B 사이클 4타입 전수 — 추가→속성→수정(rename)→속성 ─────
+    #    (물리적으로 5d 앞에 배치 — 5d 최종 cleanup 이 5e 산출물까지 정리)
+    def test_scenario5e_property_cycle_by_type(self, logged_in_page, settings):
+        """속성-확인 법칙(추가→속성→수정→속성)을 4타입 전수로 1회씩 — 이 탭은 타입마다
+        별개 구현이 많아(L3 4종·경고 상이) 대표 1타입만으론 부족(사용자 지시 2026-07-14).
+        수정 소재 = rename(타입 공통 필드): 속성 모달이 수정을 즉시 반영하는지(stale 클래스).
+        타입 표기가 각 타입명으로 정확한지도 함께 확인(속성 모달은 공용 1모달)."""
+        print("\n━━ [프로세스] sc5e: 속성-확인 사이클 4타입 전수 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.navigate_to_clean()
+        for ttype in page.TYPES:
+            ko = page.TYPE_KO[ttype]
+            name = f"[AUTO]_sz_proc_5e_{ttype.split('_')[0].lower()}"
+            renamed = name + "_r"
+            for leftover in (name, renamed):   # 재실행 잔존 가드
+                if leftover in page.get_template_names():
+                    page.delete_template(leftover)
+                    page.navigate_to()
+            page.ensure_template(name, ttype)
+            # ① 추가 → 속성: 이름·타입 표기
+            try:
+                page.open_detail_modal(name)
+                d1 = page.detail_modal_text()
+                page.close_detail_modal()
+            except Exception as e:
+                d1 = f"(열람 실패: {e!r})"
+            ok1 = (name in d1) and (ko in d1)
+            # ② 수정(rename) → 속성: 갱신 반영
+            page.open_modify_modal(name)
+            page.page.locator(f"{page.SEL_MODAL} {page.SEL_NAME}").first.fill(renamed)
+            page.submit_and_message()
+            page._close_modal_if_open()
+            page.navigate_to()
+            try:
+                page.open_detail_modal(renamed)
+                d2 = page.detail_modal_text()
+                page.close_detail_modal()
+            except Exception as e:
+                d2 = f"(열람 실패: {e!r})"
+            ok2 = (renamed in d2) and (ko in d2)
+            self._add("pass" if (ok1 and ok2) else "warn",
+                      f"sc5e — {ko}: 추가→속성→수정(rename)→속성 사이클",
+                      f"결과: 생성 속성(이름·타입 표기)={ok1}, rename 후 속성 반영={ok2}"
+                      + ("" if (ok1 and ok2) else
+                         f" [속성 표기/갱신 어긋남 — d1 {'OK' if ok1 else '불일치'}, "
+                         f"d2 {'OK' if ok2 else '불일치'}]"), sc=5,
+                      merge_key=(None if (ok1 and ok2)
+                                 else f"szproc_detail_cycle::{ttype}"),
+                      repro=f"1. {ko} 템플릿 생성 → 속성 열람(이름·타입)\n"
+                            f"2. rename('{renamed}') → 속성 재열람\n3. 갱신 반영 확인")
+
     # ── 5d: 마무리 cleanup — 휘발성 [AUTO] 만 삭제 ──────────────────
     def test_scenario5d_final_cleanup(self, logged_in_page, settings):
         print("\n━━ [프로세스] sc5d: 마무리 cleanup(휘발성 [AUTO]) ━━━")
