@@ -254,6 +254,81 @@ class TestSecureZoneTemplateProcessScenario5Cases(SecureZoneTemplateProcessBase)
                       repro=f"1. {ko} 템플릿 생성 → 속성 열람(이름·타입)\n"
                             f"2. rename('{renamed}') → 속성 재열람\n3. 갱신 반영 확인")
 
+    # ── 5f: 속성 경로 하위속성 대조 — 4타입 전수 (사용자 발견 2026-07-14) ──
+    #    (물리적으로 5d 앞 배치 — 5d 최종 cleanup 이 산출물 정리)
+    def test_scenario5f_detail_item_sub_by_type(self, logged_in_page, settings):
+        """속성 모달 → 항목 이름 링크 → '하위속성 상세정보 보기'(viewDetailItemModal,
+        읽기 전용) — 저장한 항목 값이 이 속성 경로에서도 정확히 표시되는지 4타입 전수.
+        수동으로 4타입 반복 확인해야 하던 경로의 자동화(사용자 발견·지시 2026-07-14).
+        기대: 이름·설명 표시, 타입 전용 옵션(허용/예외=재시작, 예외=드라이브 2그룹)
+        저장값 그대로, 거부·차단=옵션 요소 없음, 상태 radio 표시."""
+        print("\n━━ [프로세스] sc5f: 속성 하위속성 대조 4타입 전수 ━━━")
+        page = self._new_page(logged_in_page, settings)
+        page.navigate_to()
+        page.navigate_to_clean()
+        DESC5F = "sc5f_desc"
+        for ttype in page.TYPES:
+            ko = page.TYPE_KO[ttype]
+            tpl = f"[AUTO]_sz_proc_5f_{ttype.split('_')[0].lower()}"
+            page.ensure_template(tpl, ttype)
+            page.open_l2_modal(tpl)
+            page.l2_bulk_remove()
+            page.open_l3_add(ttype)
+            picked = page.l3_register(ttype, count=1)
+            if not picked:
+                page.close_l3_modal(ttype)
+                page.close_l2_modal()
+                self._add("warn", f"sc5f — {ko}: 하위속성 대조 [검증 불가 — 항목 확보 실패]",
+                          "picker 선택 0건 — 재실측 필요", sc=5)
+                continue
+            item = picked[0]
+            scope = page.l3_scope(ttype)
+            page.fill(f"div#{page.L3_MAP[ttype]}.in {page.SEL_L3_DESC}", DESC5F)
+            if ttype in ("ALLOW_PROCESS", "EXCEPT_PROCESS"):
+                scope.locator("input#isProcessRestart").first.evaluate(
+                    "el => { if (!el.checked) el.click(); }")
+            if ttype == "EXCEPT_PROCESS":
+                scope.locator("input[name='isSecureDriveWrite']#BLOCK").first.evaluate(
+                    "el => el.click()")
+                scope.locator("input[name='isTakeoutDriveWrite']#ALLOW").first.evaluate(
+                    "el => el.click()")
+            page.l3_add_message(ttype)
+            page.dismiss_alert()
+            page.close_l2_modal()
+            # 속성 → 하위속성 판독
+            try:
+                page.open_detail_modal(tpl)
+                page.detail_open_item_sub(item)
+                st = page.detail_item_sub_state()
+                page.close_detail_item_sub()
+                page.close_detail_modal()
+            except Exception as e:
+                self._add("warn", f"sc5f — {ko}: 하위속성 대조 [열람 실패]",
+                          f"예외: {e!r}", sc=5)
+                continue
+            checks = {
+                "이름 표시": item in st["text"],
+                "설명 표시": DESC5F in st["text"],
+                "상태(활성) 표시": st["status_active"] is True,
+            }
+            if ttype in ("ALLOW_PROCESS", "EXCEPT_PROCESS"):
+                checks["재시작(ON) 표시"] = st["restart"] is True
+            else:
+                checks["옵션 요소 없음(타입 일치)"] = st["restart"] is None
+            if ttype == "EXCEPT_PROCESS":
+                checks["시큐어드라이브(차단) 표시"] = st["drive_secure_block"] is True
+                checks["반출드라이브(허용) 표시"] = st["drive_takeout_allow"] is True
+            bad = {k: v for k, v in checks.items() if not v}
+            self._add("pass" if not bad else "warn",
+                      f"sc5f — {ko}: 속성 하위속성 표시 = 저장값 일치",
+                      f"대상: {tpl!r} 의 {item!r} / 결과: "
+                      + (f"{len(checks)}항목 전부 일치" if not bad else f"불일치={list(bad)}")
+                      + ("" if not bad else " [속성 경로 표시가 저장값과 다름 — 표시 버그]"),
+                      sc=5,
+                      merge_key=(None if not bad else f"szproc_sub_detail::{ttype}"),
+                      repro=f"1. {ko} 항목 저장(설명·옵션)\n2. 속성 모달 → 항목 이름 클릭\n"
+                            "3. 하위속성 표시값 = 저장값 대조")
+
     # ── 5d: 마무리 cleanup — 휘발성 [AUTO] 만 삭제 ──────────────────
     def test_scenario5d_final_cleanup(self, logged_in_page, settings):
         print("\n━━ [프로세스] sc5d: 마무리 cleanup(휘발성 [AUTO]) ━━━")

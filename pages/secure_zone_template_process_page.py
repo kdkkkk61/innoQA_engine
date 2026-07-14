@@ -820,6 +820,43 @@ class SecureZoneTemplateProcessPage(BasePage):
             return []
 
     # ── 속성 모달 (sc5) ────────────────────────────────────────────
+    # 하위속성 상세(속성 모달 항목 링크 → 읽기 전용 뷰) — Chrome 실측 2026-07-14:
+    # div#viewDetailItemModal, 필드 전부 disabled 표시(재시작 checkbox·상태 radio),
+    # 설명은 텍스트 노드(innerText 로 판독).
+    SEL_SUB_DETAIL = "div#viewDetailItemModal"
+
+    def detail_open_item_sub(self, item_name: str) -> None:
+        """속성 모달의 항목 이름 링크 클릭 → 하위속성 상세정보 보기(읽기 전용)."""
+        det = self.page.locator(self.SEL_DETAIL_MODAL).first
+        det.locator("a", has_text=item_name).first.evaluate("el => el.click()")
+        self.wait_for(f"{self.SEL_SUB_DETAIL}.in", state="attached")
+        self.page.wait_for_timeout(200)
+
+    def detail_item_sub_state(self) -> dict:
+        """하위속성 모달의 표시 상태 판독 — {text, restart, drive_secure_block,
+        drive_takeout_allow, status_active}. 요소 부재는 None(타입별 옵션 차이 관찰용)."""
+        sub = self.page.locator(f"{self.SEL_SUB_DETAIL}.in").first
+
+        def _checked(sel):
+            loc = sub.locator(sel)
+            return loc.first.is_checked() if loc.count() > 0 else None
+        return {
+            "text": sub.inner_text().replace("\n", " "),
+            "restart": _checked("input#isProcessRestart"),
+            "drive_secure_block": _checked("input[name='isSecureDriveWrite']#BLOCK"),
+            "drive_takeout_allow": _checked("input[name='isTakeoutDriveWrite']#ALLOW"),
+            "status_active": _checked("input#CREATE"),
+        }
+
+    def close_detail_item_sub(self) -> None:
+        try:
+            self.page.locator(f"{self.SEL_SUB_DETAIL}.in").first.locator(
+                "button", has_text="닫기").first.evaluate("el => el.click()")
+            self.page.locator(f"{self.SEL_SUB_DETAIL}.in").wait_for(
+                state="detached", timeout=self._TIMEOUT_MODAL)
+        except Exception:
+            pass
+
     def open_detail_modal(self, name: str) -> None:
         if not self._AUTO_ANY.match(name):
             raise Exception("테스트 생성 템플릿([AUTO]/[AUTO_날짜] 접두사)만 조작 가능합니다")
