@@ -581,6 +581,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
             merged_title = None
             merged_actual_note = ""
             merged_actual_rows = None
+            merged_high = False
             if mk:
                 merged_done.add(mk)
                 grp = merge_labels[mk]
@@ -589,6 +590,11 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                         " · " + re.sub(r"^시나리오\s*", "", g) for g in grp[1:])
                 titles_g = merge_titles[mk]
                 items_g  = merge_items.get(mk, [r])
+                # ★병합 카드 등급 = 구성 항목 최고 등급으로 승격(사용자 지적 2026-07-14:
+                #   대표(첫) 항목이 warn 이면 fail 검출이 노랑 카드 안에 숨음 — '노랑 안에 빨강')
+                merged_high = any(it.status in ("fail", "error") for it in items_g)
+                if merged_high and r.status not in ("fail", "error"):
+                    badge, css = _STATUS_BADGE.get("fail", (badge, css))
                 # 항목별 변형 머리(예: "허용 프로세스") — "<변형>: <공통>" 라벨 패턴
                 heads_g = []
                 for it in items_g:
@@ -611,8 +617,11 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                     if all(d == dets_g[0] for d in dets_g):
                         merged_actual_note = f" — {len(items_g)}건 동일 결과"
                     else:
+                        # 등급 혼재 시 행별로 표기 — 어느 검출이 높음(fail)인지 카드 안에서 구분
                         merged_actual_rows = [
-                            f"[{_scenario_label(it, is_list, page_id)}] {_expected_vs_actual(it)[1]}"
+                            f"[{_scenario_label(it, is_list, page_id)}]"
+                            + ("[높음]" if it.status in ("fail", "error") else "")
+                            + f" {_expected_vs_actual(it)[1]}"
                             for it in items_g]
             steps      = _reproduce_steps(r)
             expected, actual = _expected_vs_actual(r)
@@ -631,7 +640,7 @@ def _render_defect_section(all_reports: list[tuple[str, PageScanReport]]) -> str
                 if r.status in ("warn", "known_bug"):
                     badge = '<span class="badge bug-high">&#x1F534; BUG</span>'
                     css = "bug-high"
-            elif r.status in ("fail", "error"):
+            elif r.status in ("fail", "error") or merged_high:
                 severity = "높음"
             else:
                 severity = "낮음"
